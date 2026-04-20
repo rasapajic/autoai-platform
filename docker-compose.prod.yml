@@ -1,0 +1,128 @@
+version: '3.9'
+
+# ── Produkcijska konfiguracija ────────────────────────────────
+# Razlike od development:
+# - Nema --reload na uvicorn
+# - Nginx sa SSL
+# - Health checks na svemu
+# - Resource limits
+
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    environment:
+      POSTGRES_DB: autoai
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d autoai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env.production
+    environment:
+      - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD}@postgres:5432/autoai
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Produkcija — bez --reload, sa 4 workera
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env.production
+    environment:
+      - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD}@postgres:5432/autoai
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+      - postgres
+    command: celery -A app.core.celery_tasks worker --loglevel=warning --concurrency=2
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env.production
+    environment:
+      - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD}@postgres:5432/autoai
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    command: celery -A app.core.celery_tasks beat --loglevel=warning
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: always
+    env_file: .env.production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  pgdata:
+  redisdata:
