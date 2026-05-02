@@ -1,11 +1,5 @@
-import type { Metadata } from 'next'
+'use client'
 import './globals.css'
-
-export const metadata: Metadata = {
-  title: 'AutoAI — Polovni automobili u Evropi',
-  description: 'AI pretraga polovnih automobila. Pronađi najbolju ponudu u Evropi.',
-}
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="sr">
