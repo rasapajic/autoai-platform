@@ -70,7 +70,7 @@ export default function HomePage() {
             animationDelay: '.1s',
           }}>
             Pretraži milione oglasa sa AutoScout24, Mobile.de i Polovniautomobili.
-            AI razumije šta tražiš — piši slobodnim jezikom.
+            AI razume šta tražiš — piši slobodnim jezikom.
           </p>
 
           {/* Search box */}
