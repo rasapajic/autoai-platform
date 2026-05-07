@@ -101,9 +101,10 @@ def save_listings(listings):
         try:
             cur.execute("""
                 INSERT INTO listings
-                    (id, external_id, source, make, model, year, price, mileage, fuel_type, url, images)
+                    (id, external_id, source, make, model, year, price,
+                     mileage, fuel_type, url, images, is_active)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
                 ON CONFLICT (external_id) DO NOTHING
             """, (
                 str(uuid.uuid4()),
