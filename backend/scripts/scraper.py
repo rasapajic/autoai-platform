@@ -12,6 +12,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "sr-RS,sr;q=0.9,en-US;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://www.polovniautomobili.com/",
     "Connection": "keep-alive",
 }
@@ -27,10 +28,19 @@ def parse_make_model(title):
 
 def scrape_page(url, session):
     resp = session.get(url, timeout=15)
-    soup = BeautifulSoup(resp.text, "html.parser")
-    listings = []
+    print(f"  Status: {resp.status_code} | Bytes: {len(resp.content)}")
 
-    for item in soup.select("article.classified"):
+    preview = resp.text[:100]
+    if '<' not in preview:
+        print(f"  GRESKA: Nije HTML! {repr(preview)}")
+        return []
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    items = soup.select("article.classified")
+    print(f"  article.classified: {len(items)}")
+
+    listings = []
+    for item in items:
         try:
             title_el = item.select_one("h3.classified__title")
             price_el = item.select_one(".price-box__price")
@@ -79,7 +89,7 @@ def scrape_page(url, session):
                 "images": images,
             })
         except Exception as e:
-            print(f"  Error parsing item: {e}")
+            print(f"  Error: {e}")
 
     print(f"  Pronadjeno: {len(listings)}")
     return listings
@@ -91,9 +101,9 @@ def save_listings(listings):
     for l in listings:
         try:
             cur.execute("""
-                INSERT INTO listings 
+                INSERT INTO listings
                     (external_id, source, make, model, year, price, mileage, fuel_type, url, images)
-                VALUES 
+                VALUES
                     (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (external_id) DO NOTHING
             """, (
