@@ -5,6 +5,7 @@ import os
 import time
 import random
 import json
+import uuid
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -100,11 +101,12 @@ def save_listings(listings):
         try:
             cur.execute("""
                 INSERT INTO listings
-                    (external_id, source, make, model, year, price, mileage, fuel_type, url, images)
+                    (id, external_id, source, make, model, year, price, mileage, fuel_type, url, images)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (external_id) DO NOTHING
             """, (
+                str(uuid.uuid4()),
                 l["external_id"], l["source"], l["make"], l["model"],
                 l["year"], l["price"], l["mileage"], l["fuel_type"],
                 l["url"], l["images"]
