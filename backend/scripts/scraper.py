@@ -42,12 +42,10 @@ def scrape_page(url, session):
     listings = []
     for item in items:
         try:
-            title_el = item.select_one("h3.classified__title")
-            price_el = item.select_one(".price-box__price")
-            year_el  = item.select_one(".details li:nth-child(1)")
-            km_el    = item.select_one(".details li:nth-child(2)")
-            fuel_el  = item.select_one(".details li:nth-child(3)")
-            link_el  = item.select_one("a.classified__titleLink")
+            title_el = item.select_one("h3.classified-title")
+            price_el = item.select_one(".price-box .price")
+            link_el  = item.select_one("a.ga-title")
+            details  = item.select(".classified-details li")
             img_el   = item.select_one("img")
 
             if not link_el:
@@ -63,17 +61,17 @@ def scrape_page(url, session):
             price_raw = price_el.text.strip() if price_el else ""
             price = int(''.join(filter(str.isdigit, price_raw)) or 0) or None
 
-            year_raw = year_el.text.strip() if year_el else ""
-            year = int(year_raw) if year_raw.isdigit() else None
+            year = mileage = fuel_type = None
+            for d in details:
+                t = d.text.strip()
+                if t.isdigit() and len(t) == 4:
+                    year = int(t)
+                elif "km" in t.lower():
+                    mileage = int(''.join(filter(str.isdigit, t)) or 0) or None
+                elif any(f in t.lower() for f in ["dizel","benzin","elektr","hibrid","gas"]):
+                    fuel_type = t
 
-            km_raw = km_el.text.strip() if km_el else ""
-            mileage = int(''.join(filter(str.isdigit, km_raw)) or 0) or None
-
-            fuel_type = fuel_el.text.strip() if fuel_el else None
-
-            img_src = None
-            if img_el:
-                img_src = img_el.get("data-src") or img_el.get("src")
+            img_src = img_el.get("data-src") or img_el.get("src") if img_el else None
             images = json.dumps([img_src]) if img_src else json.dumps([])
 
             listings.append({
