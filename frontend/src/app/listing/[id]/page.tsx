@@ -11,16 +11,18 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [favorited, setFavorited] = useState(false)
   const [loading, setLoading]   = useState(true)
 
-  useEffect(() => {
-    Promise.all([
+ useEffect(() => {
+    Promise.allSettled([
       getListing(params.id),
       getPriceHistory(params.id),
       getSimilar(params.id),
       fraudCheck(params.id),
     ]).then(([l, h, s, f]) => {
-      setListing(l); setHistory(h); setSimilar(s); setFraud(f)
-    }).catch(console.error)
-    .finally(() => setLoading(false))
+      if (l.status === 'fulfilled') setListing(l.value)
+      if (h.status === 'fulfilled') setHistory(h.value)
+      if (s.status === 'fulfilled') setSimilar(s.value)
+      if (f.status === 'fulfilled') setFraud(f.value)
+    }).finally(() => setLoading(false))
   }, [params.id])
 
   if (loading) return <PageSkeleton />
