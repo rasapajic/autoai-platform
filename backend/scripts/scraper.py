@@ -6,6 +6,11 @@ import time
 import random
 import json
 import uuid
+import asyncio
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -27,19 +32,18 @@ def parse_make_model(title):
     model = parts[1] if len(parts) > 1 else None
     return make, model
 
-def scrape_page(url, session):
+# ── Polovni Automobili ────────────────────────────────────────
+
+def scrape_polovni_page(url, session):
     resp = session.get(url, timeout=15)
     print(f"  Status: {resp.status_code} | Bytes: {len(resp.content)}")
-
     preview = resp.text[:100]
     if '<' not in preview:
-        print(f"  GRESKA: Nije HTML! {repr(preview)}")
+        print(f"  GRESKA: Nije HTML!")
         return []
-
     soup = BeautifulSoup(resp.text, "html.parser")
     items = soup.select("article.classified")
     print(f"  article.classified: {len(items)}")
-
     listings = []
     for item in items:
         try:
@@ -48,20 +52,15 @@ def scrape_page(url, session):
             link_el  = item.select_one("a.ga-title")
             details  = item.select(".classified-details li")
             img_el   = item.select_one("img")
-
             if not link_el:
                 continue
-
             href = link_el.get("href", "")
             full_url = "https://www.polovniautomobili.com" + href
             external_id = "pola_" + href.strip("/").split("/")[-1]
-
             title = title_el.text.strip() if title_el else ""
             make, model = parse_make_model(title)
-
             price_raw = price_el.text.strip() if price_el else ""
             price = int(''.join(filter(str.isdigit, price_raw)) or 0) or None
-
             year = mileage = fuel_type = None
             for d in details:
                 t = d.text.strip()
@@ -71,27 +70,39 @@ def scrape_page(url, session):
                     mileage = int(''.join(filter(str.isdigit, t)) or 0) or None
                 elif any(f in t.lower() for f in ["dizel","benzin","elektr","hibrid","gas"]):
                     fuel_type = t
-
             img_src = img_el.get("data-src") or img_el.get("src") if img_el else None
             images = json.dumps([img_src]) if img_src else json.dumps([])
-
             listings.append({
-                "external_id": external_id,
-                "source": "polovniautomobili",
-                "make": make,
-                "model": model,
-                "year": year,
-                "price": price,
-                "mileage": mileage,
-                "fuel_type": fuel_type,
-                "url": full_url,
-                "images": images,
+                "external_id": external_id, "source": "polovniautomobili",
+                "make": make, "model": model, "year": year, "price": price,
+                "mileage": mileage, "fuel_type": fuel_type,
+                "url": full_url, "images": images, "country": "RS",
             })
         except Exception as e:
             print(f"  Error: {e}")
-
     print(f"  Pronadjeno: {len(listings)}")
     return listings
+
+def run_polovni():
+    print("\n=== POLOVNI AUTOMOBILI ===")
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    session.get("https://www.polovniautomobili.com/", timeout=15)
+    time.sleep(2)
+    base_url = "https://www.polovniautomobili.com/auto-oglasi/pretraga?page={}&sort=basic&without_price=1"
+    total = 0
+    for page in range(1, 11):
+        url = base_url.format(page)
+        print(f"Scraping page {page}...")
+        listings = scrape_polovni_page(url, session)
+        saved = save_listings(listings)
+        total += saved
+        print(f"Saved {saved} (total: {total})")
+        time.sleep(random.uniform(3, 6))
+    print(f"Polovni done! Total: {total}")
+    return total
+
+# ── Save to DB ────────────────────────────────────────────────
 
 def save_listings(listings):
     conn = get_conn()
@@ -99,18 +110,22 @@ def save_listings(listings):
     saved = 0
     for l in listings:
         try:
+            images = l.get("images")
+            if isinstance(images, list):
+                images = json.dumps(images)
             cur.execute("""
                 INSERT INTO listings
                     (id, external_id, source, make, model, year, price,
-                     mileage, fuel_type, url, images, is_active)
+                     mileage, fuel_type, url, images, is_active, country)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
+                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
                 ON CONFLICT (external_id) DO NOTHING
             """, (
                 str(uuid.uuid4()),
-                l["external_id"], l["source"], l["make"], l["model"],
-                l["year"], l["price"], l["mileage"], l["fuel_type"],
-                l["url"], l["images"]
+                l.get("external_id"), l.get("source"),
+                l.get("make"), l.get("model"), l.get("year"),
+                l.get("price"), l.get("mileage"), l.get("fuel_type"),
+                l.get("url"), images, l.get("country"),
             ))
             conn.commit()
             saved += 1
@@ -121,26 +136,59 @@ def save_listings(listings):
     conn.close()
     return saved
 
+# ── AutoScout24 ───────────────────────────────────────────────
+
+async def run_autoscout24():
+    print("\n=== AUTOSCOUT24 ===")
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.autoscout24 import AutoScout24Scraper
+        scraper = AutoScout24Scraper()
+        filters = {}
+        listings = await scraper.scrape_listings(filters, max_pages=10)
+        print(f"  AutoScout24 pronadjeno: {len(listings)}")
+        saved = save_listings(listings)
+        print(f"  AutoScout24 saved: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  AutoScout24 greska: {e}")
+        return 0
+
+# ── Mobile.de ─────────────────────────────────────────────────
+
+async def run_mobile_de():
+    print("\n=== MOBILE.DE ===")
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.mobile_de import MobileDeScraper
+        scraper = MobileDeScraper()
+        filters = {}
+        listings = await scraper.scrape_listings(filters, max_pages=10)
+        print(f"  Mobile.de pronadjeno: {len(listings)}")
+        saved = save_listings(listings)
+        print(f"  Mobile.de saved: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  Mobile.de greska: {e}")
+        return 0
+
+# ── Main ──────────────────────────────────────────────────────
+
 def main():
-    session = requests.Session()
-    session.headers.update(HEADERS)
-
-    session.get("https://www.polovniautomobili.com/", timeout=15)
-    time.sleep(2)
-
-    base_url = "https://www.polovniautomobili.com/auto-oglasi/pretraga?page={}&sort=basic&without_price=1"
     total = 0
 
-    for page in range(1, 11):
-        url = base_url.format(page)
-        print(f"Scraping page {page}...")
-        listings = scrape_page(url, session)
-        saved = save_listings(listings)
-        total += saved
-        print(f"Saved {saved} (total: {total})")
-        time.sleep(random.uniform(3, 6))
+    # 1. Polovni (sync)
+    total += run_polovni()
 
-    print(f"Done! Total: {total}")
+    # 2. AutoScout24 (async/Playwright)
+    total += asyncio.run(run_autoscout24())
+
+    # 3. Mobile.de (async/Playwright)
+    total += asyncio.run(run_mobile_de())
+
+    print(f"\n=== UKUPNO SAČUVANO: {total} ===")
 
 if __name__ == "__main__":
     main()
