@@ -35,7 +35,17 @@ def parse_make_model(title):
 # ── Polovni Automobili ────────────────────────────────────────
 
 def scrape_polovni_page(url, session):
-    resp = session.get(url, timeout=15)
+    for attempt in range(3):
+        try:
+            resp = session.get(url, timeout=30)
+            break
+        except Exception as e:
+            print(f"  Timeout pokusaj {attempt+1}/3: {e}")
+            if attempt == 2:
+                print(f"  Preskacemo stranicu")
+                return []
+            time.sleep(5 * (attempt + 1))
+
     print(f"  Status: {resp.status_code} | Bytes: {len(resp.content)}")
     preview = resp.text[:100]
     if '<' not in preview:
@@ -87,8 +97,11 @@ def run_polovni():
     print("\n=== POLOVNI AUTOMOBILI ===")
     session = requests.Session()
     session.headers.update(HEADERS)
-    session.get("https://www.polovniautomobili.com/", timeout=15)
-    time.sleep(2)
+    try:
+        session.get("https://www.polovniautomobili.com/", timeout=30)
+        time.sleep(2)
+    except Exception as e:
+        print(f"  Homepage timeout: {e}")
     base_url = "https://www.polovniautomobili.com/auto-oglasi/pretraga?page={}&sort=basic&without_price=1"
     total = 0
     for page in range(1, 11):
@@ -145,8 +158,7 @@ async def run_autoscout24():
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
         scraper = AutoScout24Scraper()
-        filters = {}
-        listings = await scraper.scrape_listings(filters, max_pages=10)
+        listings = await scraper.scrape_listings({}, max_pages=10)
         print(f"  AutoScout24 pronadjeno: {len(listings)}")
         saved = save_listings(listings)
         print(f"  AutoScout24 saved: {saved}")
@@ -164,8 +176,7 @@ async def run_mobile_de():
         sys.path.insert(0, '/app')
         from app.scrapers.mobile_de import MobileDeScraper
         scraper = MobileDeScraper()
-        filters = {}
-        listings = await scraper.scrape_listings(filters, max_pages=10)
+        listings = await scraper.scrape_listings({}, max_pages=10)
         print(f"  Mobile.de pronadjeno: {len(listings)}")
         saved = save_listings(listings)
         print(f"  Mobile.de saved: {saved}")
@@ -178,16 +189,9 @@ async def run_mobile_de():
 
 def main():
     total = 0
-
-    # 1. Polovni (sync)
     total += run_polovni()
-
-    # 2. AutoScout24 (async/Playwright)
     total += asyncio.run(run_autoscout24())
-
-    # 3. Mobile.de (async/Playwright)
     total += asyncio.run(run_mobile_de())
-
     print(f"\n=== UKUPNO SAČUVANO: {total} ===")
 
 if __name__ == "__main__":
