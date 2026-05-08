@@ -45,19 +45,26 @@ class AutoScout24Scraper(BaseScraper):
                 if not page:
                     break
 
-                # DEBUG
+                # DEBUG - pokazi sta prvi item sadrzi
                 debug = await page.evaluate("""
-                    () => ({
-                        title: document.title,
-                        s1: document.querySelectorAll('article.cldt-summary-full-item').length,
-                        s2: document.querySelectorAll('[data-testid="listing-item"]').length,
-                        s3: document.querySelectorAll('[data-guid]').length,
-                        s4: document.querySelectorAll('article').length,
-                        s5: document.querySelectorAll('[class*="ListItem"]').length,
-                        s6: document.querySelectorAll('[class*="listing"]').length,
-                    })
+                    () => {
+                        const items = document.querySelectorAll('article.cldt-summary-full-item');
+                        const first = items[0];
+                        if (!first) return { count: 0 };
+                        const attrs = {};
+                        for (const attr of first.attributes) {
+                            attrs[attr.name] = attr.value;
+                        }
+                        const links = Array.from(first.querySelectorAll('a')).map(a => ({
+                            cls: a.className.substring(0, 50),
+                            href: a.href?.substring(0, 80)
+                        })).slice(0, 5);
+                        const h2 = first.querySelector('h2')?.textContent?.trim();
+                        const price = first.querySelector('[data-type="price_block"] .cldt-price')?.textContent?.trim();
+                        return { count: items.length, attrs, links, h2, price };
+                    }
                 """)
-                logger.info(f"[AutoScout24] DEBUG str{page_num}: {debug}")
+                logger.info(f"[AutoScout24] ITEM DEBUG str{page_num}: {debug}")
 
                 listings_data = await page.evaluate("""
                     () => {
@@ -93,6 +100,7 @@ class AutoScout24Scraper(BaseScraper):
                     continue
 
                 for raw in listings_data:
+                    logger.info(f"[AutoScout24] RAW: {raw}")
                     parsed = self._parse_listing(raw)
                     if parsed:
                         all_listings.append(self.normalize(parsed))
