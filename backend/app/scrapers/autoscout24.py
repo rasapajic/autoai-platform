@@ -1,198 +1,321 @@
-import requests
-from bs4 import BeautifulSoup
-import psycopg2
-import os
-import time
-import random
-import json
-import uuid
 import asyncio
 import logging
+import re
+from urllib.parse import urlencode
+from app.scrapers.base import BaseScraper
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "sr-RS,sr;q=0.9,en-US;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://www.polovniautomobili.com/",
-    "Connection": "keep-alive",
+FUEL_MAP = {
+    "diesel": "diesel", "dizel": "diesel",
+    "petrol": "petrol", "benzin": "petrol", "gasoline": "petrol",
+    "electric": "electric", "elektro": "electric", "elektrisch": "electric",
+    "hybrid": "hybrid", "plug-in": "hybrid",
+    "lpg": "lpg", "autogas": "lpg",
+    "cng": "cng", "erdgas": "cng",
 }
 
-def get_conn():
-    return psycopg2.connect(DATABASE_URL)
+TRANSMISSION_MAP = {
+    "automatic": "automatic", "automat": "automatic", "automatik": "automatic",
+    "dsg": "automatic", "cvt": "automatic", "tiptronic": "automatic",
+    "manual": "manual", "manuell": "manual", "schaltgetriebe": "manual",
+}
 
-def parse_make_model(title):
-    parts = title.strip().split(" ", 1)
-    make = parts[0] if parts else None
-    model = parts[1] if len(parts) > 1 else None
-    return make, model
+KNOWN_MAKES = [
+    "Alfa Romeo", "Aston Martin", "Audi", "BMW", "Bentley", "Bugatti",
+    "Citroën", "Citroen", "Dacia", "Ferrari", "Fiat", "Ford",
+    "Honda", "Hyundai", "Jaguar", "Jeep", "Kia", "Lamborghini",
+    "Land Rover", "Lexus", "Maserati", "Mazda", "Mercedes-Benz",
+    "Mini", "Mitsubishi", "Nissan", "Opel", "Peugeot", "Porsche",
+    "Renault", "Rolls-Royce", "Seat", "Skoda", "Smart", "Subaru",
+    "Suzuki", "Tesla", "Toyota", "Volkswagen", "Volvo",
+]
 
-# ── Polovni Automobili ────────────────────────────────────────
 
-def scrape_polovni_page(url, session):
-    for attempt in range(3):
-        try:
-            resp = session.get(url, timeout=30)
-            break
-        except Exception as e:
-            print(f"  Timeout pokusaj {attempt+1}/3: {e}")
-            if attempt == 2:
-                print(f"  Preskacemo stranicu")
-                return []
-            time.sleep(5 * (attempt + 1))
+class AutoScout24Scraper(BaseScraper):
+    SOURCE_NAME = "autoscout24"
+    BASE_URL = "https://www.autoscout24.com"
 
-    print(f"  Status: {resp.status_code} | Bytes: {len(resp.content)}")
-    preview = resp.text[:100]
-    if '<' not in preview:
-        print(f"  GRESKA: Nije HTML!")
-        return []
-    soup = BeautifulSoup(resp.text, "html.parser")
-    items = soup.select("article.classified")
-    print(f"  article.classified: {len(items)}")
-    listings = []
-    for item in items:
-        try:
-            title_el = item.select_one("h3.classified-title")
-            price_el = item.select_one(".price-box .price")
-            link_el  = item.select_one("a.ga-title")
-            details  = item.select(".classified-details li")
-            img_el   = item.select_one("img")
-            if not link_el:
+    def _build_url(self, filters: dict, page: int = 1) -> str:
+        params = {
+            "atype": "C",
+            "page": page,
+            "sort": "age",
+            "desc": 0,
+        }
+        mapping = {
+            "make": "mmvmk0", "model": "mmvmd0",
+            "min_price": "pricefrom", "max_price": "priceto",
+            "min_year": "fregfrom", "max_year": "fregto",
+            "max_km": "kmto",
+        }
+        fuel_map = {
+            "petrol": "B", "diesel": "D", "electric": "E",
+            "hybrid": "M", "lpg": "L", "cng": "C",
+        }
+        for key, param in mapping.items():
+            if filters.get(key):
+                params[param] = filters[key]
+        if filters.get("fuel_type"):
+            code = fuel_map.get(filters["fuel_type"])
+            if code:
+                params["fuel"] = code
+        if filters.get("country"):
+            params["countrycode"] = filters["country"].upper()
+        return f"{self.BASE_URL}/lst?{urlencode(params)}"
+
+    async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list[dict]:
+        all_listings = []
+        seen_ids = set()
+
+        async with self:
+            for page_num in range(1, max_pages + 1):
+                url = self._build_url(filters, page=page_num)
+                logger.info(f"[AutoScout24] Stranica {page_num}: {url}")
+
+                page = None
+                for attempt in range(3):
+                    try:
+                        page = await self.get_page(url, wait_for=None)
+                        if page:
+                            break
+                    except Exception as e:
+                        logger.warning(f"[AutoScout24] Pokušaj {attempt+1} neuspešan: {e}")
+                        await asyncio.sleep(2 ** attempt)
+
+                if not page:
+                    logger.warning(f"[AutoScout24] Preskačem stranicu {page_num}")
+                    continue
+
+                try:
+                    raw_items = await page.evaluate(self._listing_js())
+                except Exception as e:
+                    logger.error(f"[AutoScout24] JS evaluate greška: {e}")
+                    await page.close()
+                    continue
+
+                if not raw_items:
+                    logger.info(f"[AutoScout24] Nema oglasa — završavam")
+                    await page.close()
+                    break
+
+                page_saved = 0
+                for raw in raw_items:
+                    try:
+                        parsed = self._parse_listing(raw)
+                        if not parsed:
+                            continue
+                        if parsed["external_id"] in seen_ids:
+                            continue
+                        seen_ids.add(parsed["external_id"])
+                        all_listings.append(parsed)
+                        page_saved += 1
+                    except Exception as e:
+                        logger.warning(f"[AutoScout24] Parse greška: {e}")
+
+                logger.info(f"[AutoScout24] Str {page_num}: +{page_saved} | Ukupno: {len(all_listings)}")
+                await page.close()
+                await asyncio.sleep(2)
+
+        return all_listings
+
+    async def scrape_detail(self, url: str) -> dict:
+        async with self:
+            page = await self.get_page(url, wait_for=None)
+            if not page:
+                return {}
+            try:
+                data = await page.evaluate("""
+                    () => {
+                        const getText = sel => document.querySelector(sel)?.textContent?.trim() || null;
+                        const getAll  = sel => Array.from(document.querySelectorAll(sel))
+                                                    .map(e => e.textContent.trim()).filter(Boolean);
+                        const specs = {};
+                        document.querySelectorAll('[data-item-key]').forEach(el => {
+                            specs[el.getAttribute('data-item-key')] = el.textContent.trim();
+                        });
+                        const images = Array.from(document.querySelectorAll(
+                            '.image-gallery-image img, [class*="gallery"] img'
+                        )).map(i => i.src || i.getAttribute('data-src')).filter(Boolean);
+                        const features = getAll('.sc-expandable-element li, [class*="equipment"] li');
+                        return {
+                            description:        getText('.cldt-stage-description, [class*="description"]'),
+                            seller_name:        getText('.cldt-stage-vendor-info-name, [class*="seller-name"]'),
+                            seller_type:        getText('[class*="dealer-type"], [class*="seller-type"]'),
+                            vin:                specs['vin'] || null,
+                            fuel_consumption:   specs['fuel-consumption'] || null,
+                            co2:                specs['co2-emission'] || null,
+                            doors:              specs['doors'] || null,
+                            seats:              specs['seats'] || null,
+                            drivetrain:         specs['drivetrain'] || null,
+                            first_registration: specs['first-registration'] || null,
+                            accident_free:      (specs['accident'] || '').toLowerCase().includes('unfall') ? false : null,
+                            features:           features,
+                            images:             images.slice(0, 20),
+                        };
+                    }
+                """)
+                return data or {}
+            except Exception as e:
+                logger.error(f"[AutoScout24] Detail greška {url}: {e}")
+                return {}
+            finally:
+                await page.close()
+
+    def _listing_js(self) -> str:
+        return """
+        () => {
+            const containers = [
+                ...document.querySelectorAll('article.cldt-summary-full-item'),
+                ...document.querySelectorAll('article[data-guid]'),
+                ...document.querySelectorAll('[data-testid="listing-item"]'),
+            ];
+            const seen = new Set();
+            const items = containers.filter(el => {
+                const id = el.getAttribute('data-guid') || el.id;
+                if (!id || seen.has(id)) return false;
+                seen.add(id);
+                return true;
+            });
+            return items.map(item => {
+                const id = item.getAttribute('data-guid') || item.getAttribute('id') || '';
+                const titleEl = item.querySelector('h2, h3, [class*="title"]');
+                const title = titleEl?.textContent?.trim() || '';
+                const linkEl = item.querySelector('a[href*="/offers/"]')
+                            || item.querySelector('a[href*="autoscout24"]')
+                            || item.querySelector('h2 a, h3 a')
+                            || item.querySelector('a');
+                const url = linkEl?.href
+                         || (id ? 'https://www.autoscout24.com/offers/' + id : '');
+                const priceEl = item.querySelector('.cldt-price, [data-type="price_block"] .cldt-price, [class*="price"]');
+                const price_raw = priceEl?.textContent?.trim() || '';
+                const detailEls = item.querySelectorAll(
+                    '.cldt-summary-attributes-item, [class*="attribute"], [class*="detail"] li'
+                );
+                const details = Array.from(detailEls).map(d => d.textContent.trim()).filter(Boolean);
+                const images = Array.from(item.querySelectorAll('img'))
+                    .map(img => img.src || img.getAttribute('data-src'))
+                    .filter(s => s && s.startsWith('http') && !s.includes('logo'));
+                const locEl = item.querySelector(
+                    '.cldt-summary-seller-contact-country, [class*="country"], [class*="location"], [class*="city"]'
+                );
+                const location_raw = locEl?.textContent?.trim() || '';
+                return { id, title, url, price_raw, details, images: images.slice(0, 10), location_raw };
+            });
+        }
+        """
+
+    def _parse_listing(self, raw: dict) -> dict | None:
+        ext_id = raw.get("id", "").strip()
+        url = raw.get("url", "").strip()
+        if "?" in url:
+            url = url.split("?")[0]
+        if not ext_id or not url:
+            return None
+
+        title = raw.get("title", "").strip()
+        make, model = self._parse_title(title)
+        details = raw.get("details", [])
+
+        price_raw = raw.get("price_raw", "")
+        price_eur = self._parse_price_eur(price_raw)
+
+        mileage_raw = year = fuel_type = transmission = power_str = None
+        for d in details:
+            if not d:
                 continue
-            href = link_el.get("href", "")
-            full_url = "https://www.polovniautomobili.com" + href
-            external_id = "pola_" + href.strip("/").split("/")[-1]
-            title = title_el.text.strip() if title_el else ""
-            make, model = parse_make_model(title)
-            price_raw = price_el.text.strip() if price_el else ""
-            price = int(''.join(filter(str.isdigit, price_raw)) or 0) or None
-            year = mileage = fuel_type = None
-            for d in details:
-                t = d.text.strip()
-                if t.isdigit() and len(t) == 4:
-                    year = int(t)
-                elif "km" in t.lower():
-                    mileage = int(''.join(filter(str.isdigit, t)) or 0) or None
-                elif any(f in t.lower() for f in ["dizel","benzin","elektr","hibrid","gas"]):
-                    fuel_type = t
-            img_src = img_el.get("data-src") or img_el.get("src") if img_el else None
-            images = json.dumps([img_src]) if img_src else json.dumps([])
-            listings.append({
-                "external_id": external_id, "source": "polovniautomobili",
-                "make": make, "model": model, "year": year, "price": price,
-                "mileage": mileage, "fuel_type": fuel_type,
-                "url": full_url, "images": images, "country": "RS",
-            })
-        except Exception as e:
-            print(f"  Error: {e}")
-    print(f"  Pronadjeno: {len(listings)}")
-    return listings
+            if "km" in d.lower() and any(c.isdigit() for c in d):
+                mileage_raw = mileage_raw or d
+            elif self._extract_year(d):
+                year = year or self._extract_year(d)
+            elif any(k in d.lower() for k in FUEL_MAP):
+                fuel_type = fuel_type or self._normalize_fuel(d)
+            elif any(k in d.lower() for k in TRANSMISSION_MAP):
+                transmission = transmission or self._normalize_transmission(d)
+            elif re.search(r'\d+\s*(kw|ps|hp)', d.lower()):
+                power_str = power_str or d
 
-def run_polovni():
-    print("\n=== POLOVNI AUTOMOBILI ===")
-    session = requests.Session()
-    session.headers.update(HEADERS)
-    try:
-        session.get("https://www.polovniautomobili.com/", timeout=30)
-        time.sleep(2)
-    except Exception as e:
-        print(f"  Homepage timeout: {e}")
-    base_url = "https://www.polovniautomobili.com/auto-oglasi/pretraga?page={}&sort=basic&without_price=1"
-    total = 0
-    for page in range(1, 11):
-        url = base_url.format(page)
-        print(f"Scraping page {page}...")
-        listings = scrape_polovni_page(url, session)
-        saved = save_listings(listings)
-        total += saved
-        print(f"Saved {saved} (total: {total})")
-        time.sleep(random.uniform(3, 6))
-    print(f"Polovni done! Total: {total}")
-    return total
+        location_raw = raw.get("location_raw", "")
+        country, city = self._parse_location(location_raw)
 
-# ── Save to DB ────────────────────────────────────────────────
+        return {
+            "external_id":     f"as24_{ext_id}",
+            "source":          self.SOURCE_NAME,
+            "title":           title,
+            "make":            make,
+            "model":           model,
+            "year":            year,
+            "price_raw":       price_raw or None,
+            "price":           price_eur,
+            "currency":        "EUR",
+            "mileage_raw":     mileage_raw,
+            "mileage":         self._parse_mileage_km(mileage_raw),
+            "fuel_type":       fuel_type,
+            "transmission":    transmission,
+            "engine_power_kw": self._parse_power_kw(power_str),
+            "country":         country or "DE",
+            "city":            city,
+            "images":          raw.get("images", []),
+            "url":             url,
+        }
 
-def save_listings(listings):
-    conn = get_conn()
-    cur = conn.cursor()
-    saved = 0
-    for l in listings:
-        try:
-            images = l.get("images")
-            if isinstance(images, list):
-                images = json.dumps(images)
-            cur.execute("""
-                INSERT INTO listings
-                    (id, external_id, source, make, model, year, price,
-                     mileage, fuel_type, url, images, is_active, country)
-                VALUES
-                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
-                ON CONFLICT (external_id) DO NOTHING
-            """, (
-                str(uuid.uuid4()),
-                l.get("external_id"), l.get("source"),
-                l.get("make"), l.get("model"), l.get("year"),
-                l.get("price"), l.get("mileage"), l.get("fuel_type"),
-                l.get("url"), images, l.get("country"),
-            ))
-            conn.commit()
-            saved += 1
-        except Exception as e:
-            conn.rollback()
-            print(f"  DB error: {e}")
-    cur.close()
-    conn.close()
-    return saved
+    def _parse_title(self, title: str) -> tuple:
+        if not title:
+            return None, None
+        for make in sorted(KNOWN_MAKES, key=len, reverse=True):
+            if make.lower() in title.lower():
+                rest = re.sub(re.escape(make), "", title, flags=re.IGNORECASE).strip()
+                words = rest.split()
+                model = " ".join(words[:2]) if words else None
+                return make, model or None
+        words = title.split()
+        return (words[0] if words else None), (" ".join(words[1:3]) if len(words) > 1 else None)
 
-# ── AutoScout24 ───────────────────────────────────────────────
+    def _parse_price_eur(self, raw: str) -> int | None:
+        if not raw:
+            return None
+        digits = re.sub(r'[^\d]', '', raw)
+        return int(digits) if digits else None
 
-async def run_autoscout24():
-    print("\n=== AUTOSCOUT24 ===")
-    try:
-        import sys
-        sys.path.insert(0, '/app')
-        from app.scrapers.autoscout24 import AutoScout24Scraper
-        scraper = AutoScout24Scraper()
-        listings = await scraper.scrape_listings({}, max_pages=10)
-        print(f"  AutoScout24 pronadjeno: {len(listings)}")
-        saved = save_listings(listings)
-        print(f"  AutoScout24 saved: {saved}")
-        return saved
-    except Exception as e:
-        print(f"  AutoScout24 greska: {e}")
-        return 0
+    def _parse_mileage_km(self, raw: str) -> int | None:
+        if not raw:
+            return None
+        digits = re.sub(r'[^\d]', '', raw)
+        return int(digits) if digits else None
 
-# ── Mobile.de ─────────────────────────────────────────────────
+    def _extract_year(self, text: str) -> int | None:
+        m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
+        return int(m.group(1)) if m else None
 
-async def run_mobile_de():
-    print("\n=== MOBILE.DE ===")
-    try:
-        import sys
-        sys.path.insert(0, '/app')
-        from app.scrapers.mobile_de import MobileDeScraper
-        scraper = MobileDeScraper()
-        listings = await scraper.scrape_listings({}, max_pages=10)
-        print(f"  Mobile.de pronadjeno: {len(listings)}")
-        saved = save_listings(listings)
-        print(f"  Mobile.de saved: {saved}")
-        return saved
-    except Exception as e:
-        print(f"  Mobile.de greska: {e}")
-        return 0
+    def _normalize_fuel(self, val: str) -> str | None:
+        v = val.lower()
+        for k, norm in FUEL_MAP.items():
+            if k in v:
+                return norm
+        return None
 
-# ── Main ──────────────────────────────────────────────────────
+    def _normalize_transmission(self, val: str) -> str | None:
+        v = val.lower()
+        for k, norm in TRANSMISSION_MAP.items():
+            if k in v:
+                return norm
+        return None
 
-def main():
-    total = 0
-    total += run_polovni()
-    total += asyncio.run(run_autoscout24())
-    total += asyncio.run(run_mobile_de())
-    print(f"\n=== UKUPNO SAČUVANO: {total} ===")
+    def _parse_power_kw(self, raw: str) -> int | None:
+        if not raw:
+            return None
+        kw = re.search(r'(\d+)\s*kw', raw.lower())
+        if kw:
+            return int(kw.group(1))
+        ps = re.search(r'(\d+)\s*(ps|hp)', raw.lower())
+        if ps:
+            return round(int(ps.group(1)) * 0.7355)
+        return None
 
-if __name__ == "__main__":
-    main()
+    def _parse_location(self, raw: str) -> tuple:
+        if not raw:
+            return "DE", None
+        parts = [p.strip() for p in raw.split(",")]
+        if len(parts) >= 2:
+            return parts[-1], parts[0]
+        return "DE", parts[0]
