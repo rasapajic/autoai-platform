@@ -45,44 +45,39 @@ class AutoScout24Scraper(BaseScraper):
                 if not page:
                     break
 
-                # DEBUG - pokazi sta prvi item sadrzi
-                debug = await page.evaluate("""
-                    () => {
-                        const items = document.querySelectorAll('article.cldt-summary-full-item');
-                        const first = items[0];
-                        if (!first) return { count: 0 };
-                        const attrs = {};
-                        for (const attr of first.attributes) {
-                            attrs[attr.name] = attr.value;
-                        }
-                        const links = Array.from(first.querySelectorAll('a')).map(a => ({
-                            cls: a.className.substring(0, 50),
-                            href: a.href?.substring(0, 80)
-                        })).slice(0, 5);
-                        const h2 = first.querySelector('h2')?.textContent?.trim();
-                        const price = first.querySelector('[data-type="price_block"] .cldt-price')?.textContent?.trim();
-                        return { count: items.length, attrs, links, h2, price };
-                    }
-                """)
-                logger.info(f"[AutoScout24] ITEM DEBUG str{page_num}: {debug}")
-
                 listings_data = await page.evaluate("""
                     () => {
                         const items = document.querySelectorAll('article.cldt-summary-full-item');
                         return Array.from(items).map(item => {
-                            const id = item.getAttribute('data-guid') || item.getAttribute('id') || '';
+                            const id = item.getAttribute('data-guid') || '';
+
+                            const linkEl = item.querySelector('a[href*="/offers/"]') ||
+                                           item.querySelector('a[href*="autoscout24"]') ||
+                                           item.querySelector('h2 a') ||
+                                           item.querySelector('a');
+
                             const titleEl = item.querySelector('h2');
-                            const linkEl = item.querySelector('a.cldt-summary-full-item-main');
-                            const priceEl = item.querySelector('[data-type="price_block"] .cldt-price');
-                            const details = item.querySelectorAll('.cldt-summary-attributes-item');
-                            const detailTexts = Array.from(details).map(d => d.textContent.trim());
+
+                            const priceEl = item.querySelector('[data-type="price_block"] .cldt-price') ||
+                                            item.querySelector('.cldt-price') ||
+                                            item.querySelector('[class*="price"]');
+
+                            const detailEls = item.querySelectorAll('.cldt-summary-attributes-item');
+                            const detailTexts = Array.from(detailEls).map(d => d.textContent.trim()).filter(t => t);
+
                             const images = Array.from(item.querySelectorAll('img'))
                                 .map(img => img.src).filter(s => s && s.startsWith('http'));
-                            const locationEl = item.querySelector('.cldt-summary-seller-contact-country');
+
+                            const locationEl = item.querySelector('.cldt-summary-seller-contact-country') ||
+                                               item.querySelector('[class*="country"]') ||
+                                               item.querySelector('[class*="location"]');
+
+                            const href = linkEl?.href || (id ? 'https://www.autoscout24.com/offers/' + id : '');
+
                             return {
                                 external_id: id,
                                 title: titleEl?.textContent?.trim() || '',
-                                url: linkEl?.href || '',
+                                url: href,
                                 price_raw: priceEl?.textContent?.trim() || '',
                                 details: detailTexts,
                                 images: images.slice(0, 10),
@@ -100,7 +95,6 @@ class AutoScout24Scraper(BaseScraper):
                     continue
 
                 for raw in listings_data:
-                    logger.info(f"[AutoScout24] RAW: {raw}")
                     parsed = self._parse_listing(raw)
                     if parsed:
                         all_listings.append(self.normalize(parsed))
@@ -140,19 +134,19 @@ class AutoScout24Scraper(BaseScraper):
         location = raw.get("location_raw", "")
         country, city = self._parse_location(location)
         return {
-            "external_id":   f"as24_{raw['external_id']}",
-            "make":          make,
-            "model":         model,
-            "year":          year,
-            "price":         raw.get("price_raw"),
-            "mileage":       mileage,
-            "fuel_type":     fuel,
-            "transmission":  transmission,
+            "external_id":     f"as24_{raw['external_id']}",
+            "make":            make,
+            "model":           model,
+            "year":            year,
+            "price":           raw.get("price_raw"),
+            "mileage":         mileage,
+            "fuel_type":       fuel,
+            "transmission":    transmission,
             "engine_power_kw": self._parse_power_kw(power),
-            "country":       country,
-            "city":          city,
-            "images":        raw.get("images", []),
-            "url":           raw.get("url", ""),
+            "country":         country,
+            "city":            city,
+            "images":          raw.get("images", []),
+            "url":             raw.get("url", ""),
         }
 
     def _parse_title(self, title: str) -> tuple:
