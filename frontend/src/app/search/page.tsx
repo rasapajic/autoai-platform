@@ -55,7 +55,7 @@ export default function SearchPage() {
   useEffect(() => { doSearch() }, [])
 
   const setFilter = (key: string, val: any) => {
-    const next = { ...filters, [key]: val, page: 1 }
+    const next = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
     setFilters(next)
     doSearch(next)
   }
