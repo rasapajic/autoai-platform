@@ -165,6 +165,15 @@ class AutoScout24Scraper(BaseScraper):
     def _listing_js(self) -> str:
         return """
         () => {
+            const cleanPrice = (text) => {
+                if (!text) return '';
+                // Ukloni superscript Unicode karaktere (footnote markeri)
+                let clean = text.replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]+/g, '');
+                // Ukloni izolovane cifre na kraju (npr. "18.999 1" -> "18.999")
+                clean = clean.replace(/\\s+\\d+\\s*$/, '');
+                return clean.trim();
+            };
+
             const containers = [
                 ...document.querySelectorAll('article.cldt-summary-full-item'),
                 ...document.querySelectorAll('article[data-guid]'),
@@ -188,7 +197,7 @@ class AutoScout24Scraper(BaseScraper):
                 const url = linkEl?.href
                          || (id ? 'https://www.autoscout24.com/offers/' + id : '');
                 const priceEl = item.querySelector('.cldt-price, [data-type="price_block"] .cldt-price, [class*="price"]');
-                const price_raw = priceEl?.textContent?.trim() || '';
+                const price_raw = cleanPrice(priceEl?.textContent || '');
                 const detailEls = item.querySelectorAll(
                     '.cldt-summary-attributes-item, [class*="attribute"], [class*="detail"] li'
                 );
@@ -219,6 +228,7 @@ class AutoScout24Scraper(BaseScraper):
 
         price_raw = raw.get("price_raw", "")
         price_eur = self._parse_price_eur(price_raw)
+        logger.debug(f"[AutoScout24] price_raw='{price_raw}' → {price_eur}")
 
         mileage_raw = year = fuel_type = transmission = power_str = None
         for d in details:
@@ -274,15 +284,16 @@ class AutoScout24Scraper(BaseScraper):
     def _parse_price_eur(self, raw: str) -> int | None:
         if not raw:
             return None
-        # Izvuci prvi broj sa separatorima (ignorisi superscript/footnote)
+        # Izvuci prvi broj sa separatorima
         m = re.search(r'\d[\d.,]+\d', raw)
         if m:
             num = m.group(0).replace('.', '').replace(',', '')
             try:
-                return int(num)
+                val = int(num)
+                # Realna cena automobila: max 2 miliona EUR
+                return val if val <= 2000000 else None
             except ValueError:
                 pass
-        # Fallback - samo prvih 6 cifara
         digits = re.sub(r'[^\d]', '', raw)
         return int(digits[:6]) if digits else None
 
