@@ -32,12 +32,17 @@ class ListingCard(ListingBase):
     """Kratak prikaz za listu oglasa."""
     id:               UUID
     source:           str
-    images:           list[str] = []
+    images:           list = []
     url:              str
     price_estimated:  Optional[float] = None
     price_delta_pct:  Optional[float] = None
     price_rating:     Optional[str] = None
     first_seen_at:    Optional[datetime] = None
+
+    @field_validator('images', mode='before')
+    @classmethod
+    def images_none_to_list(cls, v):
+        return v if v is not None else []
 
     model_config = {"from_attributes": True}
 
@@ -49,11 +54,16 @@ class ListingDetail(ListingCard):
     doors:            Optional[int] = None
     seats:            Optional[int] = None
     description:      Optional[str] = None
-    features:         list[str] = []
+    features:         list = []
     first_registration: Optional[str] = None
     owners_count:     Optional[int] = None
     last_seen_at:     Optional[datetime] = None
     price_negotiable: Optional[bool] = None
+
+    @field_validator('features', mode='before')
+    @classmethod
+    def features_none_to_list(cls, v):
+        return v if v is not None else []
 
     model_config = {"from_attributes": True}
 
