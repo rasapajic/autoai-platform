@@ -274,14 +274,30 @@ class AutoScout24Scraper(BaseScraper):
     def _parse_price_eur(self, raw: str) -> int | None:
         if not raw:
             return None
+        # Izvuci prvi broj sa separatorima (ignorisi superscript/footnote)
+        m = re.search(r'\d[\d.,]+\d', raw)
+        if m:
+            num = m.group(0).replace('.', '').replace(',', '')
+            try:
+                return int(num)
+            except ValueError:
+                pass
+        # Fallback - samo prvih 6 cifara
         digits = re.sub(r'[^\d]', '', raw)
-        return int(digits) if digits else None
+        return int(digits[:6]) if digits else None
 
     def _parse_mileage_km(self, raw: str) -> int | None:
         if not raw:
             return None
+        m = re.search(r'\d[\d.,]+\d', raw)
+        if m:
+            num = m.group(0).replace('.', '').replace(',', '')
+            try:
+                return int(num)
+            except ValueError:
+                pass
         digits = re.sub(r'[^\d]', '', raw)
-        return int(digits) if digits else None
+        return int(digits[:7]) if digits else None
 
     def _extract_year(self, text: str) -> int | None:
         m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
