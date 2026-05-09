@@ -37,22 +37,14 @@ class AutoScout24Scraper(BaseScraper):
     BASE_URL = "https://www.autoscout24.com"
 
     def _build_url(self, filters: dict, page: int = 1) -> str:
-        params = {
-            "atype": "C",
-            "page": page,
-            "sort": "age",
-            "desc": 0,
-        }
+        params = {"atype": "C", "page": page, "sort": "age", "desc": 0}
         mapping = {
             "make": "mmvmk0", "model": "mmvmd0",
             "min_price": "pricefrom", "max_price": "priceto",
             "min_year": "fregfrom", "max_year": "fregto",
             "max_km": "kmto",
         }
-        fuel_map = {
-            "petrol": "B", "diesel": "D", "electric": "E",
-            "hybrid": "M", "lpg": "L", "cng": "C",
-        }
+        fuel_map = {"petrol": "B", "diesel": "D", "electric": "E", "hybrid": "M", "lpg": "L", "cng": "C"}
         for key, param in mapping.items():
             if filters.get(key):
                 params[param] = filters[key]
@@ -80,22 +72,20 @@ class AutoScout24Scraper(BaseScraper):
                         if page:
                             break
                     except Exception as e:
-                        logger.warning(f"[AutoScout24] Pokušaj {attempt+1} neuspešan: {e}")
+                        logger.warning(f"[AutoScout24] Pokušaj {attempt+1}: {e}")
                         await asyncio.sleep(2 ** attempt)
 
                 if not page:
-                    logger.warning(f"[AutoScout24] Preskačem stranicu {page_num}")
                     continue
 
                 try:
                     raw_items = await page.evaluate(self._listing_js())
                 except Exception as e:
-                    logger.error(f"[AutoScout24] JS evaluate greška: {e}")
+                    logger.error(f"[AutoScout24] JS greška: {e}")
                     await page.close()
                     continue
 
                 if not raw_items:
-                    logger.info(f"[AutoScout24] Nema oglasa — završavam")
                     await page.close()
                     break
 
@@ -103,9 +93,7 @@ class AutoScout24Scraper(BaseScraper):
                 for raw in raw_items:
                     try:
                         parsed = self._parse_listing(raw)
-                        if not parsed:
-                            continue
-                        if parsed["external_id"] in seen_ids:
+                        if not parsed or parsed["external_id"] in seen_ids:
                             continue
                         seen_ids.add(parsed["external_id"])
                         all_listings.append(parsed)
@@ -128,8 +116,8 @@ class AutoScout24Scraper(BaseScraper):
                 data = await page.evaluate("""
                     () => {
                         const getText = sel => document.querySelector(sel)?.textContent?.trim() || null;
-                        const getAll  = sel => Array.from(document.querySelectorAll(sel))
-                                                    .map(e => e.textContent.trim()).filter(Boolean);
+                        const getAll = sel => Array.from(document.querySelectorAll(sel))
+                                                   .map(e => e.textContent.trim()).filter(Boolean);
                         const specs = {};
                         document.querySelectorAll('[data-item-key]').forEach(el => {
                             specs[el.getAttribute('data-item-key')] = el.textContent.trim();
@@ -137,47 +125,43 @@ class AutoScout24Scraper(BaseScraper):
                         const images = Array.from(document.querySelectorAll(
                             '.image-gallery-image img, [class*="gallery"] img'
                         )).map(i => i.src || i.getAttribute('data-src')).filter(Boolean);
-                        const features = getAll('.sc-expandable-element li, [class*="equipment"] li');
                         return {
-                            description:        getText('.cldt-stage-description, [class*="description"]'),
-                            seller_name:        getText('.cldt-stage-vendor-info-name, [class*="seller-name"]'),
-                            seller_type:        getText('[class*="dealer-type"], [class*="seller-type"]'),
-                            vin:                specs['vin'] || null,
-                            fuel_consumption:   specs['fuel-consumption'] || null,
-                            co2:                specs['co2-emission'] || null,
-                            doors:              specs['doors'] || null,
-                            seats:              specs['seats'] || null,
-                            drivetrain:         specs['drivetrain'] || null,
-                            first_registration: specs['first-registration'] || null,
-                            accident_free:      (specs['accident'] || '').toLowerCase().includes('unfall') ? false : null,
-                            features:           features,
-                            images:             images.slice(0, 20),
+                            description: getText('.cldt-stage-description, [class*="description"]'),
+                            features: getAll('.sc-expandable-element li, [class*="equipment"] li'),
+                            images: images.slice(0, 20),
+                            vin: specs['vin'] || null,
+                            doors: specs['doors'] || null,
+                            seats: specs['seats'] || null,
+                            drivetrain: specs['drivetrain'] || null,
                         };
                     }
                 """)
                 return data or {}
             except Exception as e:
-                logger.error(f"[AutoScout24] Detail greška {url}: {e}")
+                logger.error(f"[AutoScout24] Detail greška: {e}")
                 return {}
             finally:
                 await page.close()
 
     def _listing_js(self) -> str:
-        return """
+        return r"""
         () => {
-            const cleanPrice = (text) => {
-                if (!text) return '';
-                // Ukloni superscript Unicode karaktere (footnote markeri)
-                let clean = text.replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]+/g, '');
-                // Ukloni izolovane cifre na kraju (npr. "18.999 1" -> "18.999")
-                clean = clean.replace(/\\s+\\d+\\s*$/, '');
-                return clean.trim();
+            const getCleanPrice = (el) => {
+                if (!el) return '';
+                const clone = el.cloneNode(true);
+                clone.querySelectorAll('sup, sub, [class*="footnote"], [class*="superscript"]')
+                     .forEach(e => e.remove());
+                let text = clone.textContent.trim();
+                // Ukloni unicode superscript karaktere
+                text = text.replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]/g, '');
+                // Ukloni izolovanu jednu cifru na kraju (footnote marker)
+                text = text.replace(/\s*\d\s*$/, '').trim();
+                return text;
             };
 
             const containers = [
                 ...document.querySelectorAll('article.cldt-summary-full-item'),
                 ...document.querySelectorAll('article[data-guid]'),
-                ...document.querySelectorAll('[data-testid="listing-item"]'),
             ];
             const seen = new Set();
             const items = containers.filter(el => {
@@ -186,6 +170,7 @@ class AutoScout24Scraper(BaseScraper):
                 seen.add(id);
                 return true;
             });
+
             return items.map(item => {
                 const id = item.getAttribute('data-guid') || item.getAttribute('id') || '';
                 const titleEl = item.querySelector('h2, h3, [class*="title"]');
@@ -196,8 +181,10 @@ class AutoScout24Scraper(BaseScraper):
                             || item.querySelector('a');
                 const url = linkEl?.href
                          || (id ? 'https://www.autoscout24.com/offers/' + id : '');
-                const priceEl = item.querySelector('.cldt-price, [data-type="price_block"] .cldt-price, [class*="price"]');
-                const price_raw = cleanPrice(priceEl?.textContent || '');
+                const priceEl = item.querySelector(
+                    '.cldt-price, [data-type="price_block"] .cldt-price, [class*="price"]'
+                );
+                const price_raw = getCleanPrice(priceEl);
                 const detailEls = item.querySelectorAll(
                     '.cldt-summary-attributes-item, [class*="attribute"], [class*="detail"] li'
                 );
@@ -206,10 +193,13 @@ class AutoScout24Scraper(BaseScraper):
                     .map(img => img.src || img.getAttribute('data-src'))
                     .filter(s => s && s.startsWith('http') && !s.includes('logo'));
                 const locEl = item.querySelector(
-                    '.cldt-summary-seller-contact-country, [class*="country"], [class*="location"], [class*="city"]'
+                    '.cldt-summary-seller-contact-country, [class*="country"], [class*="location"]'
                 );
-                const location_raw = locEl?.textContent?.trim() || '';
-                return { id, title, url, price_raw, details, images: images.slice(0, 10), location_raw };
+                return {
+                    id, title, url, price_raw, details,
+                    images: images.slice(0, 10),
+                    location_raw: locEl?.textContent?.trim() || '',
+                };
             });
         }
         """
@@ -225,10 +215,8 @@ class AutoScout24Scraper(BaseScraper):
         title = raw.get("title", "").strip()
         make, model = self._parse_title(title)
         details = raw.get("details", [])
-
         price_raw = raw.get("price_raw", "")
         price_eur = self._parse_price_eur(price_raw)
-        logger.debug(f"[AutoScout24] price_raw='{price_raw}' → {price_eur}")
 
         mileage_raw = year = fuel_type = transmission = power_str = None
         for d in details:
@@ -245,8 +233,7 @@ class AutoScout24Scraper(BaseScraper):
             elif re.search(r'\d+\s*(kw|ps|hp)', d.lower()):
                 power_str = power_str or d
 
-        location_raw = raw.get("location_raw", "")
-        country, city = self._parse_location(location_raw)
+        country, city = self._parse_location(raw.get("location_raw", ""))
 
         return {
             "external_id":     f"as24_{ext_id}",
@@ -276,21 +263,18 @@ class AutoScout24Scraper(BaseScraper):
             if make.lower() in title.lower():
                 rest = re.sub(re.escape(make), "", title, flags=re.IGNORECASE).strip()
                 words = rest.split()
-                model = " ".join(words[:2]) if words else None
-                return make, model or None
+                return make, (" ".join(words[:2]) if words else None)
         words = title.split()
         return (words[0] if words else None), (" ".join(words[1:3]) if len(words) > 1 else None)
 
     def _parse_price_eur(self, raw: str) -> int | None:
         if not raw:
             return None
-        # Izvuci prvi broj sa separatorima
         m = re.search(r'\d[\d.,]+\d', raw)
         if m:
             num = m.group(0).replace('.', '').replace(',', '')
             try:
                 val = int(num)
-                # Realna cena automobila: max 2 miliona EUR
                 return val if val <= 2000000 else None
             except ValueError:
                 pass
