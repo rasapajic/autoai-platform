@@ -251,3 +251,4 @@ class MobileDeScraper(BaseScraper):
             "country":      "DE",
             "images":       [raw["image"]] if raw.get("image") else [],
             "url":          raw.get("url", ""),
+        }
