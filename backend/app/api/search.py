@@ -16,7 +16,7 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
     Koristi se i za normalnu i za AI pretragu
     (AI samo parsira prirodni tekst u ove iste filtere).
     """
-    q = db.query(Listing).filter(Listing.is_active == True)
+    q = db.query(Listing).filter(Listing.is_active == True, Listing.price != None, Listing.price > 0)
 
     # ── Filteri ───────────────────────────────────────────────
     if filters.make:
