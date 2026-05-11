@@ -155,7 +155,7 @@ class AutoScout24Scraper(BaseScraper):
                 // Ukloni unicode superscript karaktere
                 text = text.replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]/g, '');
                 // Ukloni izolovanu jednu cifru na kraju (footnote marker)
-                text = text.replace(/\s*\d\s*$/, '').trim();
+                text = text.replace(/\s+\d\s*$/, '').trim();
                 return text;
             };
 
