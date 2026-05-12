@@ -185,6 +185,24 @@ async def run_mobile_de():
         print(f"  Mobile.de greska: {e}")
         return 0
 
+# ── Willhaben ─────────────────────────────────────────────────
+
+async def run_willhaben():
+    print("\n=== WILLHABEN ===")
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.willhaben import WillhabenScraper
+        scraper = WillhabenScraper()
+        listings = await scraper.scrape_listings({}, max_pages=10)
+        print(f"  Willhaben pronadjeno: {len(listings)}")
+        saved = save_listings(listings)
+        print(f"  Willhaben saved: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  Willhaben greska: {e}")
+        return 0
+
 # ── Main ──────────────────────────────────────────────────────
 
 def main():
@@ -192,6 +210,7 @@ def main():
     total += run_polovni()
     total += asyncio.run(run_autoscout24())
     total += asyncio.run(run_mobile_de())
+    total += asyncio.run(run_willhaben())
     print(f"\n=== UKUPNO SAČUVANO: {total} ===")
 
 if __name__ == "__main__":
