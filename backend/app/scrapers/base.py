@@ -44,12 +44,26 @@ class BaseScraper(ABC):
         self.context = await self.browser.new_context(
             user_agent=random.choice(USER_AGENTS),
             viewport={"width": 1920, "height": 1080},
-            locale="de-DE",  # izgledamo kao da smo iz Nemačke
+            locale="de-DE",
             timezone_id="Europe/Berlin",
+            extra_http_headers={
+                "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Sec-Ch-Ua": '"Chromium";v="120", "Google Chrome";v="120"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Upgrade-Insecure-Requests": "1",
+            }
         )
-        # Sakrij da smo bot
         await self.context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['de-DE', 'de', 'en'] });
+            window.chrome = { runtime: {} };
         """)
         return self
 
