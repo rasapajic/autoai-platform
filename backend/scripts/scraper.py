@@ -125,7 +125,8 @@ def scrape_willhaben_page(session, offset, rows=25):
         next_data = json.loads(next_data_tag.string)
         page_props = next_data.get("props", {}).get("pageProps", {})
         search_result = page_props.get("initialSearchResult", {})
-        print(f"  [Willhaben] initialSearchResult keys: {list(search_result.keys())[:10]}")
+        print(f"  [Willhaben] rowsFound: {search_result.get('rowsFound', 'N/A')}")
+        print(f"  [Willhaben] SVE keys: {list(search_result.keys())}")
         adverts = search_result.get("advertSummaryList", {}).get("advertSummary", [])
         print(f"  [Willhaben] Oglasi: {len(adverts)}")
         return adverts
