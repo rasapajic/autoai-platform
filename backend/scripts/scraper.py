@@ -32,8 +32,6 @@ def parse_make_model(title):
     model = parts[1] if len(parts) > 1 else None
     return make, model
 
-# ── Polovni Automobili ────────────────────────────────────────
-
 def scrape_polovni_page(url, session):
     for attempt in range(3):
         try:
@@ -45,10 +43,8 @@ def scrape_polovni_page(url, session):
                 print(f"  Preskacemo stranicu")
                 return []
             time.sleep(5 * (attempt + 1))
-
     print(f"  Status: {resp.status_code} | Bytes: {len(resp.content)}")
-    preview = resp.text[:100]
-    if '<' not in preview:
+    if '<' not in resp.text[:100]:
         print(f"  GRESKA: Nije HTML!")
         return []
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -115,31 +111,20 @@ def run_polovni():
     print(f"Polovni done! Total: {total}")
     return total
 
-# ── Willhaben ─────────────────────────────────────────────────
-
 def scrape_willhaben_page(session, offset, rows=25):
     url = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
-    params = {
-        "sfId": "",
-        "rows": rows,
-        "isNavigation": "false",
-        "pagingOffset": offset,
-        "sort": 1,
-    }
+    params = {"sfId": "", "rows": rows, "isNavigation": "false", "pagingOffset": offset, "sort": 1}
     try:
         resp = session.get(url, params=params, timeout=30)
         print(f"  [Willhaben] Status: {resp.status_code}")
-
         soup = BeautifulSoup(resp.text, "html.parser")
         next_data_tag = soup.find("script", {"id": "__NEXT_DATA__"})
         if not next_data_tag:
             print(f"  [Willhaben] Nema __NEXT_DATA__")
             return []
-
         next_data = json.loads(next_data_tag.string)
         page_props = next_data.get("props", {}).get("pageProps", {})
         print(f"  [Willhaben] pageProps keys: {list(page_props.keys())}")
-
         search_result = page_props.get("searchResult", {})
         adverts = search_result.get("advertSummaryList", {}).get("advertSummary", [])
         print(f"  [Willhaben] Oglasi: {len(adverts)}")
@@ -156,7 +141,6 @@ def parse_willhaben_ad(ad):
                     vals = a.get("values", [])
                     return vals[0] if vals else None
             return None
-
         attrs = ad.get("attributes", {}).get("attribute", [])
         ad_id = str(ad.get("id", ""))
         make = get_attr(attrs, "MAKE")
@@ -165,15 +149,12 @@ def parse_willhaben_ad(ad):
         price_str = get_attr(attrs, "PRICE_FOR_DISPLAY") or get_attr(attrs, "PRICE")
         mileage_str = get_attr(attrs, "MILEAGE")
         fuel = get_attr(attrs, "FUEL_TYPE") or ""
-        transmission = get_attr(attrs, "TRANSMISSION_TYPE") or ""
-
         year = None
         if year_str:
             try:
                 year = int(str(year_str)[:4])
             except Exception:
                 pass
-
         price = None
         if price_str:
             try:
@@ -181,20 +162,17 @@ def parse_willhaben_ad(ad):
                 price = float(cleaned) if cleaned else None
             except Exception:
                 pass
-
         mileage = None
         if mileage_str:
             try:
                 mileage = int(''.join(filter(str.isdigit, str(mileage_str))) or 0) or None
             except Exception:
                 pass
-
         images = []
         for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
             ref = img.get("reference")
             if ref:
                 images.append(f"https://cache.willhaben.at/mmo/{ref}")
-
         return {
             "external_id": f"wh_{ad_id}",
             "source": "willhaben",
@@ -217,4 +195,102 @@ def run_willhaben():
     session = requests.Session()
     session.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
+        "Referer": "https://www.willhaben.at/",
+    })
+    try:
+        session.get("https://www.willhaben.at/", timeout=15)
+        time.sleep(2)
+    except Exception as e:
+        print(f"  Homepage greška: {e}")
+    total = 0
+    for page in range(10):
+        offset = page * 25
+        print(f"  Stranica {page + 1} (offset={offset})...")
+        adverts = scrape_willhaben_page(session, offset)
+        if not adverts:
+            break
+        listings = [parse_willhaben_ad(ad) for ad in adverts]
+        listings = [l for l in listings if l]
+        saved = save_listings(listings)
+        total += saved
+        print(f"  Saved {saved} (total: {total})")
+        time.sleep(random.uniform(2, 4))
+    print(f"  Willhaben ukupno: {total}")
+    return total
+
+def save_listings(listings):
+    conn = get_conn()
+    cur = conn.cursor()
+    saved = 0
+    for l in listings:
+        try:
+            images = l.get("images")
+            if isinstance(images, list):
+                images = json.dumps(images)
+            cur.execute("""
+                INSERT INTO listings
+                    (id, external_id, source, make, model, year, price,
+                     mileage, fuel_type, url, images, is_active, country)
+                VALUES
+                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
+                ON CONFLICT (external_id) DO NOTHING
+            """, (
+                str(uuid.uuid4()),
+                l.get("external_id"), l.get("source"),
+                l.get("make"), l.get("model"), l.get("year"),
+                l.get("price"), l.get("mileage"), l.get("fuel_type"),
+                l.get("url"), images, l.get("country"),
+            ))
+            conn.commit()
+            saved += 1
+        except Exception as e:
+            conn.rollback()
+            print(f"  DB error: {e}")
+    cur.close()
+    conn.close()
+    return saved
+
+async def run_autoscout24():
+    print("\n=== AUTOSCOUT24 ===")
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.autoscout24 import AutoScout24Scraper
+        scraper = AutoScout24Scraper()
+        listings = await scraper.scrape_listings({}, max_pages=10)
+        print(f"  AutoScout24 pronadjeno: {len(listings)}")
+        saved = save_listings(listings)
+        print(f"  AutoScout24 saved: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  AutoScout24 greska: {e}")
+        return 0
+
+async def run_mobile_de():
+    print("\n=== MOBILE.DE ===")
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.mobile_de import MobileDeScraper
+        scraper = MobileDeScraper()
+        listings = await scraper.scrape_listings({}, max_pages=10)
+        print(f"  Mobile.de pronadjeno: {len(listings)}")
+        saved = save_listings(listings)
+        print(f"  Mobile.de saved: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  Mobile.de greska: {e}")
+        return 0
+
+def main():
+    total = 0
+    total += run_polovni()
+    total += run_willhaben()
+    total += asyncio.run(run_autoscout24())
+    total += asyncio.run(run_mobile_de())
+    print(f"\n=== UKUPNO SAČUVANO: {total} ===")
+
+if __name__ == "__main__":
+    main()
