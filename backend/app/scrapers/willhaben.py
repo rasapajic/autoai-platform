@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import json
 import aiohttp
 from app.scrapers.base import BaseScraper
 
@@ -47,7 +48,15 @@ class WillhabenScraper(BaseScraper):
                             logger.warning(f"[Willhaben] Status {resp.status}")
                             break
 
-                        data = await resp.json(content_type=None)
+                        text = await resp.text()
+                        logger.info(f"[Willhaben] Preview: {text[:300]}")
+
+                        try:
+                            data = json.loads(text)
+                        except Exception as je:
+                            logger.error(f"[Willhaben] JSON greška: {je} | CT: {resp.content_type}")
+                            break
+
                         adverts = data.get("advertSummaryList", {}).get("advertSummary", [])
 
                         if not adverts:
