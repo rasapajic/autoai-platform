@@ -111,123 +111,6 @@ def run_polovni():
     print(f"Polovni done! Total: {total}")
     return total
 
-def scrape_willhaben_page(session, offset, rows=25):
-    url = "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagen-angebote"
-    params = {"pagingOffset": offset, "rows": rows}
-    try:
-        resp = session.get(url, params=params, timeout=30)
-        print(f"  [Willhaben] Status: {resp.status_code} | URL: {resp.url}")
-        soup = BeautifulSoup(resp.text, "html.parser")
-        next_data_tag = soup.find("script", {"id": "__NEXT_DATA__"})
-        if not next_data_tag:
-            print(f"  [Willhaben] Nema __NEXT_DATA__")
-            return []
-        next_data = json.loads(next_data_tag.string)
-        page_props = next_data.get("props", {}).get("pageProps", {})
-        search_result = page_props.get("initialSearchResult", {})
-        rows_returned = search_result.get("rowsReturned", 0)
-        rows_found = search_result.get("rowsFound", 0)
-        print(f"  [Willhaben] rowsFound: {rows_found} | rowsReturned: {rows_returned}")
-        advert_list = search_result.get("advertSummaryList", {})
-        if isinstance(advert_list, list):
-            adverts = advert_list
-        elif isinstance(advert_list, dict):
-            adverts = advert_list.get("advertSummary", [])
-        else:
-            adverts = []
-        print(f"  [Willhaben] Oglasi: {len(adverts)}")
-        return adverts
-    except Exception as e:
-        print(f"  [Willhaben] Greška: {e}")
-        return []
-
-def parse_willhaben_ad(ad):
-    try:
-        def get_attr(attrs, name):
-            for a in attrs:
-                if a.get("name") == name:
-                    vals = a.get("values", [])
-                    return vals[0] if vals else None
-            return None
-        attrs = ad.get("attributes", {}).get("attribute", [])
-        ad_id = str(ad.get("id", ""))
-        make = get_attr(attrs, "MAKE")
-        model = get_attr(attrs, "MODEL")
-        year_str = get_attr(attrs, "YEAR")
-        price_str = get_attr(attrs, "PRICE_FOR_DISPLAY") or get_attr(attrs, "PRICE")
-        mileage_str = get_attr(attrs, "MILEAGE")
-        fuel = get_attr(attrs, "FUEL_TYPE") or ""
-        year = None
-        if year_str:
-            try:
-                year = int(str(year_str)[:4])
-            except Exception:
-                pass
-        price = None
-        if price_str:
-            try:
-                cleaned = ''.join(c for c in str(price_str) if c.isdigit() or c == '.')
-                price = float(cleaned) if cleaned else None
-            except Exception:
-                pass
-        mileage = None
-        if mileage_str:
-            try:
-                mileage = int(''.join(filter(str.isdigit, str(mileage_str))) or 0) or None
-            except Exception:
-                pass
-        images = []
-        for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
-            ref = img.get("reference")
-            if ref:
-                images.append(f"https://cache.willhaben.at/mmo/{ref}")
-        return {
-            "external_id": f"wh_{ad_id}",
-            "source": "willhaben",
-            "make": make,
-            "model": model,
-            "year": year,
-            "price": price,
-            "mileage": mileage,
-            "fuel_type": fuel.lower() if fuel else None,
-            "url": f"https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagen/{ad_id}",
-            "images": json.dumps(images[:5]),
-            "country": "AT",
-        }
-    except Exception as e:
-        print(f"  [Willhaben] Parse greška: {e}")
-        return None
-
-def run_willhaben():
-    print("\n=== WILLHABEN ===")
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
-        "Referer": "https://www.willhaben.at/",
-    })
-    try:
-        session.get("https://www.willhaben.at/", timeout=15)
-        time.sleep(2)
-    except Exception as e:
-        print(f"  Homepage greška: {e}")
-    total = 0
-    for page in range(10):
-        offset = page * 25
-        print(f"  Stranica {page + 1} (offset={offset})...")
-        adverts = scrape_willhaben_page(session, offset)
-        if not adverts:
-            break
-        listings = [parse_willhaben_ad(ad) for ad in adverts]
-        listings = [l for l in listings if l]
-        saved = save_listings(listings)
-        total += saved
-        print(f"  Saved {saved} (total: {total})")
-        time.sleep(random.uniform(2, 4))
-    print(f"  Willhaben ukupno: {total}")
-    return total
-
 def save_listings(listings):
     conn = get_conn()
     cur = conn.cursor()
@@ -261,19 +144,35 @@ def save_listings(listings):
     return saved
 
 async def run_autoscout24():
-    print("\n=== AUTOSCOUT24 ===")
+    print("\n=== AUTOSCOUT24 DE ===")
     try:
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
         scraper = AutoScout24Scraper()
         listings = await scraper.scrape_listings({}, max_pages=10)
-        print(f"  AutoScout24 pronadjeno: {len(listings)}")
+        print(f"  AutoScout24 DE pronadjeno: {len(listings)}")
         saved = save_listings(listings)
-        print(f"  AutoScout24 saved: {saved}")
+        print(f"  AutoScout24 DE saved: {saved}")
         return saved
     except Exception as e:
-        print(f"  AutoScout24 greska: {e}")
+        print(f"  AutoScout24 DE greska: {e}")
+        return 0
+
+async def run_autoscout24_at():
+    print("\n=== AUTOSCOUT24 AT ===")
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.autoscout24 import AutoScout24Scraper
+        scraper = AutoScout24Scraper()
+        listings = await scraper.scrape_listings({"country": "A"}, max_pages=10)
+        print(f"  AutoScout24 AT pronadjeno: {len(listings)}")
+        saved = save_listings(listings)
+        print(f"  AutoScout24 AT saved: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  AutoScout24 AT greska: {e}")
         return 0
 
 async def run_mobile_de():
@@ -295,10 +194,5 @@ async def run_mobile_de():
 def main():
     total = 0
     total += run_polovni()
-    total += run_willhaben()
     total += asyncio.run(run_autoscout24())
-    total += asyncio.run(run_mobile_de())
-    print(f"\n=== UKUPNO SAČUVANO: {total} ===")
-
-if __name__ == "__main__":
-    main()
+    total += asyncio.run
