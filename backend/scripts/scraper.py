@@ -115,6 +115,129 @@ def run_polovni():
     print(f"Polovni done! Total: {total}")
     return total
 
+# ── Willhaben ─────────────────────────────────────────────────
+
+def scrape_willhaben_page(session, offset, rows=25):
+    url = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
+    params = {
+        "sfId": "",
+        "rows": rows,
+        "isNavigation": "false",
+        "pagingOffset": offset,
+        "sort": 1,
+    }
+    try:
+        resp = session.get(url, params=params, timeout=30)
+        print(f"  [Willhaben] Status: {resp.status_code} | CT: {resp.headers.get('content-type','?')[:50]}")
+        print(f"  [Willhaben] Preview: {resp.text[:200]}")
+
+        data = resp.json()
+        adverts = data.get("advertSummaryList", {}).get("advertSummary", [])
+        print(f"  [Willhaben] Oglasi: {len(adverts)}")
+        return adverts
+    except Exception as e:
+        print(f"  [Willhaben] Greška: {e}")
+        return []
+
+def parse_willhaben_ad(ad):
+    try:
+        def get_attr(attrs, name):
+            for a in attrs:
+                if a.get("name") == name:
+                    vals = a.get("values", [])
+                    return vals[0] if vals else None
+            return None
+
+        attrs = ad.get("attributes", {}).get("attribute", [])
+        ad_id = str(ad.get("id", ""))
+        make = get_attr(attrs, "MAKE")
+        model = get_attr(attrs, "MODEL")
+        year_str = get_attr(attrs, "YEAR")
+        price_str = get_attr(attrs, "PRICE_FOR_DISPLAY") or get_attr(attrs, "PRICE")
+        mileage_str = get_attr(attrs, "MILEAGE")
+        fuel = get_attr(attrs, "FUEL_TYPE") or ""
+        transmission = get_attr(attrs, "TRANSMISSION_TYPE") or ""
+
+        year = None
+        if year_str:
+            try:
+                year = int(str(year_str)[:4])
+            except Exception:
+                pass
+
+        price = None
+        if price_str:
+            try:
+                cleaned = ''.join(c for c in str(price_str) if c.isdigit() or c == '.')
+                price = float(cleaned) if cleaned else None
+            except Exception:
+                pass
+
+        mileage = None
+        if mileage_str:
+            try:
+                mileage = int(''.join(filter(str.isdigit, str(mileage_str))) or 0) or None
+            except Exception:
+                pass
+
+        images = []
+        for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
+            ref = img.get("reference")
+            if ref:
+                images.append(f"https://cache.willhaben.at/mmo/{ref}")
+
+        return {
+            "external_id": f"wh_{ad_id}",
+            "source": "willhaben",
+            "make": make,
+            "model": model,
+            "year": year,
+            "price": price,
+            "mileage": mileage,
+            "fuel_type": fuel.lower() if fuel else None,
+            "url": f"https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagen/{ad_id}",
+            "images": json.dumps(images[:5]),
+            "country": "AT",
+        }
+    except Exception as e:
+        print(f"  [Willhaben] Parse greška: {e}")
+        return None
+
+def run_willhaben():
+    print("\n=== WILLHABEN ===")
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
+        "Referer": "https://www.willhaben.at/",
+    })
+
+    # Poseti homepage da dobijemo cookies
+    try:
+        session.get("https://www.willhaben.at/", timeout=15)
+        time.sleep(2)
+    except Exception as e:
+        print(f"  Homepage greška: {e}")
+
+    total = 0
+    rows = 25
+    for page in range(10):
+        offset = page * rows
+        print(f"  Stranica {page + 1} (offset={offset})...")
+        adverts = scrape_willhaben_page(session, offset, rows)
+        if not adverts:
+            break
+        listings = [parse_willhaben_ad(ad) for ad in adverts]
+        listings = [l for l in listings if l]
+        saved = save_listings(listings)
+        total += saved
+        print(f"  Saved {saved} (total: {total})")
+        time.sleep(random.uniform(2, 4))
+
+    print(f"  Willhaben ukupno: {total}")
+    return total
+
 # ── Save to DB ────────────────────────────────────────────────
 
 def save_listings(listings):
@@ -185,32 +308,14 @@ async def run_mobile_de():
         print(f"  Mobile.de greska: {e}")
         return 0
 
-# ── Willhaben ─────────────────────────────────────────────────
-
-async def run_willhaben():
-    print("\n=== WILLHABEN ===")
-    try:
-        import sys
-        sys.path.insert(0, '/app')
-        from app.scrapers.willhaben import WillhabenScraper
-        scraper = WillhabenScraper()
-        listings = await scraper.scrape_listings({}, max_pages=10)
-        print(f"  Willhaben pronadjeno: {len(listings)}")
-        saved = save_listings(listings)
-        print(f"  Willhaben saved: {saved}")
-        return saved
-    except Exception as e:
-        print(f"  Willhaben greska: {e}")
-        return 0
-
 # ── Main ──────────────────────────────────────────────────────
 
 def main():
     total = 0
     total += run_polovni()
+    total += run_willhaben()
     total += asyncio.run(run_autoscout24())
     total += asyncio.run(run_mobile_de())
-    total += asyncio.run(run_willhaben())
     print(f"\n=== UKUPNO SAČUVANO: {total} ===")
 
 if __name__ == "__main__":
