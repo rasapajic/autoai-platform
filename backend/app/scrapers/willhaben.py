@@ -29,42 +29,43 @@ class WillhabenScraper(BaseScraper):
         seen_ids = set()
         rows = 25
 
-        for page_num in range(max_pages):
-            offset = page_num * rows
-            params = {
-                "sfId": "",
-                "rows": rows,
-                "isNavigation": "false",
-                "pagingOffset": offset,
-                "sort": 1,
-            }
-            logger.info(f"[Willhaben] Stranica {page_num + 1}: offset={offset}")
+        async with self:
+            for page_num in range(max_pages):
+                offset = page_num * rows
+                params = {
+                    "sfId": "",
+                    "rows": rows,
+                    "isNavigation": "false",
+                    "pagingOffset": offset,
+                    "sort": 1,
+                }
+                logger.info(f"[Willhaben] Stranica {page_num + 1}: offset={offset}")
 
-            try:
-                async with self._session.get(self.BASE_URL, params=params) as resp:
-                    if resp.status != 200:
-                        logger.warning(f"[Willhaben] Status {resp.status}")
-                        break
+                try:
+                    async with self._session.get(self.BASE_URL, params=params) as resp:
+                        if resp.status != 200:
+                            logger.warning(f"[Willhaben] Status {resp.status}")
+                            break
 
-                    data = await resp.json(content_type=None)
-                    adverts = data.get("advertSummaryList", {}).get("advertSummary", [])
+                        data = await resp.json(content_type=None)
+                        adverts = data.get("advertSummaryList", {}).get("advertSummary", [])
 
-                    if not adverts:
-                        logger.info(f"[Willhaben] Nema oglasa na str {page_num + 1}")
-                        break
+                        if not adverts:
+                            logger.info(f"[Willhaben] Nema oglasa na str {page_num + 1}")
+                            break
 
-                    for ad in adverts:
-                        parsed = self._parse_ad(ad)
-                        if parsed and parsed["external_id"] not in seen_ids:
-                            seen_ids.add(parsed["external_id"])
-                            all_listings.append(parsed)
+                        for ad in adverts:
+                            parsed = self._parse_ad(ad)
+                            if parsed and parsed["external_id"] not in seen_ids:
+                                seen_ids.add(parsed["external_id"])
+                                all_listings.append(parsed)
 
-                    logger.info(f"[Willhaben] Str {page_num + 1}: +{len(adverts)} | Ukupno: {len(all_listings)}")
-                    await asyncio.sleep(1.0)
+                        logger.info(f"[Willhaben] Str {page_num + 1}: +{len(adverts)} | Ukupno: {len(all_listings)}")
+                        await asyncio.sleep(1.0)
 
-            except Exception as e:
-                logger.error(f"[Willhaben] Greška na str {page_num + 1}: {e}")
-                break
+                except Exception as e:
+                    logger.error(f"[Willhaben] Greška na str {page_num + 1}: {e}")
+                    break
 
         return all_listings
 
