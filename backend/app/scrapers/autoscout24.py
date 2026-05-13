@@ -53,7 +53,7 @@ class AutoScout24Scraper(BaseScraper):
             if code:
                 params["fuel"] = code
         if filters.get("country"):
-            params["countrycode"] = filters["country"].upper()
+            params["cy"] = filters["country"].upper()
         return f"{self.BASE_URL}/lst?{urlencode(params)}"
 
     async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list[dict]:
@@ -152,9 +152,7 @@ class AutoScout24Scraper(BaseScraper):
                 clone.querySelectorAll('sup, sub, [class*="footnote"], [class*="superscript"]')
                      .forEach(e => e.remove());
                 let text = clone.textContent.trim();
-                // Ukloni unicode superscript karaktere
                 text = text.replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]/g, '');
-                // Ukloni izolovanu jednu cifru na kraju (footnote marker)
                 text = text.replace(/\s+\d\s*$/, '').trim();
                 return text;
             };
