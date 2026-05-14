@@ -160,6 +160,8 @@ class AutoScout24Scraper(BaseScraper):
             const containers = [
                 ...document.querySelectorAll('article.cldt-summary-full-item'),
                 ...document.querySelectorAll('article[data-guid]'),
+                ...document.querySelectorAll('[data-testid="regular-list-item"]'),
+                ...document.querySelectorAll('[data-testid="result-list-item"]'),
             ];
             const seen = new Set();
             const items = containers.filter(el => {
@@ -171,28 +173,59 @@ class AutoScout24Scraper(BaseScraper):
 
             return items.map(item => {
                 const id = item.getAttribute('data-guid') || item.getAttribute('id') || '';
+
                 const titleEl = item.querySelector('h2, h3, [class*="title"]');
                 const title = titleEl?.textContent?.trim() || '';
-                const linkEl = item.querySelector('a[href*="/offers/"]')
-                            || item.querySelector('a[href*="autoscout24"]')
-                            || item.querySelector('h2 a, h3 a')
-                            || item.querySelector('a');
-                const url = linkEl?.href
+
+                // Uvek koristimo /offers/ URL
+                const offerLink = item.querySelector('a[href*="/offers/"]');
+                const url = offerLink?.href
                          || (id ? 'https://www.autoscout24.com/offers/' + id : '');
+
                 const priceEl = item.querySelector(
                     '.cldt-price, [data-type="price_block"] .cldt-price, [class*="price"]'
                 );
                 const price_raw = getCleanPrice(priceEl);
-                const detailEls = item.querySelectorAll(
-                    '.cldt-summary-attributes-item, [class*="attribute"], [class*="detail"] li'
-                );
-                const details = Array.from(detailEls).map(d => d.textContent.trim()).filter(Boolean);
+
+                // Izvuci sve tekst iz artikla i parsiraj direktno
+                const fullText = item.textContent || '';
+
+                // Godiste: 4 cifre 1950-2030
+                const yearMatch = fullText.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
+                const year_text = yearMatch ? yearMatch[1] : '';
+
+                // Kilometraza: broj + km
+                const kmMatch = fullText.match(/([\d.,]+)\s*km/i);
+                const km_text = kmMatch ? kmMatch[1] + ' km' : '';
+
+                // Gorivo: kljucne reci
+                const fuelKeywords = ['Diesel', 'Benzin', 'Elektro', 'Hybrid', 'Electric', 'LPG', 'CNG', 'Autogas'];
+                let fuel_text = '';
+                for (const kw of fuelKeywords) {
+                    if (fullText.includes(kw)) { fuel_text = kw; break; }
+                }
+
+                // Mjenjac
+                const transKeywords = ['Automatik', 'Automatic', 'Schaltgetriebe', 'Manual', 'DSG'];
+                let trans_text = '';
+                for (const kw of transKeywords) {
+                    if (fullText.includes(kw)) { trans_text = kw; break; }
+                }
+
+                // Snaga: broj kW ili PS
+                const powerMatch = fullText.match(/(\d+)\s*kW/);
+                const power_text = powerMatch ? powerMatch[1] + ' kW' : '';
+
+                const details = [year_text, km_text, fuel_text, trans_text, power_text].filter(Boolean);
+
                 const images = Array.from(item.querySelectorAll('img'))
                     .map(img => img.src || img.getAttribute('data-src'))
                     .filter(s => s && s.startsWith('http') && !s.includes('logo'));
+
                 const locEl = item.querySelector(
                     '.cldt-summary-seller-contact-country, [class*="country"], [class*="location"]'
                 );
+
                 return {
                     id, title, url, price_raw, details,
                     images: images.slice(0, 10),
