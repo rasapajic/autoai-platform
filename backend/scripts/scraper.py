@@ -128,7 +128,7 @@ def save_listings(listings):
                     (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
                 ON CONFLICT (external_id) DO UPDATE SET
                     year = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
-                    mileage = CASE WHEN listings.mileage IS NULL THEN EXCLUDED.mileage ELSE listings.mileage END,
+                    mileage = CASE WHEN listings.mileage IS NULL OR listings.mileage > 999999 THEN EXCLUDED.mileage ELSE listings.mileage END,
                     fuel_type = CASE WHEN listings.fuel_type IS NULL THEN EXCLUDED.fuel_type ELSE listings.fuel_type END,
                     body_type = CASE WHEN listings.body_type IS NULL THEN EXCLUDED.body_type ELSE listings.body_type END,
                     price = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END
