@@ -8,17 +8,19 @@ from app.api.schemas import SearchFilters, SearchResponse, ListingCard
 
 router = APIRouter()
 
+FUEL_MAP = {
+    "dizel": "diesel", "diesel": "diesel",
+    "benzin": "petrol", "petrol": "petrol",
+    "električni": "electric", "electric": "electric",
+    "hibrid": "hybrid", "hybrid": "hybrid",
+    "plin": "lpg", "lpg": "lpg",
+    "cng": "cng",
+}
 
 @router.get("/", response_model=SearchResponse)
 def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
-    """
-    Glavna pretraga — podržava sve filtere.
-    Koristi se i za normalnu i za AI pretragu
-    (AI samo parsira prirodni tekst u ove iste filtere).
-    """
     q = db.query(Listing).filter(Listing.is_active == True, Listing.price != None, Listing.price > 0)
 
-    # ── Filteri ───────────────────────────────────────────────
     if filters.make:
         q = q.filter(Listing.make.ilike(f"%{filters.make}%"))
 
@@ -44,7 +46,8 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
         q = q.filter(Listing.mileage <= filters.max_km)
 
     if filters.fuel_type:
-        q = q.filter(Listing.fuel_type == filters.fuel_type)
+        mapped_fuel = FUEL_MAP.get(filters.fuel_type.lower(), filters.fuel_type.lower())
+        q = q.filter(Listing.fuel_type == mapped_fuel)
 
     if filters.transmission:
         q = q.filter(Listing.transmission == filters.transmission)
@@ -61,7 +64,6 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
     if filters.source:
         q = q.filter(Listing.source == filters.source)
 
-    # Tekstualna pretraga (u make + model + description)
     if filters.query:
         term = f"%{filters.query}%"
         q = q.filter(or_(
@@ -70,18 +72,16 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
             Listing.description.ilike(term),
         ))
 
-    # ── Sortiranje ────────────────────────────────────────────
     sort_options = {
         "date":       Listing.scraped_at.desc(),
         "price_asc":  Listing.price.asc(),
         "price_desc": Listing.price.desc(),
-        "best_deal":  Listing.price_delta_pct.asc(),  # najpovoljniji prvi
+        "best_deal":  Listing.price_delta_pct.asc(),
         "year_desc":  Listing.year.desc(),
         "km_asc":     Listing.mileage.asc(),
     }
     q = q.order_by(sort_options.get(filters.sort_by, Listing.scraped_at.desc()))
 
-    # ── Paginacija ────────────────────────────────────────────
     total = q.count()
     results = q.offset((filters.page - 1) * filters.limit).limit(filters.limit).all()
     pages = (total + filters.limit - 1) // filters.limit
@@ -97,10 +97,8 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
 
 @router.get("/stats")
 def search_stats(db: Session = Depends(get_db)):
-    """Statistike za homepage — ukupan broj po portalu, top marke itd."""
     total = db.query(func.count(Listing.id)).filter(Listing.is_active == True).scalar()
 
-    # Broj po portalu
     portals = dict(
         db.query(Listing.source, func.count(Listing.id))
         .filter(Listing.is_active == True)
@@ -108,7 +106,6 @@ def search_stats(db: Session = Depends(get_db)):
         .all()
     )
 
-    # Top 10 marki po broju oglasa
     top_makes = [
         {"make": make, "count": count}
         for make, count in
@@ -120,7 +117,6 @@ def search_stats(db: Session = Depends(get_db)):
         .all()
     ]
 
-    # Prosečna cena
     avg_price = db.query(func.avg(Listing.price)).filter(
         Listing.is_active == True,
         Listing.currency == "EUR",
@@ -138,7 +134,6 @@ def search_stats(db: Session = Depends(get_db)):
 
 @router.get("/makes")
 def get_makes(db: Session = Depends(get_db)):
-    """Lista svih dostupnih marki za autocomplete."""
     makes = (
         db.query(Listing.make, func.count(Listing.id).label("count"))
         .filter(Listing.is_active == True, Listing.make != None)
@@ -152,7 +147,6 @@ def get_makes(db: Session = Depends(get_db)):
 
 @router.get("/models")
 def get_models(make: str, db: Session = Depends(get_db)):
-    """Lista modela za izabranu marku."""
     models = (
         db.query(Listing.model, func.count(Listing.id).label("count"))
         .filter(
