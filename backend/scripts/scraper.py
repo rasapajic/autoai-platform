@@ -81,7 +81,7 @@ def scrape_polovni_page(url, session):
             listings.append({
                 "external_id": external_id, "source": "polovniautomobili",
                 "make": make, "model": model, "year": year, "price": price,
-                "mileage": mileage, "fuel_type": fuel_type,
+                "mileage": mileage, "fuel_type": fuel_type, "body_type": None,
                 "url": full_url, "images": images, "country": "RS",
             })
         except Exception as e:
@@ -123,19 +123,21 @@ def save_listings(listings):
             cur.execute("""
                 INSERT INTO listings
                     (id, external_id, source, make, model, year, price,
-                     mileage, fuel_type, url, images, is_active, country)
+                     mileage, fuel_type, body_type, url, images, is_active, country)
                 VALUES
-                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
+                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
                 ON CONFLICT (external_id) DO UPDATE SET
                     year = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
                     mileage = CASE WHEN listings.mileage IS NULL THEN EXCLUDED.mileage ELSE listings.mileage END,
                     fuel_type = CASE WHEN listings.fuel_type IS NULL THEN EXCLUDED.fuel_type ELSE listings.fuel_type END,
+                    body_type = CASE WHEN listings.body_type IS NULL THEN EXCLUDED.body_type ELSE listings.body_type END,
                     price = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END
             """, (
                 str(uuid.uuid4()),
                 l.get("external_id"), l.get("source"),
                 l.get("make"), l.get("model"), l.get("year"),
                 l.get("price"), l.get("mileage"), l.get("fuel_type"),
+                l.get("body_type"),
                 l.get("url"), images, l.get("country"),
             ))
             conn.commit()
