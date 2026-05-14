@@ -195,4 +195,9 @@ def main():
     total = 0
     total += run_polovni()
     total += asyncio.run(run_autoscout24())
-    total += asyncio.run
+    total += asyncio.run(run_autoscout24_at())
+    total += asyncio.run(run_mobile_de())
+    print(f"\n=== UKUPNO SAČUVANO: {total} ===")
+
+if __name__ == "__main__":
+    main()
