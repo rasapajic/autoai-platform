@@ -173,11 +173,9 @@ class AutoScout24Scraper(BaseScraper):
 
             return items.map(item => {
                 const id = item.getAttribute('data-guid') || item.getAttribute('id') || '';
-
                 const titleEl = item.querySelector('h2, h3, [class*="title"]');
                 const title = titleEl?.textContent?.trim() || '';
 
-                // Uvek koristimo /offers/ URL
                 const offerLink = item.querySelector('a[href*="/offers/"]');
                 const url = offerLink?.href
                          || (id ? 'https://www.autoscout24.com/offers/' + id : '');
@@ -187,18 +185,24 @@ class AutoScout24Scraper(BaseScraper):
                 );
                 const price_raw = getCleanPrice(priceEl);
 
-                // Izvuci sve tekst iz artikla i parsiraj direktno
                 const fullText = item.textContent || '';
 
-                // Godiste: 4 cifre 1950-2030
+                // Godiste
                 const yearMatch = fullText.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
                 const year_text = yearMatch ? yearMatch[1] : '';
 
-                // Kilometraza: broj + km
-                const kmMatch = fullText.match(/([\d.,]+)\s*km/i);
-                const km_text = kmMatch ? kmMatch[1] + ' km' : '';
+                // Kilometraza - samo realne vrijednosti 500-999999
+                let km_text = '';
+                const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
+                for (const m of kmMatches) {
+                    const val = parseInt(m[1].replace(/\./g, '').replace(/,/g, ''));
+                    if (val >= 500 && val <= 999999) {
+                        km_text = m[1] + ' km';
+                        break;
+                    }
+                }
 
-                // Gorivo: kljucne reci
+                // Gorivo
                 const fuelKeywords = ['Diesel', 'Benzin', 'Elektro', 'Hybrid', 'Electric', 'LPG', 'CNG', 'Autogas'];
                 let fuel_text = '';
                 for (const kw of fuelKeywords) {
@@ -212,7 +216,7 @@ class AutoScout24Scraper(BaseScraper):
                     if (fullText.includes(kw)) { trans_text = kw; break; }
                 }
 
-                // Snaga: broj kW ili PS
+                // Snaga
                 const powerMatch = fullText.match(/(\d+)\s*kW/);
                 const power_text = powerMatch ? powerMatch[1] + ' kW' : '';
 
@@ -319,11 +323,13 @@ class AutoScout24Scraper(BaseScraper):
         if m:
             num = m.group(0).replace('.', '').replace(',', '')
             try:
-                return int(num)
+                val = int(num)
+                return val if val <= 999999 else None
             except ValueError:
                 pass
         digits = re.sub(r'[^\d]', '', raw)
-        return int(digits[:7]) if digits else None
+        val = int(digits[:7]) if digits else None
+        return val if val and val <= 999999 else None
 
     def _extract_year(self, text: str) -> int | None:
         m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
