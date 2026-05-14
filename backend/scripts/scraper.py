@@ -126,7 +126,11 @@ def save_listings(listings):
                      mileage, fuel_type, url, images, is_active, country)
                 VALUES
                     (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
-                ON CONFLICT (external_id) DO NOTHING
+                ON CONFLICT (external_id) DO UPDATE SET
+                    year = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
+                    mileage = CASE WHEN listings.mileage IS NULL THEN EXCLUDED.mileage ELSE listings.mileage END,
+                    fuel_type = CASE WHEN listings.fuel_type IS NULL THEN EXCLUDED.fuel_type ELSE listings.fuel_type END,
+                    price = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END
             """, (
                 str(uuid.uuid4()),
                 l.get("external_id"), l.get("source"),
