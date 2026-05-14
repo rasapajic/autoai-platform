@@ -28,7 +28,7 @@ def get_conn():
 
 def parse_make_model(title):
     parts = title.strip().split(" ", 1)
-    make = parts[0] if parts else None
+    make  = parts[0] if parts else None
     model = parts[1] if len(parts) > 1 else None
     return make, model
 
@@ -47,8 +47,8 @@ def scrape_polovni_page(url, session):
     if '<' not in resp.text[:100]:
         print(f"  GRESKA: Nije HTML!")
         return []
-    soup = BeautifulSoup(resp.text, "html.parser")
-    items = soup.select("article.classified")
+    soup     = BeautifulSoup(resp.text, "html.parser")
+    items    = soup.select("article.classified")
     print(f"  article.classified: {len(items)}")
     listings = []
     for item in items:
@@ -60,13 +60,13 @@ def scrape_polovni_page(url, session):
             img_el   = item.select_one("img")
             if not link_el:
                 continue
-            href = link_el.get("href", "")
-            full_url = "https://www.polovniautomobili.com" + href
-            external_id = "pola_" + href.strip("/").split("/")[-1]
-            title = title_el.text.strip() if title_el else ""
-            make, model = parse_make_model(title)
-            price_raw = price_el.text.strip() if price_el else ""
-            price = int(''.join(filter(str.isdigit, price_raw)) or 0) or None
+            href         = link_el.get("href", "")
+            full_url     = "https://www.polovniautomobili.com" + href
+            external_id  = "pola_" + href.strip("/").split("/")[-1]
+            title        = title_el.text.strip() if title_el else ""
+            make, model  = parse_make_model(title)
+            price_raw    = price_el.text.strip() if price_el else ""
+            price        = int(''.join(filter(str.isdigit, price_raw)) or 0) or None
             year = mileage = fuel_type = None
             for d in details:
                 t = d.text.strip()
@@ -77,7 +77,7 @@ def scrape_polovni_page(url, session):
                 elif any(f in t.lower() for f in ["dizel","benzin","elektr","hibrid","gas"]):
                     fuel_type = t
             img_src = img_el.get("data-src") or img_el.get("src") if img_el else None
-            images = json.dumps([img_src]) if img_src else json.dumps([])
+            images  = json.dumps([img_src]) if img_src else json.dumps([])
             listings.append({
                 "external_id": external_id, "source": "polovniautomobili",
                 "make": make, "model": model, "year": year, "price": price,
@@ -101,19 +101,19 @@ def run_polovni():
     base_url = "https://www.polovniautomobili.com/auto-oglasi/pretraga?page={}&sort=basic&without_price=1"
     total = 0
     for page in range(1, 11):
-        url = base_url.format(page)
+        url      = base_url.format(page)
         print(f"Scraping page {page}...")
         listings = scrape_polovni_page(url, session)
-        saved = save_listings(listings)
-        total += saved
+        saved    = save_listings(listings)
+        total   += saved
         print(f"Saved {saved} (total: {total})")
         time.sleep(random.uniform(3, 6))
     print(f"Polovni done! Total: {total}")
     return total
 
 def save_listings(listings):
-    conn = get_conn()
-    cur = conn.cursor()
+    conn  = get_conn()
+    cur   = conn.cursor()
     saved = 0
     for l in listings:
         try:
@@ -127,11 +127,11 @@ def save_listings(listings):
                 VALUES
                     (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
                 ON CONFLICT (external_id) DO UPDATE SET
-                    year = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
-                    mileage = CASE WHEN listings.mileage IS NULL OR listings.mileage > 999999 THEN EXCLUDED.mileage ELSE listings.mileage END,
+                    year      = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
+                    mileage   = COALESCE(EXCLUDED.mileage, listings.mileage),
                     fuel_type = CASE WHEN listings.fuel_type IS NULL THEN EXCLUDED.fuel_type ELSE listings.fuel_type END,
                     body_type = CASE WHEN listings.body_type IS NULL THEN EXCLUDED.body_type ELSE listings.body_type END,
-                    price = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END
+                    price     = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END
             """, (
                 str(uuid.uuid4()),
                 l.get("external_id"), l.get("source"),
@@ -155,7 +155,7 @@ async def run_autoscout24():
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
-        scraper = AutoScout24Scraper()
+        scraper  = AutoScout24Scraper()
         listings = await scraper.scrape_listings({}, max_pages=10)
         print(f"  AutoScout24 DE pronadjeno: {len(listings)}")
         saved = save_listings(listings)
@@ -171,7 +171,7 @@ async def run_autoscout24_at():
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
-        scraper = AutoScout24Scraper()
+        scraper  = AutoScout24Scraper()
         listings = await scraper.scrape_listings({"country": "A"}, max_pages=10)
         print(f"  AutoScout24 AT pronadjeno: {len(listings)}")
         saved = save_listings(listings)
@@ -187,7 +187,7 @@ async def run_mobile_de():
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.mobile_de import MobileDeScraper
-        scraper = MobileDeScraper()
+        scraper  = MobileDeScraper()
         listings = await scraper.scrape_listings({}, max_pages=10)
         print(f"  Mobile.de pronadjeno: {len(listings)}")
         saved = save_listings(listings)
@@ -198,7 +198,7 @@ async def run_mobile_de():
         return 0
 
 def main():
-    total = 0
+    total  = 0
     total += run_polovni()
     total += asyncio.run(run_autoscout24())
     total += asyncio.run(run_autoscout24_at())
