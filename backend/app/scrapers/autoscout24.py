@@ -21,6 +21,17 @@ TRANSMISSION_MAP = {
     "manual": "manual", "manuell": "manual", "schaltgetriebe": "manual",
 }
 
+BODY_MAP = {
+    "limousine": "sedan", "sedan": "sedan", "limuzina": "sedan",
+    "suv": "suv", "geländewagen": "suv", "crossover": "suv",
+    "kombi": "kombi", "estate": "kombi", "touring": "kombi",
+    "hatchback": "hatchback", "schrägheck": "hatchback",
+    "coupe": "coupe", "coupé": "coupe",
+    "cabrio": "cabrio", "kabriolet": "cabrio", "roadster": "cabrio", "convertible": "cabrio",
+    "van": "van", "minivan": "van", "kleinbus": "van",
+    "pickup": "pickup",
+}
+
 KNOWN_MAKES = [
     "Alfa Romeo", "Aston Martin", "Audi", "BMW", "Bentley", "Bugatti",
     "Citroën", "Citroen", "Dacia", "Ferrari", "Fiat", "Ford",
@@ -184,14 +195,13 @@ class AutoScout24Scraper(BaseScraper):
                     '.cldt-price, [data-type="price_block"] .cldt-price, [class*="price"]'
                 );
                 const price_raw = getCleanPrice(priceEl);
-
                 const fullText = item.textContent || '';
 
                 // Godiste
                 const yearMatch = fullText.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
                 const year_text = yearMatch ? yearMatch[1] : '';
 
-                // Kilometraza - samo realne vrijednosti 500-999999
+                // Kilometraza - samo realne vrijednosti
                 let km_text = '';
                 const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
                 for (const m of kmMatches) {
@@ -220,7 +230,18 @@ class AutoScout24Scraper(BaseScraper):
                 const powerMatch = fullText.match(/(\d+)\s*kW/);
                 const power_text = powerMatch ? powerMatch[1] + ' kW' : '';
 
-                const details = [year_text, km_text, fuel_text, trans_text, power_text].filter(Boolean);
+                // Karoserija
+                const bodyKeywords = [
+                    'Limousine', 'SUV', 'Geländewagen', 'Kombi', 'Hatchback',
+                    'Schrägheck', 'Coupe', 'Coupé', 'Cabrio', 'Kabriolet',
+                    'Roadster', 'Van', 'Kleinbus', 'Pickup'
+                ];
+                let body_text = '';
+                for (const kw of bodyKeywords) {
+                    if (fullText.includes(kw)) { body_text = kw; break; }
+                }
+
+                const details = [year_text, km_text, fuel_text, trans_text, power_text, body_text].filter(Boolean);
 
                 const images = Array.from(item.querySelectorAll('img'))
                     .map(img => img.src || img.getAttribute('data-src'))
@@ -253,7 +274,7 @@ class AutoScout24Scraper(BaseScraper):
         price_raw = raw.get("price_raw", "")
         price_eur = self._parse_price_eur(price_raw)
 
-        mileage_raw = year = fuel_type = transmission = power_str = None
+        mileage_raw = year = fuel_type = transmission = power_str = body_type = None
         for d in details:
             if not d:
                 continue
@@ -267,6 +288,8 @@ class AutoScout24Scraper(BaseScraper):
                 transmission = transmission or self._normalize_transmission(d)
             elif re.search(r'\d+\s*(kw|ps|hp)', d.lower()):
                 power_str = power_str or d
+            elif any(k in d.lower() for k in BODY_MAP):
+                body_type = body_type or self._normalize_body(d)
 
         country, city = self._parse_location(raw.get("location_raw", ""))
 
@@ -285,6 +308,7 @@ class AutoScout24Scraper(BaseScraper):
             "fuel_type":       fuel_type,
             "transmission":    transmission,
             "engine_power_kw": self._parse_power_kw(power_str),
+            "body_type":       body_type,
             "country":         country or "DE",
             "city":            city,
             "images":          raw.get("images", []),
@@ -345,6 +369,13 @@ class AutoScout24Scraper(BaseScraper):
     def _normalize_transmission(self, val: str) -> str | None:
         v = val.lower()
         for k, norm in TRANSMISSION_MAP.items():
+            if k in v:
+                return norm
+        return None
+
+    def _normalize_body(self, val: str) -> str | None:
+        v = val.lower()
+        for k, norm in BODY_MAP.items():
             if k in v:
                 return norm
         return None
