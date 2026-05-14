@@ -9,12 +9,17 @@ from app.api.schemas import SearchFilters, SearchResponse, ListingCard
 router = APIRouter()
 
 FUEL_MAP = {
-    "dizel": "diesel", "diesel": "diesel",
-    "benzin": "petrol", "petrol": "petrol",
-    "električni": "electric", "electric": "electric",
-    "hibrid": "hybrid", "hybrid": "hybrid",
-    "plin": "lpg", "lpg": "lpg",
-    "cng": "cng",
+    "dizel": ["diesel", "dizel"],
+    "diesel": ["diesel", "dizel"],
+    "benzin": ["petrol", "benzin", "gasoline"],
+    "petrol": ["petrol", "benzin", "gasoline"],
+    "električni": ["electric", "elektro", "električni"],
+    "electric": ["electric", "elektro", "električni"],
+    "hibrid": ["hybrid", "hibrid"],
+    "hybrid": ["hybrid", "hibrid"],
+    "plin": ["lpg", "autogas", "plin"],
+    "lpg": ["lpg", "autogas", "plin"],
+    "cng": ["cng", "erdgas"],
 }
 
 @router.get("/", response_model=SearchResponse)
@@ -46,8 +51,8 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
         q = q.filter(Listing.mileage <= filters.max_km)
 
     if filters.fuel_type:
-        mapped_fuel = FUEL_MAP.get(filters.fuel_type.lower(), filters.fuel_type.lower())
-        q = q.filter(Listing.fuel_type == mapped_fuel)
+        variants = FUEL_MAP.get(filters.fuel_type.lower(), [filters.fuel_type.lower()])
+        q = q.filter(or_(*[Listing.fuel_type.ilike(v) for v in variants]))
 
     if filters.transmission:
         q = q.filter(Listing.transmission == filters.transmission)
