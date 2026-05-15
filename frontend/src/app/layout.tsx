@@ -11,7 +11,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   )
 }
-
 function Navbar() {
   return (
     <header style={{
@@ -35,10 +34,10 @@ function Navbar() {
             Auto<span style={{ color: 'var(--accent)' }}>AI</span>
           </span>
         </a>
-
         <nav style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {[
-            { href: '/search', label: 'Pretraga' },
+            { href: '/search',           label: 'Pretraga' },
+            { href: '/analyze',          label: 'Proveri oglas' },
             { href: '/import-calculator', label: 'Uvoz kalkulator' },
           ].map(link => (
             <a key={link.href} href={link.href} style={{
@@ -58,7 +57,6 @@ function Navbar() {
     </header>
   )
 }
-
 function Footer() {
   return (
     <footer style={{
@@ -67,7 +65,7 @@ function Footer() {
     }}>
       <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>© 2025 AutoAI Platform</span>
-        <span>Podaci sa AutoScout24, Polovniautomobili, Mobile.de</span>
+        <span>Podaci sa AutoScout24 · Mobile.de</span>
       </div>
     </footer>
   )
