@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from uuid import UUID
 
 from app.core.db import get_db
@@ -62,14 +63,12 @@ def get_similar(
             Listing.model == listing.model,
         )
         .order_by(
-            # Sortiraj po sličnosti cene
             (Listing.price - listing.price if listing.price else 0),
         )
         .limit(limit)
         .all()
     )
 
-    # Ako nema dovoljno — dopuni sa istom markom
     if len(similar) < limit:
         extra = (
             db.query(Listing)
@@ -141,7 +140,7 @@ def remove_favorite(
 
 @router.get("/compare/multi")
 def compare_listings(
-    ids: str,  # "id1,id2,id3"
+    ids: str,
     db: Session = Depends(get_db),
 ):
     """Poređenje do 3 oglasa side-by-side."""
@@ -176,3 +175,15 @@ def compare_listings(
         }
         for l in listings
     ]
+
+
+# ── Maintenance ───────────────────────────────────────────────
+
+@router.post("/admin/fix-mileage")
+def fix_invalid_mileage(db: Session = Depends(get_db)):
+    """Jednokratni cleanup — postavi mileage=NULL gdje je > 999999."""
+    result = db.execute(
+        text("UPDATE listings SET mileage = NULL, mileage_raw = NULL WHERE mileage > 999999")
+    )
+    db.commit()
+    return {"fixed": result.rowcount}
