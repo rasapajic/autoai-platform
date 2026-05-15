@@ -40,10 +40,17 @@ function getInsight(listing: any): string | null {
     if (delta > 5)   return `Cena iznad proseka za godište`
   }
   if (year && now - year <= 2) return 'Mlado vozilo, niska amortizacija'
-  if (km && km < 50000)        return 'Niska kilometraža za godište'
-  if (km && km > 200000)       return 'Visoka kilometraža — pažljivo proveriti'
+  if (km && km >= 1 && km <= 999999 && km < 50000)  return 'Niska kilometraža za godište'
+  if (km && km >= 1 && km <= 999999 && km > 200000) return 'Visoka kilometraža — pažljivo proveriti'
   if (listing.fuel_type === 'electric') return 'Električno — bez carine u Srbiji'
   return null
+}
+
+/** Formatiraj kilometražu: 201962 → "201.962 km", null/invalid → null */
+function formatMileage(raw: any): string | null {
+  const km = Number(raw)
+  if (!km || km < 1 || km > 999999) return null
+  return km.toLocaleString('de-DE') + ' km'
 }
 
 export default function SearchPage() {
@@ -248,12 +255,12 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
   const price   = listing.price ? Number(listing.price) : null
   const bd      = price ? calcBreakdown(price) : null
   const delta   = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
+  const mileage = formatMileage(listing.mileage)
   const [showBd, setShowBd] = useState(false)
 
   return (
     <div className="ch" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
 
-      {/* AI Badge */}
       {badge ? (
         <div style={{ background: badge.bg, borderBottom: `2px solid ${badge.color}`, padding: '9px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: badge.color, fontSize: 13, fontWeight: 800, letterSpacing: '.03em' }}>{badge.label}</span>
@@ -269,7 +276,6 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
         </div>
       )}
 
-      {/* Image */}
       <a href={`/listing/${listing.id}`} style={{ display: 'block', textDecoration: 'none' }}>
         <div style={{ height: 185, background: 'var(--bg3)', position: 'relative', overflow: 'hidden' }}>
           {img
@@ -295,15 +301,13 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
       </a>
 
       <div style={{ padding: '0 18px 18px' }}>
-        {/* EU price */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>EU cena:</span>
           <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text2)' }}>
-            {price ? `${price.toLocaleString()} €` : 'Na upit'}
+            {price ? `${price.toLocaleString('de-DE')} €` : 'Na upit'}
           </span>
         </div>
 
-        {/* Serbia cost */}
         {bd && (
           <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
             <button onClick={() => setShowBd(!showBd)} className="cb" style={{
@@ -312,7 +316,7 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
             }}>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>🇷🇸 Ukupno za Srbiju</div>
-                <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString()} €</div>
+                <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString('de-DE')} €</div>
               </div>
               <span style={{ fontSize: 11, color: 'rgba(255,107,0,.6)' }}>{showBd ? '▲ sakrij' : '▼ detalji'}</span>
             </button>
@@ -333,13 +337,13 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
                       {note && <span style={{ fontSize: 10, marginLeft: 4, opacity: .5 }}>({note})</span>}
                     </span>
                     <span style={{ fontSize: 12, fontWeight: 500, color: i === 0 ? 'var(--text2)' : '#fb923c' }}>
-                      {i === 0 ? '' : '+'}{val.toLocaleString()} €
+                      {i === 0 ? '' : '+'}{val.toLocaleString('de-DE')} €
                     </span>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,107,0,.25)' }}>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>Ukupno Srbija</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString()} €</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString('de-DE')} €</span>
                 </div>
                 <p style={{ fontSize: 10, color: 'var(--text3)', margin: '8px 0 0', lineHeight: 1.4 }}>
                   * Procena na osnovu standardnih stopa. Stvarni troškovi mogu varirati.
@@ -349,14 +353,12 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           </div>
         )}
 
-        {/* Specs */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-          {listing.mileage && <span>🛣 {Number(listing.mileage).toLocaleString()} km</span>}
+          {mileage && <span>🛣 {mileage}</span>}
           {listing.fuel_type && <span>⛽ {FUEL_LABELS[listing.fuel_type] || listing.fuel_type}</span>}
           {listing.country && <span>📍 {listing.country}</span>}
         </div>
 
-        {/* Contact button */}
         <button onClick={onContact} className="cb" style={{
           width: '100%', marginTop: 12, padding: '11px',
           background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.3)',
