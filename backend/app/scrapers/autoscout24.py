@@ -184,12 +184,14 @@ class AutoScout24Scraper(BaseScraper):
                 const yearMatch = fullText.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
                 const year_text = yearMatch ? yearMatch[1] : '';
 
-                // Kilometraza — min 1 km (novo vozilo moze imati 50 km)
+                // Kilometraza — iskljuci brojeve sa vise od jedne tacke (npr. 201.974.125)
                 let km_text = '';
                 const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
                 for (const m of kmMatches) {
-                    const val = parseInt(m[1].replace(/\./g,'').replace(/,/g,''));
-                    if (val >= 1 && val <= 999999) { km_text = m[1]+' km'; break; }
+                    const raw = m[1];
+                    if ((raw.match(/\./g) || []).length > 1) continue;
+                    const val = parseInt(raw.replace(/\./g,'').replace(/,/g,''));
+                    if (val >= 1 && val <= 999999) { km_text = raw + ' km'; break; }
                 }
 
                 // Gorivo
@@ -251,6 +253,10 @@ class AutoScout24Scraper(BaseScraper):
                 body_type = body_type or self._normalize_body(d)
 
         country, city = self._parse_location(raw.get("location_raw",""))
+
+        # Pohrani mileage_raw samo ako je parsovana vrijednost validna
+        mileage_km = self._parse_mileage_km(mileage_raw)
+
         return {
             "external_id":     f"as24_{ext_id}",
             "source":          self.SOURCE_NAME,
@@ -261,13 +267,13 @@ class AutoScout24Scraper(BaseScraper):
             "price_raw":       price_raw or None,
             "price":           price_eur,
             "currency":        "EUR",
-            "mileage_raw":     mileage_raw,
-            "mileage":         self._parse_mileage_km(mileage_raw),
+            "mileage_raw":     mileage_raw if mileage_km else None,
+            "mileage":         mileage_km,
             "fuel_type":       fuel_type,
             "transmission":    transmission,
             "engine_power_kw": self._parse_power_kw(power_str),
             "body_type":       body_type,
-            "country":         country or "DE",
+            "country":         country,
             "city":            city,
             "images":          raw.get("images",[]),
             "url":             url,
@@ -302,7 +308,7 @@ class AutoScout24Scraper(BaseScraper):
             num = m.group(0).replace('.','').replace(',','')
             try:
                 val = int(num)
-                return val if val <= 999999 else None
+                return val if 1 <= val <= 999999 else None
             except ValueError: pass
         return None
 
@@ -337,7 +343,7 @@ class AutoScout24Scraper(BaseScraper):
         return None
 
     def _parse_location(self, raw: str) -> tuple:
-        if not raw: return "DE", None
+        if not raw: return None, None
         parts = [p.strip() for p in raw.split(",")]
         if len(parts) >= 2: return parts[-1], parts[0]
-        return "DE", parts[0]
+        return None, parts[0]
