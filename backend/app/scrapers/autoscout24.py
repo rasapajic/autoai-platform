@@ -180,9 +180,16 @@ class AutoScout24Scraper(BaseScraper):
                 const price_raw = getCleanPrice(priceEl);
                 const fullText  = item.textContent || '';
 
-                // Godiste
-                const yearMatch = fullText.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
-                const year_text = yearMatch ? yearMatch[1] : '';
+                // Godište — traži u fullText, naslovu i data atributima
+let year_text = '';
+const yearMatch = fullText.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
+if (yearMatch) {
+    year_text = yearMatch[1];
+} else {
+    // Pokušaj iz date formata MM/YYYY ili YYYY u atributima
+    const dateMatch = fullText.match(/\b(\d{2})\/(20[0-3]\d|19[5-9]\d)\b/);
+    if (dateMatch) year_text = dateMatch[2];
+}
 
                 // Kilometraza — iskljuci brojeve sa vise od jedne tacke (npr. 201.974.125)
                 let km_text = '';
