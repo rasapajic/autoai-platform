@@ -55,10 +55,10 @@ async def health():
     }
 
 
-from app.api import search, listings, users, alerts, ai_chat
-
+from app.api import search, listings, users, alerts, ai_chat, analyze
 app.include_router(search.router,   prefix="/api/v1/search",   tags=["🔍 Pretraga"])
 app.include_router(listings.router, prefix="/api/v1/listings", tags=["🚗 Oglasi"])
 app.include_router(users.router,    prefix="/api/v1/users",    tags=["👤 Korisnici"])
 app.include_router(alerts.router,   prefix="/api/v1/alerts",   tags=["🔔 Alertovi"])
 app.include_router(ai_chat.router,  prefix="/api/v1/ai",       tags=["🤖 AI"])
+app.include_router(analyze.router,  prefix="/api/v1/analyze",  tags=["🔍 Analiza oglasa"])
