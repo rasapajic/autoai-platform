@@ -3,6 +3,46 @@ import { useEffect, useState } from 'react'
 import { getListing, getPriceHistory, getSimilar, fraudCheck, addFavorite } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
 
+const ELIGIBILITY_COLORS: Record<string, string> = {
+  eligible: '#22C55E', needs_check: '#F97316', not_recommended: '#EF4444', oldtimer: '#A855F7',
+}
+
+function getSerbiaEligibility(listing: any) {
+  const year = listing.year ? Number(listing.year) : null
+  const fuel = listing.fuel_type || null
+  const age  = year ? (2026 - year) : null
+
+  if (fuel === 'electric') return {
+    status: 'eligible', emoji: '🟢', label: 'Može uvoz u Srbiju',
+    reason: 'Električna vozila se uvoze bez carine (0% carina).',
+    warnings: ['Proveri kompatibilnost punjača (Tip 2 / CCS).'], carinaPct: 0,
+  }
+  if (age !== null && age >= 30) return {
+    status: 'oldtimer', emoji: '🟣', label: 'Oldtimer izuzetak',
+    reason: `Vozilo (${year}) starije od 30 godina — poseban režim uvoza.`,
+    warnings: ['Registracija kao oldtimer uz poseban tehnički pregled.'], carinaPct: 5,
+  }
+  if (year) {
+    if (year >= 2011) return { status: 'eligible', emoji: '🟢', label: 'Može uvoz u Srbiju', reason: `Vozilo (${year}) verovatno ispunjava Euro 5/6 — nema ograničenja.`, warnings: ['Pribavi COC dokument za potvrdu Euro norme.'], carinaPct: 5 }
+    if (year >= 2006) return { status: 'eligible', emoji: '🟢', label: 'Može uvoz u Srbiju', reason: `Vozilo (${year}) verovatno ispunjava Euro 4 normu.`, warnings: ['Proveri COC dokument — Euro 4 je minimum.'], carinaPct: 5 }
+    if (year >= 2001) return { status: 'needs_check', emoji: '🟠', label: 'Potrebna dodatna provera', reason: `Vozilo (${year}) verovatno Euro 3 — zahteva proveru.`, warnings: ['Proveri Euro normu u COC dokumentu.'], carinaPct: 5 }
+    return { status: 'not_recommended', emoji: '🔴', label: 'Verovatno nije moguće', reason: `Vozilo (${year}) verovatno Euro 1/2 — uvoz nije preporučljiv.`, warnings: ['Stara vozila teško prolaze tehnički pregled.'], carinaPct: 5 }
+  }
+  return { status: 'needs_check', emoji: '🟠', label: 'Potrebna dodatna provera', reason: 'Nedostaju tehnički podaci za procenu.', warnings: ['Proveri Euro normu u COC dokumentu.'], carinaPct: 5 }
+}
+
+function calcImport(price: number, carinaPct: number) {
+  const carina = Math.round(price * carinaPct / 100)
+  const pdv    = Math.round((price + carina) * 0.20)
+  return { carina, pdv, transport: 420, reg: 280, total: price + carina + pdv + 420 + 280, carinaPct }
+}
+
+function fmt(n: any) { return Number(n).toLocaleString('de-DE') }
+function fmtKm(km: any): string | null {
+  const n = Number(km); if (!n || n < 1 || n > 999999) return null
+  return n.toLocaleString('de-DE') + ' km'
+}
+
 export default function ListingPage({ params }: { params: { id: string } }) {
   const [listing,   setListing]   = useState<any>(null)
   const [history,   setHistory]   = useState<any[]>([])
@@ -12,6 +52,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [favorited, setFavorited] = useState(false)
   const [loading,   setLoading]   = useState(true)
   const [showContact, setShowContact] = useState(false)
+  const [showBd,    setShowBd]    = useState(false)
 
   useEffect(() => {
     Promise.allSettled([
@@ -30,14 +71,30 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   if (loading) return <PageSkeleton />
   if (!listing) return <div style={{ textAlign:'center', padding:'80px 0', color:'var(--text3)' }}>Oglas nije pronađen.</div>
 
-  const images   = listing.images || []
-  const deltaGood = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
+  const images     = listing.images || []
+  const deltaGood  = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
+  const elig       = getSerbiaEligibility(listing)
+  const eligColor  = ELIGIBILITY_COLORS[elig.status] || '#F97316'
+  const price      = listing.price ? Number(listing.price) : null
+  const bd         = price ? calcImport(price, elig.carinaPct) : null
+
+  const specs = [
+    { label: 'Godište',     value: listing.year },
+    { label: 'Kilometraža', value: fmtKm(listing.mileage) },
+    { label: 'Gorivo',      value: listing.fuel_type },
+    { label: 'Menjač',      value: listing.transmission === 'automatic' ? 'Automatik' : listing.transmission === 'manual' ? 'Manuel' : listing.transmission },
+    { label: 'Snaga',       value: listing.engine_power_kw ? `${listing.engine_power_kw} kW` : null },
+    { label: 'Karoserija',  value: listing.body_type },
+    { label: 'Zemlja',      value: listing.country },
+    { label: 'Grad',        value: listing.city },
+    { label: 'Stanje',      value: listing.accident_free ? '✅ Bez udesa' : null },
+  ].filter(s => s.value)
 
   return (
     <div style={{ padding: '32px 0 80px' }}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
-
       <div className="container">
+
         {/* Breadcrumb */}
         <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>
           <a href="/" style={{ color: 'var(--text3)' }}>Početna</a> →{' '}
@@ -51,7 +108,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           <div>
             {/* Gallery */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ height: 380, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8, position: 'relative' }}>
+              <div style={{ height: 380, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8 }}>
                 {images[activeImg]
                   ? <img src={images[activeImg]} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
                   : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', fontSize:60 }}>🚗</div>
@@ -74,24 +131,18 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             {/* Specs */}
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
               <h2 style={{ fontSize:16, marginBottom:16 }}>Specifikacije</h2>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
-                {[
-                  { label:'Godište',     value: listing.year },
-                  { label:'Kilometraža', value: listing.mileage ? `${Number(listing.mileage).toLocaleString()} km` : null },
-                  { label:'Gorivo',      value: listing.fuel_type },
-                  { label:'Menjač',      value: listing.transmission === 'automatic' ? 'Automatik' : listing.transmission === 'manual' ? 'Manuel' : listing.transmission },
-                  { label:'Snaga',       value: listing.engine_power_kw ? `${listing.engine_power_kw} kW` : null },
-                  { label:'Karoserija',  value: listing.body_type },
-                  { label:'Zemlja',      value: listing.country },
-                  { label:'Grad',        value: listing.city },
-                  { label:'Stanje',      value: listing.accident_free ? '✅ Bez udesa' : null },
-                ].filter(s => s.value).map(s => (
-                  <div key={s.label} style={{ background:'var(--bg3)', borderRadius:8, padding:'10px 14px' }}>
-                    <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>{s.label}</div>
-                    <div style={{ fontSize:14, fontWeight:500 }}>{s.value}</div>
-                  </div>
-                ))}
-              </div>
+              {specs.length > 0 ? (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+                  {specs.map(s => (
+                    <div key={s.label} style={{ background:'var(--bg3)', borderRadius:8, padding:'10px 14px' }}>
+                      <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>{s.label}</div>
+                      <div style={{ fontSize:14, fontWeight:500 }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color:'var(--text3)', fontSize:13 }}>Specifikacije nisu dostupne za ovaj oglas.</p>
+              )}
             </div>
 
             {/* Description */}
@@ -130,11 +181,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   {similar.slice(0, 4).map((s: any) => (
                     <a key={s.id} href={`/listing/${s.id}`} style={{
                       background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)',
-                      overflow:'hidden', display:'block', transition:'border-color .15s',
-                    }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--border)')}
-                    >
+                      overflow:'hidden', display:'block', textDecoration:'none',
+                    }}>
                       <div style={{ height:120, background:'var(--bg3)', overflow:'hidden' }}>
                         {s.images?.[0]
                           ? <img src={s.images[0]} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
@@ -142,10 +190,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                         }
                       </div>
                       <div style={{ padding:12 }}>
-                        <div style={{ fontSize:13, fontWeight:600 }}>{s.year} {s.make} {s.model}</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{s.year} {s.make} {s.model}</div>
                         <div style={{ fontSize:14, color:'var(--accent)', fontWeight:700, marginTop:4 }}>
-                          {s.price ? `${Number(s.price).toLocaleString()} €` : '—'}
+                          {s.price ? `${fmt(s.price)} €` : '—'}
                         </div>
+                        {fmtKm(s.mileage) && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>🛣 {fmtKm(s.mileage)}</div>}
                       </div>
                     </a>
                   ))}
@@ -155,25 +204,25 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           </div>
 
           {/* ── Right sidebar ── */}
-          <div style={{ position:'sticky', top:80 }}>
+          <div style={{ position:'sticky', top:80, display:'flex', flexDirection:'column', gap:14 }}>
 
             {/* Price card */}
-            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:16 }}>
-              <h1 style={{ fontSize:22, marginBottom:4 }}>{listing.year} {listing.make} {listing.model}</h1>
-              {listing.variant && <div style={{ color:'var(--text2)', fontSize:14, marginBottom:16 }}>{listing.variant}</div>}
+            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:22 }}>
+              <h1 style={{ fontSize:20, marginBottom:4, fontFamily:'Syne,sans-serif' }}>{listing.make} {listing.model}</h1>
+              {listing.year && <div style={{ color:'var(--text3)', fontSize:13, marginBottom:10 }}>Godište: {listing.year}</div>}
 
-              <div style={{ fontSize:32, fontWeight:800, color:'var(--accent)', marginBottom:8 }}>
-                {listing.price ? `${Number(listing.price).toLocaleString()} €` : 'Cena na upit'}
+              <div style={{ fontSize:30, fontWeight:800, color:'var(--accent)', marginBottom:12 }}>
+                {price ? `${fmt(price)} €` : 'Cena na upit'}
               </div>
 
               {listing.price_estimated && (
                 <div style={{
                   background: deltaGood ? '#16A34A15' : '#78716C15',
                   border: `1px solid ${deltaGood ? '#22C55E40' : '#78716C40'}`,
-                  borderRadius:8, padding:'10px 14px', marginBottom:16,
+                  borderRadius:8, padding:'10px 14px', marginBottom:12,
                 }}>
-                  <div style={{ fontSize:12, color:'var(--text3)', marginBottom:2 }}>AI procena tržišne vrednosti</div>
-                  <div style={{ fontWeight:600 }}>{Number(listing.price_estimated).toLocaleString()} €</div>
+                  <div style={{ fontSize:11, color:'var(--text3)', marginBottom:2 }}>AI procena tržišne vrednosti</div>
+                  <div style={{ fontWeight:600 }}>{fmt(listing.price_estimated)} €</div>
                   <div style={{ fontSize:12, color: deltaGood ? '#22C55E' : '#F87171', marginTop:2 }}>
                     {deltaGood ? '✅ Ispod tržišne vrednosti' : '⚠️ Iznad tržišne vrednosti'}{' '}
                     {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%
@@ -181,101 +230,109 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               )}
 
-              {/* View listing */}
               <a href={listing.url} target="_blank" rel="noopener" style={{
-                display:'block', width:'100%', padding:'13px', textAlign:'center',
+                display:'block', width:'100%', padding:'12px', textAlign:'center',
                 background:'var(--accent)', color:'#fff', borderRadius:10,
-                fontWeight:600, fontSize:15, marginBottom:8,
-                textDecoration:'none', transition:'opacity .15s',
-              }}
-              onMouseEnter={e => ((e.target as HTMLElement).style.opacity = '0.85')}
-              onMouseLeave={e => ((e.target as HTMLElement).style.opacity = '1')}
-              >Pogledaj oglas →</a>
+                fontWeight:600, fontSize:14, marginBottom:8, textDecoration:'none',
+              }}>Pogledaj oglas →</a>
 
-              {/* Contact seller — AI powered */}
               <button onClick={() => setShowContact(true)} style={{
-                width:'100%', padding:'13px', marginBottom:8,
-                background:'rgba(99,102,241,.1)',
-                border:'1px solid rgba(99,102,241,.35)',
-                color:'#818CF8', borderRadius:10,
-                fontSize:14, fontWeight:700, cursor:'pointer',
-                transition:'all .15s',
-              }}
-              onMouseEnter={e => { const t = e.currentTarget; t.style.background='rgba(99,102,241,.18)'; t.style.borderColor='rgba(99,102,241,.6)' }}
-              onMouseLeave={e => { const t = e.currentTarget; t.style.background='rgba(99,102,241,.1)'; t.style.borderColor='rgba(99,102,241,.35)' }}
-              >
+                width:'100%', padding:'12px', marginBottom:8,
+                background:'rgba(99,102,241,.1)', border:'1px solid rgba(99,102,241,.35)',
+                color:'#818CF8', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer',
+              }}>
                 🤖 Kontaktiraj prodavca
                 <div style={{ fontSize:11, fontWeight:400, color:'rgba(129,140,248,.7)', marginTop:2 }}>
                   AI generiše poruku na jeziku prodavca
                 </div>
               </button>
 
-              {/* Save */}
               <button onClick={async () => { await addFavorite(listing.id); setFavorited(true) }} style={{
-                width:'100%', padding:'11px', background:'transparent',
+                width:'100%', padding:'10px', background:'transparent',
                 border: `1px solid ${favorited ? 'var(--accent)' : 'var(--border)'}`,
                 color: favorited ? 'var(--accent)' : 'var(--text2)',
-                borderRadius:10, fontSize:14, cursor:'pointer', transition:'all .15s',
+                borderRadius:10, fontSize:13, cursor:'pointer',
               }}>
                 {favorited ? '❤️ U favoritima' : '🤍 Sačuvaj oglas'}
               </button>
             </div>
 
-            {/* Fraud check */}
-            {fraud && (
-              <div style={{
-                background:'var(--bg2)',
-                border: `1px solid ${fraud.badge?.color + '40' || 'var(--border)'}`,
-                borderRadius:'var(--radius)', padding:20, marginBottom:16,
-              }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-                  <h3 style={{ fontSize:14 }}>Provjera prevare</h3>
-                  <span style={{
-                    fontSize:12, padding:'3px 10px', borderRadius:20,
-                    background: fraud.badge?.color + '20',
-                    color: fraud.badge?.color,
-                    border: `1px solid ${fraud.badge?.color + '40'}`,
-                  }}>{fraud.badge?.text}</span>
-                </div>
-                {fraud.red_flags?.length > 0 && (
-                  <div>
-                    {fraud.red_flags.map((f: string) => (
-                      <div key={f} style={{ fontSize:12, color:'#F87171', display:'flex', gap:6, marginBottom:4 }}>
-                        <span>⚠</span><span>{f}</span>
-                      </div>
-                    ))}
+            {/* Uvoz u Srbiju */}
+            <div style={{ background:`${eligColor}11`, border:`1px solid ${eligColor}33`, borderRadius:'var(--radius)', padding:18 }}>
+              <div style={{ fontSize:11, color:'var(--text3)', letterSpacing:'.07em', fontWeight:600, marginBottom:6 }}>UVOZ U SRBIJU</div>
+              <div style={{ fontSize:15, fontWeight:800, color:eligColor, marginBottom:6 }}>{elig.emoji} {elig.label}</div>
+              <p style={{ fontSize:12, color:'var(--text2)', margin:'0 0 8px', lineHeight:1.5 }}>{elig.reason}</p>
+              {elig.warnings.map((w: string, i: number) => (
+                <div key={i} style={{ fontSize:11, color:'var(--text3)', paddingLeft:10, borderLeft:`2px solid ${eligColor}55`, marginBottom:3, lineHeight:1.4 }}>{w}</div>
+              ))}
+            </div>
+
+            {/* Trošak uvoza */}
+            {bd && (
+              <div style={{ background:'rgba(255,107,0,.07)', border:'1px solid rgba(255,107,0,.2)', borderRadius:'var(--radius)', overflow:'hidden' }}>
+                <button onClick={() => setShowBd(!showBd)} style={{
+                  width:'100%', background:'none', border:'none', cursor:'pointer',
+                  padding:'14px 16px', display:'flex', justifyContent:'space-between', alignItems:'center',
+                }}>
+                  <div style={{ textAlign:'left' }}>
+                    <div style={{ fontSize:11, color:'var(--text3)', marginBottom:2 }}>🇷🇸 Ukupno za Srbiju</div>
+                    <div style={{ fontSize:22, fontWeight:800, color:'var(--accent)' }}>{fmt(bd.total)} €</div>
                   </div>
-                )}
-                {fraud.safe_signals?.length > 0 && (
-                  <div style={{ marginTop:8 }}>
-                    {fraud.safe_signals.map((s: string) => (
-                      <div key={s} style={{ fontSize:12, color:'#22C55E', display:'flex', gap:6, marginBottom:4 }}>
-                        <span>✓</span><span>{s}</span>
+                  <span style={{ fontSize:11, color:'rgba(255,107,0,.6)' }}>{showBd ? '▲' : '▼ detalji'}</span>
+                </button>
+                {showBd && (
+                  <div style={{ padding:'0 16px 14px', borderTop:'1px solid rgba(255,107,0,.15)' }}>
+                    {[
+                      { label:'EU cena', val: price!, note:'' },
+                      { label:`Carina (${bd.carinaPct}%)`, val: bd.carina, note: bd.carinaPct===0?'oslobođeno':'srbija' },
+                      { label:'PDV (20%)', val: bd.pdv, note:'srbija' },
+                      { label:'Transport EU→RS', val: bd.transport, note:'procena' },
+                      { label:'Registracija', val: bd.reg, note:'procena' },
+                    ].map(({ label, val, note }, i) => (
+                      <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderTop: i===0?'none':'1px solid rgba(255,255,255,.04)' }}>
+                        <span style={{ fontSize:12, color: i===0?'var(--text2)':'var(--text3)' }}>
+                          {i>0&&'+ '}{label}{note&&<span style={{ fontSize:10, marginLeft:5, opacity:.5 }}>({note})</span>}
+                        </span>
+                        <span style={{ fontSize:12, fontWeight:600, color: i===0?'var(--text2)':'#fb923c' }}>
+                          {i===0?'':'+'}{fmt(val)} €
+                        </span>
                       </div>
                     ))}
+                    <div style={{ display:'flex', justifyContent:'space-between', marginTop:10, paddingTop:10, borderTop:'1px solid rgba(255,107,0,.25)' }}>
+                      <span style={{ fontSize:13, fontWeight:700 }}>Ukupno za Srbiju</span>
+                      <span style={{ fontSize:14, fontWeight:800, color:'var(--accent)' }}>{fmt(bd.total)} €</span>
+                    </div>
+                    <p style={{ fontSize:10, color:'var(--text3)', margin:'8px 0 0', lineHeight:1.4 }}>
+                      * Procena je informativna. Stvarni troškovi mogu varirati.
+                    </p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Import calculator */}
-            <a href={`/import-calculator?price=${listing.price||''}&year=${listing.year||''}&cc=${listing.engine_cc||''}&fuel=${listing.fuel_type||''}&from=${listing.country||'DE'}`}
-              style={{
-                display:'flex', alignItems:'center', gap:10, padding:16,
-                background:'var(--bg2)', border:'1px solid var(--border)',
-                borderRadius:'var(--radius)', transition:'border-color .15s',
-                textDecoration:'none',
-              }}
-              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)')}
-              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.borderColor = 'var(--border)')}
-            >
-              <span style={{ fontSize:24 }}>✈️</span>
-              <div>
-                <div style={{ fontSize:14, fontWeight:600 }}>Kalkulator uvoza</div>
-                <div style={{ fontSize:12, color:'var(--text3)' }}>Koliko košta uvoz u Srbiju?</div>
+            {/* Fraud check */}
+            {fraud && (
+              <div style={{
+                background:'var(--bg2)', border:`1px solid ${fraud.badge?.color+'40'||'var(--border)'}`,
+                borderRadius:'var(--radius)', padding:18,
+              }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                  <h3 style={{ fontSize:13, fontWeight:600 }}>Provjera prevare</h3>
+                  <span style={{
+                    fontSize:11, padding:'3px 10px', borderRadius:20,
+                    background: fraud.badge?.color+'20', color: fraud.badge?.color,
+                    border: `1px solid ${fraud.badge?.color+'40'}`,
+                  }}>{fraud.badge?.text}</span>
+                </div>
+                {fraud.red_flags?.map((f: string) => (
+                  <div key={f} style={{ fontSize:12, color:'#F87171', display:'flex', gap:6, marginBottom:3 }}>⚠ {f}</div>
+                ))}
+                {fraud.safe_signals?.map((s: string) => (
+                  <div key={s} style={{ fontSize:12, color:'#22C55E', display:'flex', gap:6, marginBottom:3 }}>✓ {s}</div>
+                ))}
               </div>
-              <span style={{ marginLeft:'auto', color:'var(--text3)' }}>→</span>
-            </a>
+            )}
+
           </div>
         </div>
       </div>
@@ -288,7 +345,6 @@ function PriceChart({ history }: { history: any[] }) {
   const min = Math.min(...prices), max = Math.max(...prices)
   const range = max - min || 1
   const W = 500, H = 100, PAD = 10
-
   const points = history.map((h, i) => ({
     x: PAD + (i / (history.length - 1)) * (W - PAD * 2),
     y: H - PAD - ((Number(h.price) - min) / range) * (H - PAD * 2),
@@ -296,7 +352,6 @@ function PriceChart({ history }: { history: any[] }) {
     date: new Date(h.recorded_at).toLocaleDateString('sr'),
   }))
   const path = points.map((p, i) => `${i===0?'M':'L'} ${p.x} ${p.y}`).join(' ')
-
   return (
     <div style={{ overflowX:'auto' }}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', maxWidth:W }}>
@@ -326,7 +381,7 @@ function PageSkeleton() {
           <div className="skeleton" style={{ height:380, borderRadius:12, marginBottom:8 }} />
           <div className="skeleton" style={{ height:200, borderRadius:12, marginTop:16 }} />
         </div>
-        <div><div className="skeleton" style={{ height:280, borderRadius:12 }} /></div>
+        <div><div className="skeleton" style={{ height:400, borderRadius:12 }} /></div>
       </div>
     </div>
   )
