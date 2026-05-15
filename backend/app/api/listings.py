@@ -183,7 +183,7 @@ def compare_listings(
 def fix_invalid_mileage(db: Session = Depends(get_db)):
     """Jednokratni cleanup — postavi mileage=NULL gdje je > 999999."""
     result = db.execute(
-        text("UPDATE listings SET mileage = NULL, mileage_raw = NULL WHERE mileage > 999999")
+        text("UPDATE listings SET mileage = NULL WHERE mileage > 999999")
     )
     db.commit()
     return {"fixed": result.rowcount}
