@@ -55,15 +55,17 @@ function fullImg(url: string): string {
 }
 
 export default function ListingPage({ params }: { params: { id: string } }) {
-  const [listing,   setListing]   = useState<any>(null)
-  const [history,   setHistory]   = useState<any[]>([])
-  const [similar,   setSimilar]   = useState<any[]>([])
-  const [fraud,     setFraud]     = useState<any>(null)
-  const [activeImg, setActiveImg] = useState(0)
-  const [favorited, setFavorited] = useState(false)
-  const [loading,   setLoading]   = useState(true)
+  const [listing,     setListing]     = useState<any>(null)
+  const [history,     setHistory]     = useState<any[]>([])
+  const [similar,     setSimilar]     = useState<any[]>([])
+  const [fraud,       setFraud]       = useState<any>(null)
+  const [activeImg,   setActiveImg]   = useState(0)
+  const [favorited,   setFavorited]   = useState(false)
+  const [loading,     setLoading]     = useState(true)
   const [showContact, setShowContact] = useState(false)
-  const [showBd,    setShowBd]    = useState(false)
+  const [showBd,      setShowBd]      = useState(false)
+  const [refreshing,  setRefreshing]  = useState(false)
+  const [refreshed,   setRefreshed]   = useState(false)
 
   useEffect(() => {
     Promise.allSettled([
@@ -78,6 +80,35 @@ export default function ListingPage({ params }: { params: { id: string } }) {
       if (f.status === 'fulfilled') setFraud(f.value)
     }).finally(() => setLoading(false))
   }, [params.id])
+
+  async function refreshFromPortal() {
+    if (!listing?.url || refreshing) return
+    setRefreshing(true)
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
+      const res  = await fetch(`${apiBase}/analyze/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: listing.url }),
+      })
+      const data = await res.json()
+      if (data.scrape_success) {
+        setListing((prev: any) => ({
+          ...prev,
+          year:            data.year            || prev.year,
+          mileage:         data.mileage          || prev.mileage,
+          fuel_type:       data.fuel_type        || prev.fuel_type,
+          engine_power_kw: data.engine_power_kw  || prev.engine_power_kw,
+          country:         data.country          || prev.country,
+          city:            data.city             || prev.city,
+          transmission:    data.transmission     || prev.transmission,
+          images:          (data.images?.length || 0) > (prev.images?.length || 0) ? data.images : prev.images,
+        }))
+        setRefreshed(true)
+      }
+    } catch {}
+    setRefreshing(false)
+  }
 
   if (loading) return <PageSkeleton />
   if (!listing) return <div style={{ textAlign:'center', padding:'80px 0', color:'var(--text3)' }}>Oglas nije pronađen.</div>
@@ -101,6 +132,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
     { label: 'Stanje',      value: listing.accident_free ? '✅ Bez udesa' : null },
   ].filter(s => s.value)
 
+  const missingData = !listing.year || !listing.mileage
+
   return (
     <div style={{ padding: '32px 0 80px' }}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
@@ -112,6 +145,40 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           <a href="/search" style={{ color: 'var(--text3)' }}>Pretraga</a> →{' '}
           <span style={{ color: 'var(--text)' }}>{listing.make} {listing.model}</span>
         </div>
+
+        {/* Missing data banner */}
+        {missingData && !refreshed && (
+          <div style={{
+            background: 'rgba(255,107,0,.08)', border: '1px solid rgba(255,107,0,.25)',
+            borderRadius: 12, padding: '12px 16px', marginBottom: 20,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+          }}>
+            <div>
+              <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }}>⚠️ Nepotpuni podaci</span>
+              <span style={{ fontSize: 13, color: 'var(--text3)', marginLeft: 8 }}>
+                Godište i kilometraža nisu dostupni iz pretrage.
+              </span>
+            </div>
+            <button onClick={refreshFromPortal} disabled={refreshing} style={{
+              padding: '8px 16px', borderRadius: 8, border: 'none', whiteSpace: 'nowrap',
+              background: refreshing ? 'var(--bg3)' : 'var(--accent)',
+              color: refreshing ? 'var(--text3)' : '#fff',
+              fontSize: 13, fontWeight: 600, cursor: refreshing ? 'default' : 'pointer',
+            }}>
+              {refreshing ? '⏳ Učitavam...' : '🔄 Ažuriraj podatke'}
+            </button>
+          </div>
+        )}
+
+        {refreshed && (
+          <div style={{
+            background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)',
+            borderRadius: 12, padding: '12px 16px', marginBottom: 20,
+            fontSize: 13, color: '#22C55E',
+          }}>
+            ✅ Podaci ažurirani sa originalnog portala.
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 28, alignItems: 'start' }}>
 
@@ -157,7 +224,19 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   ))}
                 </div>
               ) : (
-                <p style={{ color:'var(--text3)', fontSize:13 }}>Specifikacije nisu dostupne za ovaj oglas.</p>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                  <p style={{ color:'var(--text3)', fontSize:13, margin:0 }}>
+                    Specifikacije nisu dostupne. Klikni "Ažuriraj podatke" da ih učitaš.
+                  </p>
+                  <button onClick={refreshFromPortal} disabled={refreshing} style={{
+                    padding:'8px 14px', borderRadius:8, border:'none', whiteSpace:'nowrap',
+                    background: refreshing ? 'var(--bg3)' : 'var(--accent)',
+                    color: refreshing ? 'var(--text3)' : '#fff',
+                    fontSize:12, fontWeight:600, cursor: refreshing ? 'default' : 'pointer',
+                  }}>
+                    {refreshing ? '⏳' : '🔄 Ažuriraj'}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -264,6 +343,16 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               </button>
 
+              <button onClick={refreshFromPortal} disabled={refreshing || refreshed} style={{
+                width:'100%', padding:'10px', marginBottom:8,
+                background: refreshed ? 'rgba(34,197,94,.08)' : 'rgba(255,107,0,.08)',
+                border: `1px solid ${refreshed ? 'rgba(34,197,94,.25)' : 'rgba(255,107,0,.25)'}`,
+                color: refreshed ? '#22C55E' : 'var(--accent)',
+                borderRadius:10, fontSize:13, cursor: (refreshing || refreshed) ? 'default' : 'pointer',
+              }}>
+                {refreshing ? '⏳ Učitavam podatke...' : refreshed ? '✅ Podaci ažurirani' : '🔄 Ažuriraj podatke sa portala'}
+              </button>
+
               <button onClick={async () => { await addFavorite(listing.id); setFavorited(true) }} style={{
                 width:'100%', padding:'10px', background:'transparent',
                 border: `1px solid ${favorited ? 'var(--accent)' : 'var(--border)'}`,
@@ -282,6 +371,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               {elig.warnings.map((w: string, i: number) => (
                 <div key={i} style={{ fontSize:11, color:'var(--text3)', paddingLeft:10, borderLeft:`2px solid ${eligColor}55`, marginBottom:3, lineHeight:1.4 }}>{w}</div>
               ))}
+              {missingData && !refreshed && (
+                <div style={{ fontSize:11, color:'var(--text3)', marginTop:8, padding:'6px 10px', background:'rgba(255,255,255,.04)', borderRadius:6 }}>
+                  💡 Ažuriraj podatke za precizniju procenu
+                </div>
+              )}
             </div>
 
             {/* Trošak uvoza */}
@@ -300,11 +394,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 {showBd && (
                   <div style={{ padding:'0 16px 14px', borderTop:'1px solid rgba(255,107,0,.15)' }}>
                     {[
-                      { label:'EU cena',         val: price!,       note: '' },
+                      { label:'EU cena',         val: price!,       note:'' },
                       { label:`Carina (${bd.carinaPct}%)`, val: bd.carina, note: bd.carinaPct===0?'oslobođeno':'srbija' },
-                      { label:'PDV (20%)',        val: bd.pdv,       note: 'srbija' },
-                      { label:'Transport EU→RS',  val: bd.transport, note: 'procena' },
-                      { label:'Registracija',    val: bd.reg,       note: 'procena' },
+                      { label:'PDV (20%)',        val: bd.pdv,       note:'srbija' },
+                      { label:'Transport EU→RS',  val: bd.transport, note:'procena' },
+                      { label:'Registracija',    val: bd.reg,       note:'procena' },
                     ].map(({ label, val, note }, i) => (
                       <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderTop: i===0?'none':'1px solid rgba(255,255,255,.04)' }}>
                         <span style={{ fontSize:12, color: i===0?'var(--text2)':'var(--text3)' }}>
