@@ -20,33 +20,113 @@ const AI_BADGES: Record<string, { label: string; color: string; bg: string }> = 
   overpriced: { label: '🔴 PREVISOKA CENA',   color: '#EF4444', bg: 'rgba(239,68,68,.13)'   },
 }
 
-function calcBreakdown(price: number) {
-  const carina    = Math.round(price * 0.05)
+interface EligibilityResult {
+  status:  'eligible' | 'needs_check' | 'not_recommended' | 'oldtimer'
+  emoji:   string
+  label:   string
+  reason:  string
+  warnings: string[]
+  carinaPct: number
+}
+
+function getSerbiaEligibility(listing: any): EligibilityResult {
+  const year      = listing.year ? Number(listing.year) : null
+  const fuel      = listing.fuel_type || null
+  const age       = year ? (2026 - year) : null
+
+  if (fuel === 'electric') {
+    return {
+      status: 'eligible', emoji: '🟢',
+      label: 'Može uvoz u Srbiju',
+      reason: 'Električna vozila se uvoze bez carine (0% carina).',
+      warnings: ['Provjeri kompatibilnost punjača (Tip 2 / CCS).'],
+      carinaPct: 0,
+    }
+  }
+
+  if (age !== null && age >= 30) {
+    return {
+      status: 'oldtimer', emoji: '🟣',
+      label: 'Oldtimer izuzetak',
+      reason: `Vozilo (${year}) je starije od 30 godina — poseban režim uvoza.`,
+      warnings: ['Registracija kao oldtimer uz poseban tehnički pregled.', 'Provjeriti propise MUP-a Srbije.'],
+      carinaPct: 5,
+    }
+  }
+
+  if (year) {
+    if (year >= 2011) return {
+      status: 'eligible', emoji: '🟢',
+      label: 'Može uvoz u Srbiju',
+      reason: `Vozilo (${year}) vjerovatno ispunjava Euro 5/6 — nema ograničenja.`,
+      warnings: ['Pribavi COC dokument za potvrdu Euro norme.'],
+      carinaPct: 5,
+    }
+    if (year >= 2006) return {
+      status: 'eligible', emoji: '🟢',
+      label: 'Može uvoz u Srbiju',
+      reason: `Vozilo (${year}) vjerovatno ispunjava Euro 4 normu.`,
+      warnings: ['Provjeri COC dokument — Euro 4 je minimum.', fuel === 'diesel' ? 'Provjeri stanje DPF filtera.' : ''].filter(Boolean),
+      carinaPct: 5,
+    }
+    if (year >= 2001) return {
+      status: 'needs_check', emoji: '🟠',
+      label: 'Potrebna dodatna provjera',
+      reason: `Vozilo (${year}) je vjerovatno Euro 3 — uvoz je moguć ali zahtijeva provjeru.`,
+      warnings: ['Provjeri Euro normu u COC dokumentu.', 'Konsultuj carinskog agenta ili MUP Srbije.'],
+      carinaPct: 5,
+    }
+    return {
+      status: 'not_recommended', emoji: '🔴',
+      label: 'Verovatno nije moguće / ne preporučuje se',
+      reason: `Vozilo (${year}) je vjerovatno Euro 1/2 — uvoz u Srbiju nije preporučljiv.`,
+      warnings: ['Stara vozila teško prolaze tehnički pregled.'],
+      carinaPct: 5,
+    }
+  }
+
+  return {
+    status: 'needs_check', emoji: '🟠',
+    label: 'Potrebna dodatna provjera',
+    reason: 'Nedostaju tehnički podaci (godište, Euro norma) za procjenu.',
+    warnings: ['Provjeri Euro normu u COC dokumentu.', 'Kontaktiraj prodavca za tehničke specifikacije.'],
+    carinaPct: 5,
+  }
+}
+
+const ELIGIBILITY_COLORS: Record<string, string> = {
+  eligible:        '#22C55E',
+  needs_check:     '#F97316',
+  not_recommended: '#EF4444',
+  oldtimer:        '#A855F7',
+}
+
+function calcBreakdown(price: number, carinaPct: number) {
+  const carina    = Math.round(price * (carinaPct / 100))
   const pdv       = Math.round((price + carina) * 0.20)
   const transport = 420
   const reg       = 280
-  return { carina, pdv, transport, reg, total: price + carina + pdv + transport + reg }
+  return { carina, pdv, transport, reg, total: price + carina + pdv + transport + reg, carinaPct }
 }
 
 function getInsight(listing: any): string | null {
   const delta = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
   const km    = listing.mileage ? Number(listing.mileage) : null
   const year  = listing.year ? Number(listing.year) : null
-  const now   = new Date().getFullYear()
+  const now   = 2026
   if (delta !== null) {
     if (delta < -10) return `${Math.abs(delta).toFixed(0)}% ispod tržišne cene`
-    if (delta < -3)  return `Malo ispod tržišne vrednosti`
-    if (delta > 15)  return `Cena znatno iznad tržišta`
-    if (delta > 5)   return `Cena iznad proseka za godište`
+    if (delta < -3)  return 'Malo ispod tržišne vrednosti'
+    if (delta > 15)  return 'Cena znatno iznad tržišta'
+    if (delta > 5)   return 'Cena iznad proseka za godište'
   }
   if (year && now - year <= 2) return 'Mlado vozilo, niska amortizacija'
-  if (km && km >= 1 && km <= 999999 && km < 50000)  return 'Niska kilometraža za godište'
-  if (km && km >= 1 && km <= 999999 && km > 200000) return 'Visoka kilometraža — pažljivo proveriti'
+  if (km && km < 50000)        return 'Niska kilometraža za godište'
+  if (km && km > 200000)       return 'Visoka kilometraža — pažljivo proveriti'
   if (listing.fuel_type === 'electric') return 'Električno — bez carine u Srbiji'
   return null
 }
 
-/** Formatiraj kilometražu: 201962 → "201.962 km", null/invalid → null */
 function formatMileage(raw: any): string | null {
   const km = Number(raw)
   if (!km || km < 1 || km > 999999) return null
@@ -119,7 +199,6 @@ export default function SearchPage() {
 
       <div className="container" style={{ padding: '20px 16px 80px' }}>
 
-        {/* Hero */}
         <div style={{
           background: 'linear-gradient(135deg,rgba(255,107,0,.09),rgba(255,107,0,.03))',
           border: '1px solid rgba(255,107,0,.22)', borderRadius: 16,
@@ -128,14 +207,14 @@ export default function SearchPage() {
         }}>
           <div style={{ flex: 1, minWidth: 180 }}>
             <p className="ht" style={{ fontSize: 21, fontWeight: 700, margin: 0, fontFamily: 'Syne,sans-serif', lineHeight: 1.3 }}>
-              Ne kupuj auto iz EU naslepo
+              AI pomoćnik za uvoz automobila iz EU u Srbiju
             </p>
             <p style={{ fontSize: 13, color: 'var(--text2)', margin: '5px 0 0' }}>
-              AI analizira cene · Računa pravi trošak uvoza · Otkriva precenjene ponude
+              Analizira cene · Računa realni trošak uvoza u Srbiju · Provjerava podobnost uvoza
             </p>
           </div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {['🤖 AI analiza', '🛡 Zaštita od prevare', '🇷🇸 Trošak uvoza', '✉️ AI kontakt'].map(t => (
+            {['🤖 AI analiza', '🛡 Zaštita od prevare', '🇷🇸 Trošak uvoza u Srbiju', '✉️ AI kontakt'].map(t => (
               <span key={t} style={{
                 padding: '5px 11px', borderRadius: 20, fontSize: 12, fontWeight: 500,
                 background: 'rgba(255,107,0,.1)', border: '1px solid rgba(255,107,0,.25)',
@@ -145,7 +224,6 @@ export default function SearchPage() {
           </div>
         </div>
 
-        {/* Search */}
         <form onSubmit={handleAiSearch} style={{ marginBottom: 22 }}>
           <div style={{
             display: 'flex', gap: 8, background: 'var(--bg3)',
@@ -166,7 +244,6 @@ export default function SearchPage() {
           </div>
         </form>
 
-        {/* Mobile filter */}
         <button className="mfb cb" onClick={() => setSidebarOpen(!sidebarOpen)} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           padding: '11px 16px', borderRadius: 10, marginBottom: 16, width: '100%',
@@ -212,7 +289,7 @@ export default function SearchPage() {
 
             {loading ? (
               <div className="rg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 20 }}>
-                {[...Array(6)].map((_,i) => <div key={i} className="skeleton" style={{ height: 460, borderRadius: 16 }} />)}
+                {[...Array(6)].map((_,i) => <div key={i} className="skeleton" style={{ height: 500, borderRadius: 16 }} />)}
               </div>
             ) : results?.results?.length ? (
               <>
@@ -249,14 +326,17 @@ export default function SearchPage() {
 }
 
 function ListingCard({ listing, onContact }: { listing: any; onContact: () => void }) {
-  const badge   = AI_BADGES[listing.price_rating]
-  const insight = getInsight(listing)
-  const img     = listing.images?.[0]
-  const price   = listing.price ? Number(listing.price) : null
-  const bd      = price ? calcBreakdown(price) : null
-  const delta   = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
-  const mileage = formatMileage(listing.mileage)
-  const [showBd, setShowBd] = useState(false)
+  const badge       = AI_BADGES[listing.price_rating]
+  const insight     = getInsight(listing)
+  const img         = listing.images?.[0]
+  const price       = listing.price ? Number(listing.price) : null
+  const eligibility = getSerbiaEligibility(listing)
+  const bd          = price ? calcBreakdown(price, eligibility.carinaPct) : null
+  const delta       = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
+  const mileage     = formatMileage(listing.mileage)
+  const eligColor   = ELIGIBILITY_COLORS[eligibility.status]
+  const [showBd,    setShowBd]   = useState(false)
+  const [showWarn,  setShowWarn] = useState(false)
 
   return (
     <div className="ch" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
@@ -287,12 +367,12 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           </span>
         </div>
 
-        <div style={{ padding: '16px 18px 0' }}>
+        <div style={{ padding: '14px 18px 0' }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px', fontFamily: 'Syne,sans-serif', lineHeight: 1.3, color: 'var(--text)' }}>
             {listing.year && `${listing.year} `}{listing.make} {listing.model}
           </h3>
           {insight && (
-            <p style={{ fontSize: 12, color: badge?.color || '#818CF8', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <p style={{ fontSize: 12, color: badge?.color || '#818CF8', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: badge?.color || '#818CF8', display: 'inline-block', flexShrink: 0 }} />
               {insight}
             </p>
@@ -301,6 +381,38 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
       </a>
 
       <div style={{ padding: '0 18px 18px' }}>
+
+        {/* Uvoz u Srbiju */}
+        <div style={{
+          background: `${eligColor}11`,
+          border: `1px solid ${eligColor}44`,
+          borderRadius: 10, padding: '9px 12px', marginBottom: 10,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2, letterSpacing: '.06em', fontWeight: 600 }}>UVOZ U SRBIJU</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: eligColor }}>
+                {eligibility.emoji} {eligibility.label}
+              </div>
+            </div>
+            {eligibility.warnings.length > 0 && (
+              <button onClick={() => setShowWarn(!showWarn)} className="cb" style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 11, color: 'var(--text3)', padding: '4px 6px',
+              }}>{showWarn ? '▲' : 'ℹ️'}</button>
+            )}
+          </div>
+          {showWarn && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${eligColor}22` }}>
+              <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 5px', lineHeight: 1.5 }}>{eligibility.reason}</p>
+              {eligibility.warnings.map((w, i) => (
+                <p key={i} style={{ fontSize: 11, color: 'var(--text3)', margin: '3px 0', lineHeight: 1.4 }}>• {w}</p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* EU cena */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>EU cena:</span>
           <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text2)' }}>
@@ -308,6 +420,7 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           </span>
         </div>
 
+        {/* Trošak uvoza u Srbiju */}
         {bd && (
           <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
             <button onClick={() => setShowBd(!showBd)} className="cb" style={{
@@ -325,11 +438,11 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
               <div style={{ padding: '0 14px 12px', borderTop: '1px solid rgba(255,107,0,.15)' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', margin: '8px 0' }}>Kako je izračunato:</div>
                 {[
-                  { label: 'EU cena',         val: price!,      note: '' },
-                  { label: 'Carina (5%)',      val: bd.carina,   note: 'srbija' },
-                  { label: 'PDV (20%)',        val: bd.pdv,      note: 'srbija' },
-                  { label: 'Transport EU→RS',  val: bd.transport,note: 'procena' },
-                  { label: 'Registracija',     val: bd.reg,      note: 'procena' },
+                  { label: 'EU cena',        val: price!,       note: '' },
+                  { label: `Carina (${bd.carinaPct}%)`, val: bd.carina, note: bd.carinaPct === 0 ? 'oslobođeno' : 'srbija' },
+                  { label: 'PDV (20%)',       val: bd.pdv,       note: 'srbija' },
+                  { label: 'Transport EU→RS', val: bd.transport, note: 'procena' },
+                  { label: 'Registracija',   val: bd.reg,       note: 'procena' },
                 ].map(({ label, val, note }, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.04)' }}>
                     <span style={{ fontSize: 12, color: i === 0 ? 'var(--text2)' : 'var(--text3)' }}>
@@ -342,25 +455,29 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,107,0,.25)' }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>Ukupno Srbija</span>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Ukupno za Srbiju</span>
                   <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString('de-DE')} €</span>
                 </div>
-                <p style={{ fontSize: 10, color: 'var(--text3)', margin: '8px 0 0', lineHeight: 1.4 }}>
-                  * Procena na osnovu standardnih stopa. Stvarni troškovi mogu varirati.
-                </p>
               </div>
             )}
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+        {/* Specifikacije */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
           {mileage && <span>🛣 {mileage}</span>}
           {listing.fuel_type && <span>⛽ {FUEL_LABELS[listing.fuel_type] || listing.fuel_type}</span>}
           {listing.country && <span>📍 {listing.country}</span>}
         </div>
 
+        {/* Disclaimer */}
+        <p style={{ fontSize: 10, color: 'var(--text3)', margin: '8px 0 10px', lineHeight: 1.5, opacity: .7 }}>
+          * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju vozila, Euro normu i važeće propise u Srbiji.
+        </p>
+
+        {/* Kontakt */}
         <button onClick={onContact} className="cb" style={{
-          width: '100%', marginTop: 12, padding: '11px',
+          width: '100%', padding: '11px',
           background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.3)',
           color: '#818CF8', borderRadius: 10,
           fontSize: 13, fontWeight: 600, cursor: 'pointer',
