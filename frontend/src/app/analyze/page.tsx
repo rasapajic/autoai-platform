@@ -25,8 +25,6 @@ export default function AnalyzePage() {
   const [loading, setLoading] = useState(false)
   const [result,  setResult]  = useState<any>(null)
   const [error,   setError]   = useState('')
-
-  // Kontakt
   const [selected,  setSelected]  = useState<string[]>([])
   const [custom,    setCustom]    = useState('')
   const [msgLoad,   setMsgLoad]   = useState(false)
@@ -90,6 +88,12 @@ export default function AnalyzePage() {
     window.open(`mailto:?subject=${sub}&body=${body}`)
   }
 
+  function openGmail() {
+    const sub  = encodeURIComponent(`Inquiry: ${result?.year || ''} ${result?.title || ''}`)
+    const body = encodeURIComponent(message)
+    window.open(`https://mail.google.com/mail/?view=cm&su=${sub}&body=${body}`, '_blank')
+  }
+
   const bd        = result?.import_cost
   const elig      = result?.serbia_eligibility
   const eligColor = elig ? (ELIGIBILITY_COLORS[elig.eligible_status] || '#F97316') : '#F97316'
@@ -98,7 +102,6 @@ export default function AnalyzePage() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 80 }}>
       <div className="container" style={{ maxWidth: 720, padding: '32px 16px 0' }}>
 
-        {/* Hero */}
         <div style={{ marginBottom: 32, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
           <h1 style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Syne,sans-serif', margin: '0 0 10px', lineHeight: 1.2 }}>
@@ -109,7 +112,6 @@ export default function AnalyzePage() {
           </p>
         </div>
 
-        {/* Input */}
         <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 24 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.08em', fontWeight: 600, marginBottom: 8 }}>LINK OGLASA</div>
           <input
@@ -146,7 +148,6 @@ export default function AnalyzePage() {
         {result && result.scrape_success && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {/* Slika + info */}
             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
               {result.images?.[0] && (
                 <div style={{ height: 220, overflow: 'hidden', position: 'relative' }}>
@@ -168,13 +169,11 @@ export default function AnalyzePage() {
               </div>
             </div>
 
-            {/* EU cena */}
             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 14, color: 'var(--text3)', fontWeight: 600 }}>EU cena</span>
               <span style={{ fontSize: 24, fontWeight: 800 }}>{result.price ? `${fmt(result.price)} €` : 'Na upit'}</span>
             </div>
 
-            {/* Uvoz u Srbiju */}
             {elig && (
               <div style={{ background: `${eligColor}11`, border: `1px solid ${eligColor}33`, borderRadius: 16, padding: '16px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>UVOZ U SRBIJU</div>
@@ -190,7 +189,6 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Trošak uvoza */}
             {bd && (
               <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 16, padding: '16px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>🇷🇸 TROŠAK UVOZA U SRBIJU</div>
@@ -218,7 +216,6 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Rizici */}
             {result.risk_warnings?.length > 0 && (
               <div style={{ background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.2)', borderRadius: 16, padding: '16px 18px' }}>
                 <div style={{ fontSize: 11, color: '#EF4444', letterSpacing: '.07em', fontWeight: 600, marginBottom: 10 }}>⚠️ RIZICI I UPOZORENJA</div>
@@ -230,7 +227,6 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Oprema */}
             {result.features?.length > 0 && (
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 12 }}>OPREMA ({result.features.length} stavki)</div>
@@ -243,14 +239,13 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Kontakt prodavca — inline */}
+            {/* Kontakt prodavca */}
             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 18px' }}>
               <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 4 }}>🤖 KONTAKTIRAJ PRODAVCA</div>
               <p style={{ fontSize: 13, color: 'var(--text3)', margin: '0 0 14px', lineHeight: 1.5 }}>
                 AI generiše poruku na jeziku prodavca ({result.seller_language || 'Deutsch'}).
               </p>
 
-              {/* Brza pitanja */}
               <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.06em', marginBottom: 8 }}>BRZA PITANJA</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                 {QUICK_QUESTIONS.map(q => (
@@ -264,7 +259,6 @@ export default function AnalyzePage() {
                 ))}
               </div>
 
-              {/* Custom pitanje */}
               <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.06em', marginBottom: 6 }}>DODAJ VLASTITO PITANJE</div>
               <textarea
                 value={custom} onChange={e => setCustom(e.target.value)}
@@ -273,7 +267,6 @@ export default function AnalyzePage() {
                 style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 12 }}
               />
 
-              {/* Generiši */}
               <button onClick={generateMessage} disabled={msgLoad || (!selected.length && !custom.trim())} style={{
                 width: '100%', padding: '12px', borderRadius: 10, border: 'none',
                 background: (!selected.length && !custom.trim()) || msgLoad ? 'var(--bg3)' : 'rgba(99,102,241,.2)',
@@ -285,13 +278,13 @@ export default function AnalyzePage() {
 
               {msgError && <p style={{ color: '#EF4444', fontSize: 13, margin: '0 0 10px' }}>{msgError}</p>}
 
-              {/* Generisana poruka */}
               {message && (
                 <div>
                   <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.75, color: 'var(--text2)', whiteSpace: 'pre-wrap', marginBottom: 10 }}>
                     {message}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  {/* Tri dugmeta */}
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                     <button onClick={copyMsg} style={{
                       flex: 1, padding: '10px', borderRadius: 10,
                       background: copied ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
@@ -299,12 +292,20 @@ export default function AnalyzePage() {
                       color: copied ? '#22C55E' : 'var(--text2)',
                       fontSize: 13, fontWeight: 600, cursor: 'pointer',
                     }}>{copied ? '✓ Kopirano!' : '📋 Kopiraj'}</button>
+                    <button onClick={openGmail} style={{
+                      flex: 1, padding: '10px', borderRadius: 10,
+                      background: 'rgba(234,67,53,.1)', border: '1px solid rgba(234,67,53,.3)',
+                      color: '#EA4335', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    }}>📧 Gmail</button>
                     <button onClick={openEmail} style={{
                       flex: 1, padding: '10px', borderRadius: 10,
                       background: 'rgba(255,107,0,.1)', border: '1px solid rgba(255,107,0,.3)',
                       color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                    }}>✉️ Otvori email</button>
+                    }}>✉️ Email</button>
                   </div>
+                  <p style={{ fontSize: 11, color: 'var(--text3)', margin: 0, textAlign: 'center' }}>
+                    Poruka je generisana AI-om — preporučujemo da je pregledate pre slanja.
+                  </p>
                 </div>
               )}
 
@@ -319,7 +320,7 @@ export default function AnalyzePage() {
             </div>
 
             <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', lineHeight: 1.6, opacity: .7 }}>
-              * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju vozila, Euro normu i važeće propise u Srbiji.
+              * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju vozila, Euro normu i važeće propise u Srbiju.
             </p>
 
           </div>
