@@ -1,7 +1,5 @@
 'use client'
 import { useState } from 'react'
-// Novo:
-const BACKEND = (process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1').replace(/\/api\/v1$/, '')
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni', hybrid: 'Hibrid', lpg: 'Plin',
@@ -30,8 +28,9 @@ export default function AnalyzePage() {
     setLoading(true)
     setResult(null)
     setError('')
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
     try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'}/analyze/`, {
+      const res  = await fetch(`${apiBase}/analyze/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() }),
@@ -126,11 +125,11 @@ export default function AnalyzePage() {
                   {result.title || `${result.year || ''} vozilo`}
                 </h2>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 13, color: 'var(--text3)' }}>
-                  {result.year             && <span>📅 {result.year}</span>}
-                  {fmtKm(result.mileage)   && <span>🛣 {fmtKm(result.mileage)}</span>}
-                  {result.fuel_type        && <span>⛽ {FUEL_LABELS[result.fuel_type] || result.fuel_type}</span>}
-                  {result.engine_power_kw  && <span>⚡ {result.engine_power_kw} kW</span>}
-                  {result.country          && <span>📍 {result.city ? `${result.city}, ` : ''}{result.country}</span>}
+                  {result.year            && <span>📅 {result.year}</span>}
+                  {fmtKm(result.mileage)  && <span>🛣 {fmtKm(result.mileage)}</span>}
+                  {result.fuel_type       && <span>⛽ {FUEL_LABELS[result.fuel_type] || result.fuel_type}</span>}
+                  {result.engine_power_kw && <span>⚡ {result.engine_power_kw} kW</span>}
+                  {result.country         && <span>📍 {result.city ? `${result.city}, ` : ''}{result.country}</span>}
                 </div>
               </div>
             </div>
