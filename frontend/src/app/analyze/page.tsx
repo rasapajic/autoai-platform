@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
-
-const BACKEND = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app'
+// Novo:
+const BACKEND = (process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1').replace(/\/api\/v1$/, '')
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni', hybrid: 'Hibrid', lpg: 'Plin',
