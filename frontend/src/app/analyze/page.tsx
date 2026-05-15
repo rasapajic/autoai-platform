@@ -21,16 +21,16 @@ function fmtKm(km: any): string | null {
 }
 
 export default function AnalyzePage() {
-  const [url,     setUrl]     = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result,  setResult]  = useState<any>(null)
-  const [error,   setError]   = useState('')
-  const [selected,  setSelected]  = useState<string[]>([])
-  const [custom,    setCustom]    = useState('')
-  const [msgLoad,   setMsgLoad]   = useState(false)
-  const [message,   setMessage]   = useState('')
-  const [msgError,  setMsgError]  = useState('')
-  const [copied,    setCopied]    = useState(false)
+  const [url,      setUrl]      = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [result,   setResult]   = useState<any>(null)
+  const [error,    setError]    = useState('')
+  const [selected, setSelected] = useState<string[]>([])
+  const [custom,   setCustom]   = useState('')
+  const [msgLoad,  setMsgLoad]  = useState(false)
+  const [message,  setMessage]  = useState('')
+  const [msgError, setMsgError] = useState('')
+  const [copied,   setCopied]   = useState(false)
 
   async function analyze() {
     if (!url.trim()) return
@@ -82,12 +82,6 @@ export default function AnalyzePage() {
     setCopied(true); setTimeout(() => setCopied(false), 2200)
   }
 
-  function openEmail() {
-    const sub  = encodeURIComponent(`Inquiry: ${result?.year || ''} ${result?.title || ''}`)
-    const body = encodeURIComponent(message)
-    window.open(`mailto:?subject=${sub}&body=${body}`)
-  }
-
   function openGmail() {
     const sub  = encodeURIComponent(`Inquiry: ${result?.year || ''} ${result?.title || ''}`)
     const body = encodeURIComponent(message)
@@ -97,6 +91,7 @@ export default function AnalyzePage() {
   const bd        = result?.import_cost
   const elig      = result?.serbia_eligibility
   const eligColor = elig ? (ELIGIBILITY_COLORS[elig.eligible_status] || '#F97316') : '#F97316'
+  const portalName = result?.source === 'autoscout24' ? 'AutoScout24' : 'Mobile.de'
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 80 }}>
@@ -283,8 +278,7 @@ export default function AnalyzePage() {
                   <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.75, color: 'var(--text2)', whiteSpace: 'pre-wrap', marginBottom: 10 }}>
                     {message}
                   </div>
-                  {/* Tri dugmeta */}
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                     <button onClick={copyMsg} style={{
                       flex: 1, padding: '10px', borderRadius: 10,
                       background: copied ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
@@ -297,30 +291,32 @@ export default function AnalyzePage() {
                       background: 'rgba(234,67,53,.1)', border: '1px solid rgba(234,67,53,.3)',
                       color: '#EA4335', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                     }}>📧 Gmail</button>
-                    <button onClick={openEmail} style={{
-                      flex: 1, padding: '10px', borderRadius: 10,
-                      background: 'rgba(255,107,0,.1)', border: '1px solid rgba(255,107,0,.3)',
-                      color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                    }}>✉️ Email</button>
                   </div>
-                  <p style={{ fontSize: 11, color: 'var(--text3)', margin: 0, textAlign: 'center' }}>
+                  <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 10px', textAlign: 'center' }}>
                     Poruka je generisana AI-om — preporučujemo da je pregledate pre slanja.
                   </p>
                 </div>
               )}
 
-              <div style={{ marginTop: 12 }}>
-                <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
-                  display: 'block', width: '100%', padding: '11px',
-                  background: 'transparent', border: '1px solid var(--border)',
-                  color: 'var(--text3)', borderRadius: 10, textAlign: 'center',
-                  fontSize: 13, fontWeight: 500, textDecoration: 'none',
-                }}>🔗 Otvori originalni oglas</a>
-              </div>
+              {/* Dugmad za kontakt na portalu */}
+              <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
+                display: 'block', width: '100%', padding: '12px',
+                background: 'rgba(99,102,241,.15)', border: '1px solid rgba(99,102,241,.4)',
+                color: '#818CF8', borderRadius: 10, textAlign: 'center',
+                fontSize: 13, fontWeight: 700, textDecoration: 'none', marginBottom: 8,
+              }}>
+                📩 Pošalji poruku na {portalName}
+              </a>
+              <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
+                display: 'block', width: '100%', padding: '10px',
+                background: 'transparent', border: '1px solid var(--border)',
+                color: 'var(--text3)', borderRadius: 10, textAlign: 'center',
+                fontSize: 12, fontWeight: 500, textDecoration: 'none',
+              }}>🔗 Otvori originalni oglas</a>
             </div>
 
             <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', lineHeight: 1.6, opacity: .7 }}>
-              * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju vozila, Euro normu i važeće propise u Srbiju.
+              * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju vozila, Euro normu i važeće propise u Srbiji.
             </p>
 
           </div>
