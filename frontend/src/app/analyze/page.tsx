@@ -31,7 +31,7 @@ export default function AnalyzePage() {
     setResult(null)
     setError('')
     try {
-      const res  = await fetch(`${BACKEND}/api/v1/analyze/`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'}/analyze/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() }),
