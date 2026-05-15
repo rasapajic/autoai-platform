@@ -88,46 +88,89 @@ export default function AnalyzePage() {
     window.open(`https://mail.google.com/mail/?view=cm&su=${sub}&body=${body}`, '_blank')
   }
 
-  const bd        = result?.import_cost
-  const elig      = result?.serbia_eligibility
-  const eligColor = elig ? (ELIGIBILITY_COLORS[elig.eligible_status] || '#F97316') : '#F97316'
+  const bd         = result?.import_cost
+  const elig       = result?.serbia_eligibility
+  const eligColor  = elig ? (ELIGIBILITY_COLORS[elig.eligible_status] || '#F97316') : '#F97316'
   const portalName = result?.source === 'autoscout24' ? 'AutoScout24' : 'Mobile.de'
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 80 }}>
-      <div className="container" style={{ maxWidth: 720, padding: '32px 16px 0' }}>
+      <style>{`
+        @media(max-width:768px){
+          .az-hero { padding: 20px 16px 0 !important; }
+          .az-title-desktop { display: none !important; }
+          .az-title-mobile  { display: block !important; }
+          .az-card { padding: 16px !important; border-radius: 14px !important; }
+          .az-trust { display: flex !important; }
+          .az-container { max-width: 100% !important; padding: 0 12px !important; }
+        }
+        @media(min-width:769px){
+          .az-title-mobile { display: none !important; }
+          .az-trust { display: none !important; }
+        }
+        .az-title-mobile { display: none; }
+        .az-trust { display: none; }
+      `}</style>
 
-        <div style={{ marginBottom: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Syne,sans-serif', margin: '0 0 10px', lineHeight: 1.2 }}>
+      <div className="container az-container" style={{ maxWidth: 720, padding: '32px 16px 0' }}>
+
+        {/* Hero — desktop */}
+        <div className="az-hero" style={{ marginBottom: 28, textAlign: 'center', padding: '32px 16px 0' }}>
+          <div style={{ fontSize: 38, marginBottom: 10 }}>🔍</div>
+
+          {/* Desktop naslov */}
+          <h1 className="az-title-desktop" style={{ fontSize: 26, fontWeight: 800, fontFamily: 'Syne,sans-serif', margin: '0 0 10px', lineHeight: 1.2 }}>
             Proveri oglas pre kupovine
           </h1>
-          <p style={{ fontSize: 15, color: 'var(--text2)', margin: 0, lineHeight: 1.6 }}>
-            Ubaci link sa AutoScout24 ili Mobile.de i saznaj da li se auto isplati za uvoz u Srbiju.
+
+          {/* Mobile naslov */}
+          <h1 className="az-title-mobile" style={{ fontSize: 24, fontWeight: 800, fontFamily: 'Syne,sans-serif', margin: '0 0 6px', lineHeight: 1.2 }}>
+            Proveri auto iz EU
+          </h1>
+
+          <p style={{ fontSize: 14, color: 'var(--text2)', margin: 0, lineHeight: 1.5 }}>
+            Zalepi link sa AutoScout24 ili Mobile.de — AI analizira za Srbiju.
           </p>
         </div>
 
-        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 24 }}>
+        {/* Input kartica */}
+        <div className="az-card" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.08em', fontWeight: 600, marginBottom: 8 }}>LINK OGLASA</div>
           <input
             value={url} onChange={e => setUrl(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && analyze()}
             placeholder="Zalepi link oglasa ovde…"
-            style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: '13px 16px', color: 'var(--text)', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 6 }}
+            style={{
+              width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)',
+              borderRadius: 10, padding: '13px 16px', color: 'var(--text)',
+              fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+              marginBottom: 10,
+            }}
           />
-          <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 14px' }}>Podržani portali: autoscout24.com · mobile.de</p>
           <button onClick={analyze} disabled={loading || !url.trim()} style={{
-            width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+            width: '100%', padding: '15px', borderRadius: 12, border: 'none',
             background: (!url.trim() || loading) ? 'var(--bg3)' : 'var(--accent)',
             color: (!url.trim() || loading) ? 'var(--text3)' : '#fff',
-            fontSize: 15, fontWeight: 700, cursor: (!url.trim() || loading) ? 'default' : 'pointer',
+            fontSize: 16, fontWeight: 800, cursor: (!url.trim() || loading) ? 'default' : 'pointer',
+            letterSpacing: '.01em',
           }}>
-            {loading ? '⏳ Analiziram oglas…' : '🔍 Analiziraj oglas'}
+            {loading ? '⏳ Analiziram oglas…' : '🔍 ANALIZIRAJ OGLAS'}
           </button>
+
+          {/* Trust badges — mobile only */}
+          <div className="az-trust" style={{ gap: 12, marginTop: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {['✓ Uvoz u Srbiju', '✓ AI procena cene', '✓ Carina i PDV'].map(t => (
+              <span key={t} style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500 }}>{t}</span>
+            ))}
+          </div>
+
+          <p style={{ fontSize: 11, color: 'var(--text3)', margin: '10px 0 0', textAlign: 'center' }}>
+            autoscout24.com · mobile.de
+          </p>
         </div>
 
         {error && (
-          <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 12, padding: 16, marginBottom: 20, color: '#EF4444', fontSize: 14 }}>
+          <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 12, padding: 14, marginBottom: 16, color: '#EF4444', fontSize: 14 }}>
             ⚠️ {error}
           </div>
         )}
@@ -141,20 +184,21 @@ export default function AnalyzePage() {
         )}
 
         {result && result.scrape_success && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
+            {/* Slika + info */}
             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
               {result.images?.[0] && (
-                <div style={{ height: 220, overflow: 'hidden', position: 'relative' }}>
+                <div style={{ height: 210, overflow: 'hidden', position: 'relative' }}>
                   <img src={result.images[0]} alt={result.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,.7)', borderRadius: 6, padding: '3px 10px', fontSize: 11, color: 'rgba(255,255,255,.7)' }}>{result.source}</span>
                 </div>
               )}
-              <div style={{ padding: '16px 18px' }}>
-                <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 8px', fontFamily: 'Syne,sans-serif', lineHeight: 1.3 }}>
+              <div style={{ padding: '14px 16px' }}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 8px', fontFamily: 'Syne,sans-serif', lineHeight: 1.3 }}>
                   {result.title || `${result.year || ''} vozilo`}
                 </h2>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 13, color: 'var(--text3)' }}>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 13, color: 'var(--text3)' }}>
                   {result.year            && <span>📅 {result.year}</span>}
                   {fmtKm(result.mileage)  && <span>🛣 {fmtKm(result.mileage)}</span>}
                   {result.fuel_type       && <span>⛽ {FUEL_LABELS[result.fuel_type] || result.fuel_type}</span>}
@@ -164,30 +208,33 @@ export default function AnalyzePage() {
               </div>
             </div>
 
-            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* EU cena */}
+            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 14, color: 'var(--text3)', fontWeight: 600 }}>EU cena</span>
-              <span style={{ fontSize: 24, fontWeight: 800 }}>{result.price ? `${fmt(result.price)} €` : 'Na upit'}</span>
+              <span style={{ fontSize: 22, fontWeight: 800 }}>{result.price ? `${fmt(result.price)} €` : 'Na upit'}</span>
             </div>
 
+            {/* Uvoz u Srbiju */}
             {elig && (
-              <div style={{ background: `${eligColor}11`, border: `1px solid ${eligColor}33`, borderRadius: 16, padding: '16px 18px' }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>UVOZ U SRBIJU</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: eligColor, marginBottom: 8 }}>{elig.emoji} {elig.label}</div>
-                <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 10px', lineHeight: 1.6 }}>{elig.reason}</p>
+              <div style={{ background: `${eligColor}11`, border: `1px solid ${eligColor}33`, borderRadius: 16, padding: '14px 16px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 6 }}>UVOZ U SRBIJU</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: eligColor, marginBottom: 6 }}>{elig.emoji} {elig.label}</div>
+                <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 8px', lineHeight: 1.5 }}>{elig.reason}</p>
                 {elig.warnings?.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {elig.warnings.map((w: string, i: number) => (
-                      <div key={i} style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.5, paddingLeft: 12, borderLeft: `2px solid ${eligColor}55` }}>{w}</div>
+                      <div key={i} style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.5, paddingLeft: 10, borderLeft: `2px solid ${eligColor}55` }}>{w}</div>
                     ))}
                   </div>
                 )}
               </div>
             )}
 
+            {/* Trošak uvoza */}
             {bd && (
-              <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 16, padding: '16px 18px' }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>🇷🇸 TROŠAK UVOZA U SRBIJU</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--accent)', marginBottom: 16 }}>{fmt(bd.total)} €</div>
+              <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 16, padding: '14px 16px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 6 }}>🇷🇸 TROŠAK UVOZA U SRBIJU</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent)', marginBottom: 14 }}>{fmt(bd.total)} €</div>
                 {[
                   { label: 'EU cena', val: bd.eu_price, note: '' },
                   { label: `Carina (${bd.carina_pct}%)`, val: bd.carina, note: bd.carina_pct === 0 ? 'oslobođeno' : 'srbija' },
@@ -195,57 +242,59 @@ export default function AnalyzePage() {
                   { label: 'Transport EU→RS', val: bd.transport, note: 'procena' },
                   { label: 'Registracija', val: bd.registration, note: 'procena' },
                 ].map(({ label, val, note }, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.05)' }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.05)' }}>
                     <span style={{ fontSize: 13, color: i === 0 ? 'var(--text2)' : 'var(--text3)' }}>
-                      {i > 0 && '+ '}{label}{note && <span style={{ fontSize: 10, marginLeft: 6, opacity: .5 }}>({note})</span>}
+                      {i > 0 && '+ '}{label}{note && <span style={{ fontSize: 10, marginLeft: 5, opacity: .5 }}>({note})</span>}
                     </span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: i === 0 ? 'var(--text2)' : '#fb923c' }}>
                       {i === 0 ? '' : '+'}{fmt(val)} €
                     </span>
                   </div>
                 ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,107,0,.25)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,107,0,.25)' }}>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Ukupno za Srbiju</span>
-                  <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--accent)' }}>{fmt(bd.total)} €</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>{fmt(bd.total)} €</span>
                 </div>
               </div>
             )}
 
+            {/* Rizici */}
             {result.risk_warnings?.length > 0 && (
-              <div style={{ background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.2)', borderRadius: 16, padding: '16px 18px' }}>
-                <div style={{ fontSize: 11, color: '#EF4444', letterSpacing: '.07em', fontWeight: 600, marginBottom: 10 }}>⚠️ RIZICI I UPOZORENJA</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div style={{ background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.2)', borderRadius: 16, padding: '14px 16px' }}>
+                <div style={{ fontSize: 11, color: '#EF4444', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>⚠️ RIZICI I UPOZORENJA</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {result.risk_warnings.map((w: string, i: number) => (
-                    <div key={i} style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, paddingLeft: 12, borderLeft: '2px solid rgba(239,68,68,.4)' }}>{w}</div>
+                    <div key={i} style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, paddingLeft: 10, borderLeft: '2px solid rgba(239,68,68,.4)' }}>{w}</div>
                   ))}
                 </div>
               </div>
             )}
 
+            {/* Oprema */}
             {result.features?.length > 0 && (
-              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 18px' }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 12 }}>OPREMA ({result.features.length} stavki)</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 10 }}>OPREMA ({result.features.length} stavki)</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                   {result.features.slice(0, 20).map((f: string, i: number) => (
-                    <span key={i} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 20, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text3)' }}>{f}</span>
+                    <span key={i} style={{ fontSize: 11, padding: '4px 9px', borderRadius: 20, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text3)' }}>{f}</span>
                   ))}
-                  {result.features.length > 20 && <span style={{ fontSize: 11, color: 'var(--text3)', padding: '4px 10px' }}>+{result.features.length - 20} više</span>}
+                  {result.features.length > 20 && <span style={{ fontSize: 11, color: 'var(--text3)', padding: '4px 9px' }}>+{result.features.length - 20} više</span>}
                 </div>
               </div>
             )}
 
             {/* Kontakt prodavca */}
-            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '18px 18px' }}>
+            <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px' }}>
               <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 4 }}>🤖 KONTAKTIRAJ PRODAVCA</div>
-              <p style={{ fontSize: 13, color: 'var(--text3)', margin: '0 0 14px', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 13, color: 'var(--text3)', margin: '0 0 12px', lineHeight: 1.5 }}>
                 AI generiše poruku na jeziku prodavca ({result.seller_language || 'Deutsch'}).
               </p>
 
               <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.06em', marginBottom: 8 }}>BRZA PITANJA</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                 {QUICK_QUESTIONS.map(q => (
                   <button key={q} onClick={() => setSelected(s => s.includes(q) ? s.filter(x => x !== q) : [...s, q])} style={{
-                    padding: '6px 12px', borderRadius: 20, fontSize: 12,
+                    padding: '6px 11px', borderRadius: 20, fontSize: 12,
                     background: selected.includes(q) ? 'rgba(255,107,0,.14)' : 'var(--bg3)',
                     border: `1px solid ${selected.includes(q) ? 'var(--accent)' : 'var(--border)'}`,
                     color: selected.includes(q) ? 'var(--accent)' : 'var(--text2)',
@@ -259,7 +308,7 @@ export default function AnalyzePage() {
                 value={custom} onChange={e => setCustom(e.target.value)}
                 placeholder='npr. "Pitaj da li je moguć uvoz u Srbiju..."'
                 rows={2}
-                style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 12 }}
+                style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 13px', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 10 }}
               />
 
               <button onClick={generateMessage} disabled={msgLoad || (!selected.length && !custom.trim())} style={{
@@ -275,7 +324,7 @@ export default function AnalyzePage() {
 
               {message && (
                 <div>
-                  <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.75, color: 'var(--text2)', whiteSpace: 'pre-wrap', marginBottom: 10 }}>
+                  <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: 13, fontSize: 13, lineHeight: 1.75, color: 'var(--text2)', whiteSpace: 'pre-wrap', marginBottom: 10 }}>
                     {message}
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -293,12 +342,11 @@ export default function AnalyzePage() {
                     }}>📧 Gmail</button>
                   </div>
                   <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 10px', textAlign: 'center' }}>
-                    Poruka je generisana AI-om — preporučujemo da je pregledate pre slanja.
+                    Poruka generisana AI-om — pregledajte pre slanja.
                   </p>
                 </div>
               )}
 
-              {/* Dugmad za kontakt na portalu */}
               <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
                 display: 'block', width: '100%', padding: '12px',
                 background: 'rgba(99,102,241,.15)', border: '1px solid rgba(99,102,241,.4)',
