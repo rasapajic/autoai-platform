@@ -58,14 +58,10 @@ function formatMileage(raw: any): string | null {
   return km.toLocaleString('de-DE') + ' km'
 }
 
-function fullImg(url: string): string {
-  if (!url) return url
-  return url
-    .replace('/250x188.webp', '/1080x810.webp')
-    .replace('/250x188.jpg',  '/1080x810.jpg')
-    .replace('/400x300.webp', '/1080x810.webp')
-    .replace('/400x300.jpg',  '/1080x810.jpg')
-}
+.replace('/250x188.webp', '/800x600.webp')
+.replace('/250x188.jpg',  '/800x600.jpg')
+.replace('/400x300.webp', '/800x600.webp')
+.replace('/400x300.jpg',  '/800x600.jpg')
 
 function getSerbiaEligibility(listing: any) {
   const year = listing.year ? Number(listing.year) : null
