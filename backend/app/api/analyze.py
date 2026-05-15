@@ -29,6 +29,10 @@ COUNTRY_LANG: dict[str, str] = {
 class AnalyzeRequest(BaseModel):
     url: str
 
+class AnalyzeTextRequest(BaseModel):
+    text: str
+    url: Optional[str] = None
+
 
 def _detect_source(url: str) -> Optional[str]:
     if "autoscout24" in url:
@@ -246,7 +250,6 @@ async def _scrape_autoscout24(url: str) -> dict:
 
 MDE_JS = r"""
 () => {
-    // 1. JSON-LD — najpouzdanije
     const ldScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
     let ldData = null;
     for (const s of ldScripts) {
@@ -258,7 +261,6 @@ MDE_JS = r"""
         } catch {}
     }
 
-    // 2. Cijena
     const priceSelectors = [
         '[data-testid="prime-price"]',
         '[class*="price-block"] [class*="price"]',
@@ -277,12 +279,10 @@ MDE_JS = r"""
         price_raw = ldData.offers.price + ' €';
     }
 
-    // 3. Naslov
     const title = ldData?.name
         || document.querySelector('h1[class*="title"], h1[class*="listing"], h1')?.textContent?.trim()
         || '';
 
-    // 4. Slike
     const imgSelectors = [
         '[class*="gallery"] img',
         '[class*="Gallery"] img',
@@ -302,7 +302,6 @@ MDE_JS = r"""
         images = Array.isArray(ldData.image) ? ldData.image : [ldData.image];
     }
 
-    // 5. Specifikacije
     const specs = {};
     document.querySelectorAll('[class*="DataTable"] tr, [class*="data-table"] tr, dl, [class*="specs"] li, table tr').forEach(row => {
         const cells = row.querySelectorAll('td, dt, dd, th');
@@ -313,12 +312,10 @@ MDE_JS = r"""
         }
     });
 
-    // 6. Lokacija
     const loc = document.querySelector(
         '[data-testid="seller-location"], [class*="seller-location"], [class*="SellerInfo"] address, [class*="location"]'
     )?.textContent?.trim() || '';
 
-    // 7. Oprema
     const features = Array.from(document.querySelectorAll(
         '[class*="equipment"] li, [class*="features"] li, [class*="highlight"] li'
     )).map(e => e.textContent.trim()).filter(Boolean);
@@ -335,7 +332,6 @@ async def _scrape_mobile_de(url: str) -> dict:
         page = await scraper.get_page(url, wait_for="domcontentloaded")
         if not page:
             raise RuntimeError("Stranica nije učitana")
-        # Čekaj JS render
         await asyncio.sleep(3)
         try:
             raw = await page.evaluate(MDE_JS)
@@ -451,7 +447,6 @@ async def analyze_url(req: AnalyzeRequest):
 
     price       = data.get("price")
     import_cost = _calc_import_cost(price, eligibility.carina_pct) if price else None
-
     seller_lang = COUNTRY_LANG.get(data.get("country") or "", "Deutsch")
 
     risk_warnings: list[str] = list(eligibility.warnings)
@@ -478,6 +473,88 @@ async def analyze_url(req: AnalyzeRequest):
         "images":             data.get("images", []),
         "description":        data.get("description"),
         "features":           data.get("features", []),
+        "serbia_eligibility": eligibility.to_dict(),
+        "import_cost":        import_cost,
+        "seller_language":    seller_lang,
+        "risk_warnings":      risk_warnings,
+    }
+
+
+@router.post("/from-text")
+async def analyze_from_text(req: AnalyzeTextRequest):
+    """Analizira oglas iz zalijepljenog teksta koristeći Claude AI."""
+    import json
+    import anthropic
+
+    if not req.text or len(req.text.strip()) < 30:
+        raise HTTPException(400, detail="Tekst je prekratak. Zalijepi kompletan tekst oglasa.")
+
+    try:
+        client = anthropic.AsyncAnthropic()
+        response = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=800,
+            messages=[{
+                "role": "user",
+                "content": f"""Izvuci podatke o vozilu iz ovog teksta oglasa. Vrati SAMO validan JSON, bez ikakvog drugog teksta.
+
+Tekst oglasa:
+{req.text[:4000]}
+
+Vrati JSON sa ovim poljima (null ako nije pronađeno):
+{{
+  "title": "pun naziv vozila",
+  "year": 2019,
+  "price": 26900,
+  "mileage": 74125,
+  "fuel_type": "diesel ili petrol ili electric ili hybrid ili lpg",
+  "engine_power_kw": 110,
+  "country": "DE",
+  "city": "naziv grada"
+}}"""
+            }]
+        )
+        text = response.content[0].text.strip()
+        text = re.sub(r"```json|```", "", text).strip()
+        data = json.loads(text)
+    except Exception as e:
+        logger.error(f"[analyze/from-text] AI error: {e}")
+        raise HTTPException(500, detail="Greška pri AI analizi teksta. Pokušaj ponovo.")
+
+    from app.core.serbia_import_rules import check_serbia_eligibility
+    eligibility = check_serbia_eligibility(
+        year      = data.get("year"),
+        fuel_type = data.get("fuel_type"),
+    )
+
+    price       = data.get("price")
+    import_cost = _calc_import_cost(price, eligibility.carina_pct) if price else None
+    seller_lang = COUNTRY_LANG.get(data.get("country") or "", "Deutsch")
+
+    risk_warnings: list[str] = list(eligibility.warnings)
+    mileage = data.get("mileage")
+    if mileage and mileage > 200_000:
+        risk_warnings.append(f"Visoka kilometraža ({mileage:,} km) — provjeri stanje motora.")
+    if not data.get("year"):
+        risk_warnings.append("Godište nije pronađeno u tekstu.")
+    if data.get("fuel_type") == "diesel":
+        risk_warnings.append("Dizel vozilo — provjeri stanje DPF filtera i turbine.")
+
+    return {
+        "scrape_success":     True,
+        "url":                req.url or "",
+        "source":             "text_input",
+        "title":              data.get("title"),
+        "year":               data.get("year"),
+        "price":              price,
+        "mileage":            mileage,
+        "fuel_type":          data.get("fuel_type"),
+        "engine_power_kw":    data.get("engine_power_kw"),
+        "country":            data.get("country"),
+        "city":               data.get("city"),
+        "images":             [],
+        "description":        None,
+        "features":           [],
         "serbia_eligibility": eligibility.to_dict(),
         "import_cost":        import_cost,
         "seller_language":    seller_lang,
