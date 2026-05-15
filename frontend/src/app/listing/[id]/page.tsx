@@ -119,6 +119,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const eligColor = ELIGIBILITY_COLORS[elig.status] || '#F97316'
   const price     = listing.price ? Number(listing.price) : null
   const bd        = price ? calcImport(price, elig.carinaPct) : null
+  const missingData = !listing.year || !listing.mileage
 
   const specs = [
     { label: 'Godište',     value: listing.year },
@@ -132,21 +133,17 @@ export default function ListingPage({ params }: { params: { id: string } }) {
     { label: 'Stanje',      value: listing.accident_free ? '✅ Bez udesa' : null },
   ].filter(s => s.value)
 
-  const missingData = !listing.year || !listing.mileage
-
   return (
     <div style={{ padding: '32px 0 80px' }}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
       <div className="container">
 
-        {/* Breadcrumb */}
         <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>
           <a href="/" style={{ color: 'var(--text3)' }}>Početna</a> →{' '}
           <a href="/search" style={{ color: 'var(--text3)' }}>Pretraga</a> →{' '}
           <span style={{ color: 'var(--text)' }}>{listing.make} {listing.model}</span>
         </div>
 
-        {/* Missing data banner */}
         {missingData && !refreshed && (
           <div style={{
             background: 'rgba(255,107,0,.08)', border: '1px solid rgba(255,107,0,.25)',
@@ -182,9 +179,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 28, alignItems: 'start' }}>
 
-          {/* ── Left column ── */}
           <div>
-            {/* Gallery */}
             <div style={{ marginBottom: 24 }}>
               <div style={{ height: 420, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8 }}>
                 {images[activeImg]
@@ -211,7 +206,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {/* Specs */}
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
               <h2 style={{ fontSize:16, marginBottom:16 }}>Specifikacije</h2>
               {specs.length > 0 ? (
@@ -240,7 +234,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {/* Description */}
             {listing.description && (
               <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
                 <h2 style={{ fontSize:16, marginBottom:12 }}>Opis</h2>
@@ -248,7 +241,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {/* Features */}
             {listing.features?.length > 0 && (
               <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
                 <h2 style={{ fontSize:16, marginBottom:16 }}>Oprema ({listing.features.length})</h2>
@@ -260,7 +252,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {/* Price history */}
             {history.length > 1 && (
               <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
                 <h2 style={{ fontSize:16, marginBottom:16 }}>Istorija cene</h2>
@@ -268,7 +259,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {/* Similar */}
             {similar.length > 0 && (
               <div style={{ marginBottom: 20 }}>
                 <h2 style={{ fontSize:16, marginBottom:16 }}>Slični oglasi</h2>
@@ -299,10 +289,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             )}
           </div>
 
-          {/* ── Right sidebar ── */}
           <div style={{ position:'sticky', top:80, display:'flex', flexDirection:'column', gap:14 }}>
 
-            {/* Price card */}
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:22 }}>
               <h1 style={{ fontSize:20, marginBottom:4, fontFamily:'Syne,sans-serif' }}>{listing.make} {listing.model}</h1>
               {listing.year && <div style={{ color:'var(--text3)', fontSize:13, marginBottom:10 }}>Godište: {listing.year}</div>}
@@ -363,7 +351,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </button>
             </div>
 
-            {/* Uvoz u Srbiju */}
             <div style={{ background:`${eligColor}11`, border:`1px solid ${eligColor}33`, borderRadius:'var(--radius)', padding:18 }}>
               <div style={{ fontSize:11, color:'var(--text3)', letterSpacing:'.07em', fontWeight:600, marginBottom:6 }}>UVOZ U SRBIJU</div>
               <div style={{ fontSize:15, fontWeight:800, color:eligColor, marginBottom:6 }}>{elig.emoji} {elig.label}</div>
@@ -378,7 +365,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {/* Trošak uvoza */}
             {bd && (
               <div style={{ background:'rgba(255,107,0,.07)', border:'1px solid rgba(255,107,0,.2)', borderRadius:'var(--radius)', overflow:'hidden' }}>
                 <button onClick={() => setShowBd(!showBd)} style={{
@@ -421,14 +407,13 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {/* Fraud check */}
             {fraud && (
               <div style={{
                 background:'var(--bg2)', border:`1px solid ${fraud.badge?.color+'40'||'var(--border)'}`,
                 borderRadius:'var(--radius)', padding:18,
               }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                  <h3 style={{ fontSize:13, fontWeight:600 }}>Provjera prevare</h3>
+                  <h3 style={{ fontSize:13, fontWeight:600 }}>Provera prevare</h3>
                   <span style={{
                     fontSize:11, padding:'3px 10px', borderRadius:20,
                     background: fraud.badge?.color+'20', color: fraud.badge?.color,
