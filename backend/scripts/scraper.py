@@ -100,7 +100,7 @@ def run_polovni():
         print(f"  Homepage timeout: {e}")
     base_url = "https://www.polovniautomobili.com/auto-oglasi/pretraga?page={}&sort=basic&without_price=1"
     total = 0
-    for page in range(1, 11):
+    for page in range(1, 51):
         url      = base_url.format(page)
         print(f"Scraping page {page}...")
         listings = scrape_polovni_page(url, session)
@@ -156,7 +156,7 @@ async def run_autoscout24():
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
         scraper  = AutoScout24Scraper()
-        listings = await scraper.scrape_listings({}, max_pages=10)
+        listings = await scraper.scrape_listings({}, max_pages=50)
         print(f"  AutoScout24 DE pronadjeno: {len(listings)}")
         saved = save_listings(listings)
         print(f"  AutoScout24 DE saved: {saved}")
@@ -172,7 +172,7 @@ async def run_autoscout24_at():
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
         scraper  = AutoScout24Scraper()
-        listings = await scraper.scrape_listings({"country": "A"}, max_pages=10)
+        listings = await scraper.scrape_listings({"country": "A"}, max_pages=50)
         print(f"  AutoScout24 AT pronadjeno: {len(listings)}")
         saved = save_listings(listings)
         print(f"  AutoScout24 AT saved: {saved}")
@@ -188,7 +188,7 @@ async def run_mobile_de():
         sys.path.insert(0, '/app')
         from app.scrapers.mobile_de import MobileDeScraper
         scraper  = MobileDeScraper()
-        listings = await scraper.scrape_listings({}, max_pages=10)
+        listings = await scraper.scrape_listings({}, max_pages=50)
         print(f"  Mobile.de pronadjeno: {len(listings)}")
         saved = save_listings(listings)
         print(f"  Mobile.de saved: {saved}")
