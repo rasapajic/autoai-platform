@@ -7,6 +7,7 @@ za uvoz u Srbiju.
 """
 
 import re
+import asyncio
 import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -245,44 +246,97 @@ async def _scrape_autoscout24(url: str) -> dict:
 
 MDE_JS = r"""
 () => {
-    const get = sel => document.querySelector(sel)?.textContent?.trim() || '';
+    // 1. JSON-LD — najpouzdanije
+    const ldScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+    let ldData = null;
+    for (const s of ldScripts) {
+        try {
+            const d = JSON.parse(s.textContent);
+            if (d['@type'] === 'Car' || d['@type'] === 'Vehicle' || d.offers) {
+                ldData = d; break;
+            }
+        } catch {}
+    }
 
-    const title = get('h1.listing-title, h1[class*="title"], h1') || '';
+    // 2. Cijena
+    const priceSelectors = [
+        '[data-testid="prime-price"]',
+        '[class*="price-block"] [class*="price"]',
+        '[class*="PriceBlock"]',
+        '.price-rating__label',
+        'h2[class*="price"]',
+        '[class*="listing-price"]',
+        '[class*="price"]',
+    ];
+    let price_raw = '';
+    for (const sel of priceSelectors) {
+        const el = document.querySelector(sel);
+        if (el && el.textContent.includes('€')) { price_raw = el.textContent.trim(); break; }
+    }
+    if (!price_raw && ldData?.offers?.price) {
+        price_raw = ldData.offers.price + ' €';
+    }
 
-    const price_raw = get(
-        '[data-testid="prime-price"], .listing-price, [class*="price"], .g-col-12 .u-text-grey'
-    );
+    // 3. Naslov
+    const title = ldData?.name
+        || document.querySelector('h1[class*="title"], h1[class*="listing"], h1')?.textContent?.trim()
+        || '';
 
+    // 4. Slike
+    const imgSelectors = [
+        '[class*="gallery"] img',
+        '[class*="Gallery"] img',
+        '[class*="image-gallery"] img',
+        '.media-gallery img',
+        'img[class*="main"]',
+        'img[class*="vehicle"]',
+    ];
+    let images = [];
+    for (const sel of imgSelectors) {
+        const imgs = Array.from(document.querySelectorAll(sel))
+            .map(i => i.src || i.getAttribute('data-src') || i.getAttribute('data-lazy') || '')
+            .filter(s => s && s.startsWith('http') && !s.includes('placeholder') && !s.includes('logo'));
+        if (imgs.length > 0) { images = imgs.slice(0, 12); break; }
+    }
+    if (images.length === 0 && ldData?.image) {
+        images = Array.isArray(ldData.image) ? ldData.image : [ldData.image];
+    }
+
+    // 5. Specifikacije
     const specs = {};
-    document.querySelectorAll('[class*="DataTable"] tr, .listing-details tr, dl').forEach(row => {
-        const cells = row.querySelectorAll('td, dt, dd');
+    document.querySelectorAll('[class*="DataTable"] tr, [class*="data-table"] tr, dl, [class*="specs"] li, table tr').forEach(row => {
+        const cells = row.querySelectorAll('td, dt, dd, th');
         if (cells.length >= 2) {
-            specs[cells[0].textContent.trim()] = cells[1].textContent.trim();
+            const k = cells[0].textContent.trim();
+            const v = cells[1].textContent.trim();
+            if (k && v && k.length < 50) specs[k] = v;
         }
     });
 
-    const loc = get('[data-testid="seller-location"], [class*="seller-location"], [class*="location"]');
+    // 6. Lokacija
+    const loc = document.querySelector(
+        '[data-testid="seller-location"], [class*="seller-location"], [class*="SellerInfo"] address, [class*="location"]'
+    )?.textContent?.trim() || '';
 
-    const images = Array.from(document.querySelectorAll(
-        '[class*="gallery"] img, [class*="Gallery"] img, .listing-images img'
-    )).map(i => i.src || i.getAttribute('data-src')).filter(s => s && s.startsWith('http'));
-
+    // 7. Oprema
     const features = Array.from(document.querySelectorAll(
-        '[class*="equipment"] li, [class*="features"] li, .listing-features li'
+        '[class*="equipment"] li, [class*="features"] li, [class*="highlight"] li'
     )).map(e => e.textContent.trim()).filter(Boolean);
 
-    const pageText = document.body.innerText || '';
+    const pageText = (document.body.innerText || '').slice(0, 6000);
 
-    return { title, price_raw, specs, location_raw: loc, images: images.slice(0,12), features, pageText };
+    return { title, price_raw, specs, location_raw: loc, images, ldData, features, pageText };
 }
 """
 
 async def _scrape_mobile_de(url: str) -> dict:
     from app.scrapers.mobile_de import MobileDeScraper
     async with MobileDeScraper() as scraper:
-        page = await scraper.get_page(url, wait_for=None)
+        page = await scraper.get_page(url, wait_for="domcontentloaded")
         if not page:
             raise RuntimeError("Stranica nije učitana")
+        # Čekaj JS render
+        await asyncio.sleep(3)
         try:
             raw = await page.evaluate(MDE_JS)
         finally:
@@ -290,8 +344,11 @@ async def _scrape_mobile_de(url: str) -> dict:
 
     specs     = raw.get("specs", {})
     page_text = raw.get("pageText", "")
+    ld        = raw.get("ldData") or {}
 
     price = _parse_price(raw.get("price_raw", ""))
+    if not price and ld.get("offers", {}).get("price"):
+        price = _parse_price(str(ld["offers"]["price"]))
 
     year = None
     for k, v in specs.items():
@@ -299,6 +356,8 @@ async def _scrape_mobile_de(url: str) -> dict:
             year = _parse_year(v)
             if year:
                 break
+    if not year and ld.get("vehicleModelDate"):
+        year = _parse_year(str(ld["vehicleModelDate"]))
     if not year:
         year = _parse_year(page_text[:2000])
 
@@ -308,6 +367,8 @@ async def _scrape_mobile_de(url: str) -> dict:
             mileage = _parse_mileage(v)
             if mileage:
                 break
+    if not mileage and ld.get("mileageFromOdometer", {}).get("value"):
+        mileage = _parse_mileage(str(ld["mileageFromOdometer"]["value"]))
     if not mileage:
         km_m = re.search(r"([\d.,]+)\s*km", page_text[:3000])
         if km_m:
@@ -315,10 +376,12 @@ async def _scrape_mobile_de(url: str) -> dict:
 
     fuel_type = None
     for k, v in specs.items():
-        if "kraft" in k.lower() or "fuel" in k.lower() or "energie" in k.lower():
+        if any(x in k.lower() for x in ["kraft", "fuel", "energie", "antrieb"]):
             fuel_type = _normalize_fuel(v)
             if fuel_type:
                 break
+    if not fuel_type and ld.get("fuelType"):
+        fuel_type = _normalize_fuel(ld["fuelType"])
     if not fuel_type:
         fuel_type = _normalize_fuel(page_text[:2000])
 
@@ -337,8 +400,10 @@ async def _scrape_mobile_de(url: str) -> dict:
         if parts:
             city = parts[0]
 
+    title = raw.get("title", "") or ld.get("name", "")
+
     return {
-        "title":           raw.get("title", ""),
+        "title":           title,
         "price":           price,
         "year":            year,
         "mileage":         mileage,
@@ -347,7 +412,7 @@ async def _scrape_mobile_de(url: str) -> dict:
         "country":         country,
         "city":            city,
         "images":          raw.get("images", []),
-        "description":     None,
+        "description":     ld.get("description"),
         "features":        raw.get("features", []),
     }
 
