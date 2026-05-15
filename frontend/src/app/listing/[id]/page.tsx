@@ -38,9 +38,20 @@ function calcImport(price: number, carinaPct: number) {
 }
 
 function fmt(n: any) { return Number(n).toLocaleString('de-DE') }
+
 function fmtKm(km: any): string | null {
-  const n = Number(km); if (!n || n < 1 || n > 999999) return null
+  const n = Number(km)
+  if (!n || n < 1 || n > 999999) return null
   return n.toLocaleString('de-DE') + ' km'
+}
+
+function fullImg(url: string): string {
+  if (!url) return url
+  return url
+    .replace('/250x188.webp', '/1080x810.webp')
+    .replace('/250x188.jpg',  '/1080x810.jpg')
+    .replace('/400x300.webp', '/1080x810.webp')
+    .replace('/400x300.jpg',  '/1080x810.jpg')
 }
 
 export default function ListingPage({ params }: { params: { id: string } }) {
@@ -71,12 +82,12 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   if (loading) return <PageSkeleton />
   if (!listing) return <div style={{ textAlign:'center', padding:'80px 0', color:'var(--text3)' }}>Oglas nije pronađen.</div>
 
-  const images     = listing.images || []
-  const deltaGood  = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
-  const elig       = getSerbiaEligibility(listing)
-  const eligColor  = ELIGIBILITY_COLORS[elig.status] || '#F97316'
-  const price      = listing.price ? Number(listing.price) : null
-  const bd         = price ? calcImport(price, elig.carinaPct) : null
+  const images    = listing.images || []
+  const deltaGood = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
+  const elig      = getSerbiaEligibility(listing)
+  const eligColor = ELIGIBILITY_COLORS[elig.status] || '#F97316'
+  const price     = listing.price ? Number(listing.price) : null
+  const bd        = price ? calcImport(price, elig.carinaPct) : null
 
   const specs = [
     { label: 'Godište',     value: listing.year },
@@ -108,9 +119,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           <div>
             {/* Gallery */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ height: 380, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ height: 420, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8 }}>
                 {images[activeImg]
-                  ? <img src={images[activeImg]} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                  ? <img
+                      src={fullImg(images[activeImg])}
+                      alt={`${listing.make} ${listing.model}`}
+                      style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                      onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }}
+                    />
                   : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', fontSize:60 }}>🚗</div>
                 }
               </div>
@@ -118,7 +134,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 <div style={{ display:'flex', gap:8, overflowX:'auto' }}>
                   {images.slice(0, 10).map((img: string, i: number) => (
                     <div key={i} onClick={() => setActiveImg(i)} style={{
-                      width:72, height:52, flexShrink:0, borderRadius:8, overflow:'hidden', cursor:'pointer',
+                      width:80, height:58, flexShrink:0, borderRadius:8, overflow:'hidden', cursor:'pointer',
                       border: `2px solid ${activeImg === i ? 'var(--accent)' : 'transparent'}`,
                     }}>
                       <img src={img} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
@@ -175,7 +191,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* Similar */}
             {similar.length > 0 && (
-              <div>
+              <div style={{ marginBottom: 20 }}>
                 <h2 style={{ fontSize:16, marginBottom:16 }}>Slični oglasi</h2>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
                   {similar.slice(0, 4).map((s: any) => (
@@ -183,9 +199,10 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                       background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)',
                       overflow:'hidden', display:'block', textDecoration:'none',
                     }}>
-                      <div style={{ height:120, background:'var(--bg3)', overflow:'hidden' }}>
+                      <div style={{ height:130, background:'var(--bg3)', overflow:'hidden' }}>
                         {s.images?.[0]
-                          ? <img src={s.images[0]} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                          ? <img src={fullImg(s.images[0])} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                              onError={e => { (e.target as HTMLImageElement).src = s.images[0] }} />
                           : <div style={{ height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28 }}>🚗</div>
                         }
                       </div>
@@ -283,11 +300,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 {showBd && (
                   <div style={{ padding:'0 16px 14px', borderTop:'1px solid rgba(255,107,0,.15)' }}>
                     {[
-                      { label:'EU cena', val: price!, note:'' },
+                      { label:'EU cena',         val: price!,       note: '' },
                       { label:`Carina (${bd.carinaPct}%)`, val: bd.carina, note: bd.carinaPct===0?'oslobođeno':'srbija' },
-                      { label:'PDV (20%)', val: bd.pdv, note:'srbija' },
-                      { label:'Transport EU→RS', val: bd.transport, note:'procena' },
-                      { label:'Registracija', val: bd.reg, note:'procena' },
+                      { label:'PDV (20%)',        val: bd.pdv,       note: 'srbija' },
+                      { label:'Transport EU→RS',  val: bd.transport, note: 'procena' },
+                      { label:'Registracija',    val: bd.reg,       note: 'procena' },
                     ].map(({ label, val, note }, i) => (
                       <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderTop: i===0?'none':'1px solid rgba(255,255,255,.04)' }}>
                         <span style={{ fontSize:12, color: i===0?'var(--text2)':'var(--text3)' }}>
@@ -378,7 +395,7 @@ function PageSkeleton() {
     <div style={{ padding:'32px 0' }}>
       <div className="container" style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:28 }}>
         <div>
-          <div className="skeleton" style={{ height:380, borderRadius:12, marginBottom:8 }} />
+          <div className="skeleton" style={{ height:420, borderRadius:12, marginBottom:8 }} />
           <div className="skeleton" style={{ height:200, borderRadius:12, marginTop:16 }} />
         </div>
         <div><div className="skeleton" style={{ height:400, borderRadius:12 }} /></div>
