@@ -19,81 +19,6 @@ const AI_BADGES: Record<string, { label: string; color: string; bg: string }> = 
   high:       { label: '🟠 VISOKA CENA',      color: '#F97316', bg: 'rgba(249,115,22,.13)'  },
   overpriced: { label: '🔴 PREVISOKA CENA',   color: '#EF4444', bg: 'rgba(239,68,68,.13)'   },
 }
-
-interface EligibilityResult {
-  status:  'eligible' | 'needs_check' | 'not_recommended' | 'oldtimer'
-  emoji:   string
-  label:   string
-  reason:  string
-  warnings: string[]
-  carinaPct: number
-}
-
-function getSerbiaEligibility(listing: any): EligibilityResult {
-  const year      = listing.year ? Number(listing.year) : null
-  const fuel      = listing.fuel_type || null
-  const age       = year ? (2026 - year) : null
-
-  if (fuel === 'electric') {
-    return {
-      status: 'eligible', emoji: '🟢',
-      label: 'Može uvoz u Srbiju',
-      reason: 'Električna vozila se uvoze bez carine (0% carina).',
-      warnings: ['Provjeri kompatibilnost punjača (Tip 2 / CCS).'],
-      carinaPct: 0,
-    }
-  }
-
-  if (age !== null && age >= 30) {
-    return {
-      status: 'oldtimer', emoji: '🟣',
-      label: 'Oldtimer izuzetak',
-      reason: `Vozilo (${year}) je starije od 30 godina — poseban režim uvoza.`,
-      warnings: ['Registracija kao oldtimer uz poseban tehnički pregled.', 'Provjeriti propise MUP-a Srbije.'],
-      carinaPct: 5,
-    }
-  }
-
-  if (year) {
-    if (year >= 2011) return {
-      status: 'eligible', emoji: '🟢',
-      label: 'Može uvoz u Srbiju',
-      reason: `Vozilo (${year}) vjerovatno ispunjava Euro 5/6 — nema ograničenja.`,
-      warnings: ['Pribavi COC dokument za potvrdu Euro norme.'],
-      carinaPct: 5,
-    }
-    if (year >= 2006) return {
-      status: 'eligible', emoji: '🟢',
-      label: 'Može uvoz u Srbiju',
-      reason: `Vozilo (${year}) vjerovatno ispunjava Euro 4 normu.`,
-      warnings: ['Provjeri COC dokument — Euro 4 je minimum.', fuel === 'diesel' ? 'Provjeri stanje DPF filtera.' : ''].filter(Boolean),
-      carinaPct: 5,
-    }
-    if (year >= 2001) return {
-      status: 'needs_check', emoji: '🟠',
-      label: 'Potrebna dodatna provjera',
-      reason: `Vozilo (${year}) je vjerovatno Euro 3 — uvoz je moguć ali zahtijeva provjeru.`,
-      warnings: ['Provjeri Euro normu u COC dokumentu.', 'Konsultuj carinskog agenta ili MUP Srbije.'],
-      carinaPct: 5,
-    }
-    return {
-      status: 'not_recommended', emoji: '🔴',
-      label: 'Verovatno nije moguće / ne preporučuje se',
-      reason: `Vozilo (${year}) je vjerovatno Euro 1/2 — uvoz u Srbiju nije preporučljiv.`,
-      warnings: ['Stara vozila teško prolaze tehnički pregled.'],
-      carinaPct: 5,
-    }
-  }
-
-  return {
-    status: 'needs_check', emoji: '🟠',
-    label: 'Potrebna dodatna provjera',
-    reason: 'Nedostaju tehnički podaci (godište, Euro norma) za procjenu.',
-    warnings: ['Provjeri Euro normu u COC dokumentu.', 'Kontaktiraj prodavca za tehničke specifikacije.'],
-    carinaPct: 5,
-  }
-}
-
 const ELIGIBILITY_COLORS: Record<string, string> = {
   eligible:        '#22C55E',
   needs_check:     '#F97316',
@@ -131,6 +56,129 @@ function formatMileage(raw: any): string | null {
   const km = Number(raw)
   if (!km || km < 1 || km > 999999) return null
   return km.toLocaleString('de-DE') + ' km'
+}
+
+function fullImg(url: string): string {
+  if (!url) return url
+  return url
+    .replace('/250x188.webp', '/800x600.webp')
+    .replace('/250x188.jpg',  '/800x600.jpg')
+    .replace('/400x300.webp', '/800x600.webp')
+    .replace('/400x300.jpg',  '/800x600.jpg')
+}
+
+function getSerbiaEligibility(listing: any) {
+  const year = listing.year ? Number(listing.year) : null
+  const fuel = listing.fuel_type || null
+  const age  = year ? (2026 - year) : null
+
+  if (fuel === 'electric') return {
+    status: 'eligible', emoji: '🟢',
+    label: 'Može uvoz u Srbiju',
+    reason: 'Električna vozila se uvoze bez carine (0%). Potrebna COC dokumentacija.',
+    tooltip: 'Električna vozila su oslobođena carine pri uvozu u Srbiju.',
+    warnings: ['Proveri kompatibilnost punjača (Tip 2 / CCS).', 'Baterijska garancija može biti ograničena van EU.'],
+    carinaPct: 0,
+  }
+
+  if (age !== null && age >= 30) return {
+    status: 'oldtimer', emoji: '🟣',
+    label: 'Oldtimer izuzetak',
+    reason: `Vozilo (${year}) starije od 30 godina — poseban režim uvoza.`,
+    tooltip: 'Oldtimer vozila mogu se uvesti pod posebnim uslovima.',
+    warnings: ['Registracija kao oldtimer zahteva poseban tehnički pregled.', 'Proveri propise MUP-a Srbije za oldtimer tablice.'],
+    carinaPct: 5,
+  }
+
+  if (!year) {
+    const fuelNote = fuel === 'diesel'
+      ? 'Dizel vozila zahtevaju posebnu proveru DPF filtera i Euro norme.'
+      : fuel === 'petrol'
+      ? 'Benzinska vozila — potrebno proveriti Euro normu.'
+      : 'Gorivo nepoznato — potrebna kompletna tehnička dokumentacija.'
+    return {
+      status: 'needs_check', emoji: '🟠',
+      label: 'Nepoznato godište — Euro norma neprovjerljiva',
+      reason: `Godište nije dostupno u oglasu. ${fuelNote}`,
+      tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru pre uvoza u Srbiju.',
+      warnings: [
+        'Zatraži od prodavca datum prve registracije i COC dokument.',
+        'Bez potvrde Euro norme može nastati problem pri carinjenju.',
+      ],
+      carinaPct: 5,
+    }
+  }
+
+  if (year >= 2015) return {
+    status: 'eligible', emoji: '🟢',
+    label: 'Može uvoz u Srbiju',
+    reason: `Vozilo (${year}) ispunjava Euro 6 normu — nema ograničenja za uvoz.`,
+    tooltip: 'Euro 6 vozila bez problema prolaze carinjenje u Srbiji.',
+    warnings: [
+      'Pribavi COC dokument za potvrdu Euro norme.',
+      ...(fuel === 'diesel' ? ['Proveri stanje DPF filtera — zamena je skupa.'] : []),
+    ],
+    carinaPct: 5,
+  }
+
+  if (year >= 2011) return {
+    status: 'eligible', emoji: '🟢',
+    label: 'Može uvoz u Srbiju',
+    reason: `Vozilo (${year}) verovatno ispunjava Euro 5 normu.`,
+    tooltip: 'Euro 5 vozila se mogu uvesti u Srbiju bez ograničenja.',
+    warnings: [
+      'Pribavi COC dokument za potvrdu Euro 5 norme.',
+      ...(fuel === 'diesel' ? ['Dizel Euro 5 — proveri DPF filter pre kupovine.'] : []),
+    ],
+    carinaPct: 5,
+  }
+
+  if (year >= 2006) return {
+    status: 'eligible', emoji: '🟢',
+    label: fuel === 'diesel' ? 'Može uvoz — proveri Euro 4 normu' : 'Može uvoz u Srbiju',
+    reason: `Vozilo (${year}) verovatno ispunjava Euro 4 normu — minimalni uslov za uvoz.`,
+    tooltip: 'Euro 4 je minimalni standard za uvoz u Srbiju.',
+    warnings: [
+      'Euro 4 je granica — obavezno pribavi COC dokument pre kupovine.',
+      ...(fuel === 'diesel' ? ['Dizel Euro 4 — proveri DPF i turbinu.'] : []),
+      'Bez COC dokumenta može biti problem pri tehničkom pregledu.',
+    ],
+    carinaPct: 5,
+  }
+
+  if (year >= 2001) return {
+    status: 'needs_check', emoji: '🟠',
+    label: 'Potrebna provera Euro norme (verovatno Euro 3)',
+    reason: `Vozilo (${year}) je verovatno Euro 3 norma — uvoz je moguć uz dodatnu dokumentaciju.`,
+    tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru pre uvoza u Srbiju.',
+    warnings: [
+      'Euro 3 vozila mogu imati poteškoće pri tehničkom pregledu u Srbiji.',
+      'Obavezno proveri Euro normu u COC dokumentu pre kupovine.',
+      'Konsultuj carinskog agenta ili MUP Srbije pre uvoza.',
+    ],
+    carinaPct: 5,
+  }
+
+  if (year >= 1997) return {
+    status: 'not_recommended', emoji: '🔴',
+    label: 'Vozilo možda ne ispunjava Euro 3 standard',
+    reason: `Vozilo (${year}) je verovatno Euro 1 ili Euro 2 — uvoz nije preporučljiv.`,
+    tooltip: 'Stara emisiona norma — registracija u Srbiji je veoma otežana.',
+    warnings: [
+      'Euro 1/2 vozila teško prolaze tehnički pregled u Srbiji.',
+      'Razmotri oldtimer status ako je vozilo starije od 30 godina.',
+    ],
+    carinaPct: 5,
+  }
+
+  return {
+    status: 'not_recommended', emoji: '🔴',
+    label: 'Uvoz nije preporučljiv — staro vozilo',
+    reason: `Vozilo (${year}) ne ispunjava minimalne emisione standarde za uvoz u Srbiju.`,
+    tooltip: 'Ovo vozilo verovatno ne može biti registrovano u Srbiji.',
+    warnings: ['Stara vozila ne prolaze tehnički pregled u Srbiji.'],
+    carinaPct: 5,
+  }
 }
 
 export default function SearchPage() {
@@ -210,7 +258,7 @@ export default function SearchPage() {
               AI pomoćnik za uvoz automobila iz EU u Srbiju
             </p>
             <p style={{ fontSize: 13, color: 'var(--text2)', margin: '5px 0 0' }}>
-              Analizira cene · Računa realni trošak uvoza u Srbiju · Provjerava podobnost uvoza
+              Analizira cene · Računa realni trošak uvoza u Srbiju · Proverava podobnost uvoza
             </p>
           </div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
@@ -289,7 +337,7 @@ export default function SearchPage() {
 
             {loading ? (
               <div className="rg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 20 }}>
-                {[...Array(6)].map((_,i) => <div key={i} className="skeleton" style={{ height: 500, borderRadius: 16 }} />)}
+                {[...Array(6)].map((_,i) => <div key={i} className="skeleton" style={{ height: 520, borderRadius: 16 }} />)}
               </div>
             ) : results?.results?.length ? (
               <>
@@ -359,7 +407,12 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
       <a href={`/listing/${listing.id}`} style={{ display: 'block', textDecoration: 'none' }}>
         <div style={{ height: 185, background: 'var(--bg3)', position: 'relative', overflow: 'hidden' }}>
           {img
-            ? <img src={img} alt={`${listing.make} ${listing.model}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ? <img
+                src={fullImg(img)}
+                alt={`${listing.make} ${listing.model}`}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => { (e.target as HTMLImageElement).src = img }}
+              />
             : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 48, opacity: .35 }}>🚗</div>
           }
           <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,.75)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: 'rgba(255,255,255,.65)', backdropFilter: 'blur(4px)' }}>
@@ -384,28 +437,32 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
 
         {/* Uvoz u Srbiju */}
         <div style={{
-          background: `${eligColor}11`,
-          border: `1px solid ${eligColor}44`,
+          background: `${eligColor}11`, border: `1px solid ${eligColor}44`,
           borderRadius: 10, padding: '9px 12px', marginBottom: 10,
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2, letterSpacing: '.06em', fontWeight: 600 }}>UVOZ U SRBIJU</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: eligColor }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: eligColor }}>
                 {eligibility.emoji} {eligibility.label}
               </div>
+              {eligibility.tooltip && (
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>
+                  {eligibility.tooltip}
+                </div>
+              )}
             </div>
             {eligibility.warnings.length > 0 && (
               <button onClick={() => setShowWarn(!showWarn)} className="cb" style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 11, color: 'var(--text3)', padding: '4px 6px',
+                fontSize: 11, color: 'var(--text3)', padding: '2px 4px', flexShrink: 0,
               }}>{showWarn ? '▲' : 'ℹ️'}</button>
             )}
           </div>
           {showWarn && (
             <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${eligColor}22` }}>
               <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 5px', lineHeight: 1.5 }}>{eligibility.reason}</p>
-              {eligibility.warnings.map((w, i) => (
+              {eligibility.warnings.map((w: string, i: number) => (
                 <p key={i} style={{ fontSize: 11, color: 'var(--text3)', margin: '3px 0', lineHeight: 1.4 }}>• {w}</p>
               ))}
             </div>
@@ -420,7 +477,7 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           </span>
         </div>
 
-        {/* Trošak uvoza u Srbiju */}
+        {/* Trošak uvoza */}
         {bd && (
           <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
             <button onClick={() => setShowBd(!showBd)} className="cb" style={{
@@ -433,18 +490,16 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
               </div>
               <span style={{ fontSize: 11, color: 'rgba(255,107,0,.6)' }}>{showBd ? '▲ sakrij' : '▼ detalji'}</span>
             </button>
-
             {showBd && (
               <div style={{ padding: '0 14px 12px', borderTop: '1px solid rgba(255,107,0,.15)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', margin: '8px 0' }}>Kako je izračunato:</div>
                 {[
-                  { label: 'EU cena',        val: price!,       note: '' },
+                  { label: 'EU cena',         val: price!,       note: '' },
                   { label: `Carina (${bd.carinaPct}%)`, val: bd.carina, note: bd.carinaPct === 0 ? 'oslobođeno' : 'srbija' },
-                  { label: 'PDV (20%)',       val: bd.pdv,       note: 'srbija' },
-                  { label: 'Transport EU→RS', val: bd.transport, note: 'procena' },
-                  { label: 'Registracija',   val: bd.reg,       note: 'procena' },
+                  { label: 'PDV (20%)',        val: bd.pdv,       note: 'srbija' },
+                  { label: 'Transport EU→RS',  val: bd.transport, note: 'procena' },
+                  { label: 'Registracija',     val: bd.reg,       note: 'procena' },
                 ].map(({ label, val, note }, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.04)' }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.04)', marginTop: i === 0 ? 8 : 0 }}>
                     <span style={{ fontSize: 12, color: i === 0 ? 'var(--text2)' : 'var(--text3)' }}>
                       {i > 0 && '+ '}{label}
                       {note && <span style={{ fontSize: 10, marginLeft: 4, opacity: .5 }}>({note})</span>}
@@ -463,24 +518,21 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           </div>
         )}
 
-        {/* Specifikacije */}
+        {/* Specs */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
           {mileage && <span>🛣 {mileage}</span>}
           {listing.fuel_type && <span>⛽ {FUEL_LABELS[listing.fuel_type] || listing.fuel_type}</span>}
           {listing.country && <span>📍 {listing.country}</span>}
         </div>
 
-        {/* Disclaimer */}
         <p style={{ fontSize: 10, color: 'var(--text3)', margin: '8px 0 10px', lineHeight: 1.5, opacity: .7 }}>
           * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju vozila, Euro normu i važeće propise u Srbiji.
         </p>
 
-        {/* Kontakt */}
         <button onClick={onContact} className="cb" style={{
           width: '100%', padding: '11px',
           background: 'rgba(99,102,241,.1)', border: '1px solid rgba(99,102,241,.3)',
-          color: '#818CF8', borderRadius: 10,
-          fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          color: '#818CF8', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer',
         }}>
           🤖 Kontaktiraj prodavca
         </button>
@@ -518,7 +570,7 @@ function Sidebar({ filters, setFilter, onReset }: any) {
           {Object.entries(BODY_LABELS).map(([v,l]) => <FC key={v} label={l} active={filters.body_type===v} onClick={()=>setFilter('body_type',filters.body_type===v?'':v)} />)}
         </div>
       </FS>
-      <FS label="AI Ocjena">
+      <FS label="AI Ocena">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {Object.entries(AI_BADGES).map(([v,{label,color}]) => <FC key={v} label={label} active={filters.price_rating===v} onClick={()=>setFilter('price_rating',filters.price_rating===v?'':v)} color={color} full />)}
         </div>
