@@ -1,16 +1,16 @@
 """
 serbia_import_rules.py
 ----------------------
-Provjera podobnosti vozila za uvoz i registraciju u Srbiji.
+Provera podobnosti vozila za uvoz i registraciju u Srbiji.
 
 Koristiti za:
   - listing kartice (brzi status)
   - detail stranicu (detaljna analiza)
   - kalkulator uvoza
 
-Status vrijednosti:
+Status vrednosti:
   eligible        → Može uvoz u Srbiju
-  needs_check     → Potrebna dodatna provjera
+  needs_check     → Potrebna dodatna provera
   not_recommended → Verovatno nije moguće / ne preporučuje se
   oldtimer        → Oldtimer izuzetak (30+ godina)
 """
@@ -23,13 +23,13 @@ CURRENT_YEAR = 2026
 
 @dataclass
 class SerbiaEligibilityResult:
-    eligible_status: str          # eligible | needs_check | not_recommended | oldtimer
-    label: str                    # Kratki label za UI
-    emoji: str                    # 🟢 🟠 🔴 🟣
-    reason: str                   # Objašnjenje
+    eligible_status: str
+    label: str
+    emoji: str
+    reason: str
     warnings: list[str] = field(default_factory=list)
     missing_data: list[str] = field(default_factory=list)
-    carina_pct: float = 5.0       # Procenat carine (0 za EV)
+    carina_pct: float = 5.0
 
     def to_dict(self) -> dict:
         return {
@@ -51,7 +51,7 @@ def check_serbia_eligibility(
     engine_cc:     Optional[int]   = None,
 ) -> SerbiaEligibilityResult:
     """
-    Provjeri da li vozilo može biti uvezeno i registrovano u Srbiji.
+    Proveri da li vozilo može biti uvezeno i registrovano u Srbiji.
 
     Ulazni podaci:
         year          — godište (int, npr. 2019)
@@ -59,9 +59,6 @@ def check_serbia_eligibility(
         euro_standard — Euro norma: 'Euro 4' | 'Euro 5' | 'Euro 6' itd. (opciono)
         co2           — CO₂ emisija g/km (opciono)
         engine_cc     — zapremina motora u cm³ (opciono)
-
-    Vraća:
-        SerbiaEligibilityResult
     """
 
     missing_data: list[str] = []
@@ -76,7 +73,7 @@ def check_serbia_eligibility(
             reason          = "Električna vozila se uvoze bez carine u Srbiju (0% carina). "
                               "Potrebna je COC dokumentacija i tehnički pregled.",
             warnings        = [
-                "Provjeri kompatibilnost punjača (tip 2 / CCS standard).",
+                "Proveri kompatibilnost punjača (tip 2 / CCS standard).",
                 "Baterijska garancija može biti ograničena van EU.",
             ],
             carina_pct = 0.0,
@@ -93,9 +90,9 @@ def check_serbia_eligibility(
                 reason          = f"Vozilo ({year}) je starije od 30 godina — može se uvesti "
                                   f"kao oldtimer pod posebnim uslovima i uz posebnu registraciju.",
                 warnings        = [
-                    "Registracija kao oldtimer zahtijeva poseban tehnički pregled.",
+                    "Registracija kao oldtimer zahteva poseban tehnički pregled.",
                     "Godišnja kilometraža može biti ograničena za oldtimer tablice.",
-                    "Provjeriti važeće propise MUP-a Srbije za oldtimer vozila.",
+                    "Proveriti važeće propise MUP-a Srbije za oldtimer vozila.",
                 ],
                 carina_pct = 5.0,
             )
@@ -120,21 +117,21 @@ def check_serbia_eligibility(
                 emoji           = "🟢",
                 reason          = f"Vozilo ispunjava Euro 4 normu — moguće je uvesti u Srbiju.",
                 warnings        = _standard_warnings(fuel_type) + [
-                    "Euro 4 je minimalna preporučena norma. Provjeri COC dokument.",
+                    "Euro 4 je minimalna preporučena norma. Proveri COC dokument.",
                 ],
                 carina_pct = 5.0,
             )
         elif "euro3" in euro_norm:
             return SerbiaEligibilityResult(
                 eligible_status = "needs_check",
-                label           = "Potrebna dodatna provjera",
+                label           = "Potrebna dodatna provera",
                 emoji           = "🟠",
                 reason          = "Vozilo je Euro 3 norma — uvoz je moguć ali može biti "
                                   "otežan pri tehničkom pregledu i registraciji.",
                 warnings        = [
                     "Euro 3 vozila mogu imati problem pri tehničkom pregledu.",
-                    "Preporučuje se konsultacija sa carinskim agentem pre kupovine.",
-                    "Provjeri da li vozilo zadovoljava lokalne emisione standarde.",
+                    "Preporučuje se konsultacija sa carinskim agentom pre kupovine.",
+                    "Proveri da li vozilo zadovoljava lokalne emisione standarde.",
                 ],
                 carina_pct = 5.0,
             )
@@ -144,7 +141,7 @@ def check_serbia_eligibility(
                 label           = "Verovatno nije moguće / ne preporučuje se",
                 emoji           = "🔴",
                 reason          = f"Vozilo ima {euro_standard} normu — uvoz u Srbiju je "
-                                  f"vjerovatno nemoguć ili nepraktičan.",
+                                  f"verovatno nemoguć ili nepraktičan.",
                 warnings        = [
                     "Stare emisione norme ne zadovoljavaju tehničke uslove.",
                     "Registracija ovakvog vozila u Srbiji je vrlo otežana.",
@@ -152,14 +149,14 @@ def check_serbia_eligibility(
                 carina_pct = 5.0,
             )
 
-    # ── 4. Procjena na osnovu godišta (bez Euro norme) ───────────────────────
+    # ── 4. Procena na osnovu godišta (bez Euro norme) ────────────────────────
     if year:
         if year >= 2011:
             return SerbiaEligibilityResult(
                 eligible_status = "eligible",
                 label           = "Može uvoz u Srbiju",
                 emoji           = "🟢",
-                reason          = f"Vozilo ({year}) vjerovatno zadovoljava Euro 5 ili Euro 6 normu "
+                reason          = f"Vozilo ({year}) verovatno zadovoljava Euro 5 ili Euro 6 normu "
                                   f"— uvoz u Srbiju je moguć.",
                 warnings        = _standard_warnings(fuel_type) + [
                     "Preporučuje se pribaviti COC dokument za potvrdu Euro norme.",
@@ -172,9 +169,9 @@ def check_serbia_eligibility(
                 eligible_status = "eligible",
                 label           = "Može uvoz u Srbiju",
                 emoji           = "🟢",
-                reason          = f"Vozilo ({year}) vjerovatno zadovoljava Euro 4 normu.",
+                reason          = f"Vozilo ({year}) verovatno zadovoljava Euro 4 normu.",
                 warnings        = _standard_warnings(fuel_type) + [
-                    "Provjeri COC dokument ili potvrdu proizvođača za Euro normu.",
+                    "Proveri COC dokument ili potvrdu proizvođača za Euro normu.",
                     "Euro 4 je minimalna preporučena norma za uvoz.",
                 ],
                 missing_data = ["Euro norma nije navedena u oglasu"],
@@ -183,12 +180,12 @@ def check_serbia_eligibility(
         elif year >= 2001:
             return SerbiaEligibilityResult(
                 eligible_status = "needs_check",
-                label           = "Potrebna dodatna provjera",
+                label           = "Potrebna dodatna provera",
                 emoji           = "🟠",
-                reason          = f"Vozilo ({year}) vjerovatno je Euro 3 norma — uvoz je "
-                                  f"moguć ali zahtijeva dodatnu provjeru dokumentacije.",
+                reason          = f"Vozilo ({year}) verovatno je Euro 3 norma — uvoz je "
+                                  f"moguć ali zahteva dodatnu proveru dokumentacije.",
                 warnings        = [
-                    "Provjeri Euro normu u COC dokumentu prije kupovine.",
+                    "Proveri Euro normu u COC dokumentu pre kupovine.",
                     "Euro 3 vozila mogu imati poteškoće pri registraciji.",
                     "Konsultuj carinskog agenta ili MUP Srbije.",
                 ],
@@ -200,7 +197,7 @@ def check_serbia_eligibility(
                 eligible_status = "not_recommended",
                 label           = "Verovatno nije moguće / ne preporučuje se",
                 emoji           = "🔴",
-                reason          = f"Vozilo ({year}) je vjerovatno Euro 1 ili Euro 2 norma "
+                reason          = f"Vozilo ({year}) je verovatno Euro 1 ili Euro 2 norma "
                                   f"— uvoz u Srbiju nije preporučljiv.",
                 warnings        = [
                     "Stara vozila teško prolaze tehnički pregled u Srbiji.",
@@ -215,11 +212,11 @@ def check_serbia_eligibility(
 
     return SerbiaEligibilityResult(
         eligible_status = "needs_check",
-        label           = "Potrebna dodatna provjera",
+        label           = "Potrebna dodatna provera",
         emoji           = "🟠",
-        reason          = "Nedostaju ključni tehnički podaci za procjenu podobnosti uvoza.",
+        reason          = "Nedostaju ključni tehnički podaci za procenu podobnosti uvoza.",
         warnings        = [
-            "Prije kupovine obavezno provjeri Euro normu (COC dokument).",
+            "Pre kupovine obavezno proveri Euro normu (COC dokument).",
             "Kontaktiraj prodavca za tehničke specifikacije.",
         ],
         missing_data = missing_data,
@@ -228,11 +225,11 @@ def check_serbia_eligibility(
 
 
 def _standard_warnings(fuel_type: Optional[str]) -> list[str]:
-    """Standardna upozorenja koja vrijede za većinu vozila."""
+    """Standardna upozorenja koja važe za većinu vozila."""
     base = [
         "Obavezno pribavi COC dokument ili potvrdu o tehničkim karakteristikama.",
-        "Provjeri servisnu istoriju i stanje vozila prije kupovine.",
+        "Proveri servisnu istoriju i stanje vozila pre kupovine.",
     ]
     if fuel_type == "diesel":
-        base.append("Za dizel vozila provjeri stanje DPF filtera — zamjena je skupa.")
+        base.append("Za dizel vozila proveri stanje DPF filtera — zamena je skupa.")
     return base
