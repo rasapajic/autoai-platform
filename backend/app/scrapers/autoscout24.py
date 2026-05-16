@@ -86,10 +86,6 @@ class AutoScout24Scraper(BaseScraper):
                         await asyncio.sleep(2 ** attempt)
                 if not page:
                     continue
-
-                # Čekaj da se React komponente renderuju
-                await asyncio.sleep(1)
-
                 try:
                     raw_items = await page.evaluate(self._listing_js())
                 except Exception as e:
@@ -195,7 +191,7 @@ class AutoScout24Scraper(BaseScraper):
                     year_text = regMatch[2];
                 }
 
-                // 2. data-* atributi na samom item elementu
+                // 2. data-* atributi
                 if (!year_text) {
                     const dataYear = item.getAttribute('data-first-registration')
                         || item.getAttribute('data-year')
@@ -206,7 +202,7 @@ class AutoScout24Scraper(BaseScraper):
                     }
                 }
 
-                // 3. Specifični AS24 elementi za godište
+                // 3. Specifični AS24 elementi
                 if (!year_text) {
                     const regEl = item.querySelector(
                         '[data-item-key="fr"], [data-item-key="Erstzulassung"], ' +
@@ -222,19 +218,14 @@ class AutoScout24Scraper(BaseScraper):
                     }
                 }
 
-                // 4. Bare year kao zadnji resort (SAMO ako je izolovana cifra, ne kao dio većeg broja)
+                // 4. Segmenti teksta
                 if (!year_text) {
-                    // Traži godište u specifičnim dijelovima teksta, ne svuda
                     const segments = fullText.split(/[\n\r|·•]/);
                     for (const seg of segments) {
                         const trimmed = seg.trim();
-                        // Segment koji izgleda kao "07/2024" ili samo "2024"
                         const m = trimmed.match(/^(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)$/)
                                || trimmed.match(/^(19[5-9]\d|20[0-3]\d)$/);
-                        if (m) {
-                            year_text = m[m.length - 1];
-                            break;
-                        }
+                        if (m) { year_text = m[m.length - 1]; break; }
                     }
                 }
 
@@ -287,11 +278,7 @@ class AutoScout24Scraper(BaseScraper):
                 );
 
                 return {
-                    id,
-                    title,
-                    url,
-                    price_raw,
-                    details,
+                    id, title, url, price_raw, details,
                     images: images.slice(0, 10),
                     location_raw: locEl?.textContent?.trim() || '',
                 };
@@ -305,11 +292,11 @@ class AutoScout24Scraper(BaseScraper):
         if "?" in url: url = url.split("?")[0]
         if not ext_id or not url: return None
 
-        title      = raw.get("title", "").strip()
+        title       = raw.get("title", "").strip()
         make, model = self._parse_title(title)
-        details    = raw.get("details", [])
-        price_raw  = raw.get("price_raw", "")
-        price_eur  = self._parse_price_eur(price_raw)
+        details     = raw.get("details", [])
+        price_raw   = raw.get("price_raw", "")
+        price_eur   = self._parse_price_eur(price_raw)
 
         mileage_raw = year = fuel_type = transmission = power_str = body_type = None
 
@@ -329,7 +316,6 @@ class AutoScout24Scraper(BaseScraper):
             elif any(k in dl for k in BODY_MAP):
                 body_type = body_type or self._normalize_body(d)
 
-        # Fallback: gorivo iz filtera ako JS nije pronašao
         if not fuel_type and filter_fuel:
             fuel_type = filter_fuel
 
@@ -376,8 +362,7 @@ class AutoScout24Scraper(BaseScraper):
             try:
                 val = int(num)
                 return val if val <= 2_000_000 else None
-            except ValueError:
-                pass
+            except ValueError: pass
         digits = re.sub(r'[^\d]', '', raw)
         return int(digits[:6]) if digits else None
 
@@ -389,15 +374,12 @@ class AutoScout24Scraper(BaseScraper):
             try:
                 val = int(num)
                 return val if 1 <= val <= 999_999 else None
-            except ValueError:
-                pass
+            except ValueError: pass
         return None
 
     def _extract_year(self, text: str) -> int | None:
-        # MM/YYYY
         m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', text)
         if m: return int(m.group(2))
-        # Bare 4-digit year
         m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
         return int(m.group(1)) if m else None
 
