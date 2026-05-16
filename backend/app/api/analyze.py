@@ -194,7 +194,7 @@ AS24_JS = r"""
     const locEl = document.querySelector(
         '[class*="seller-contact-country"], [class*="SellerInfo"] [class*="address"], [class*="location"], [data-cy*="location"]'
     );
-    const location_raw = locEl ? locEl.textContent.trim() : (ldData?.offers?.availableAtOrFrom?.address?.addressLocality || '');
+    const location_raw = locEl ? locEl.textContent.trim() : '';
 
     // 6. Slike
     const images = Array.from(document.querySelectorAll(
@@ -203,7 +203,9 @@ AS24_JS = r"""
       .filter(s => s && s.startsWith('http') && !s.includes('placeholder'));
 
     // 7. Opis
-    const desc = document.querySelector('.cldt-stage-description, [class*="description"], [class*="Description"]')?.textContent?.trim() || '';
+    const desc = document.querySelector(
+        '.cldt-stage-description, [class*="description"], [class*="Description"]'
+    )?.textContent?.trim() || '';
 
     // 8. Oprema
     const features = Array.from(document.querySelectorAll(
@@ -222,7 +224,6 @@ async def _scrape_autoscout24(url: str) -> dict:
         page = await scraper.get_page(url, wait_for="domcontentloaded")
         if not page:
             raise RuntimeError("Stranica nije učitana")
-        # Čekaj JS render
         await asyncio.sleep(3)
         try:
             raw = await page.evaluate(AS24_JS)
@@ -238,40 +239,46 @@ async def _scrape_autoscout24(url: str) -> dict:
     if not price and ld.get("offers", {}).get("price"):
         price = _parse_price(str(ld["offers"]["price"]))
 
-    # Godište — prioritet: JSON-LD → specs sa ključnim riječima → regex iz teksta
+    # ── Godište ──────────────────────────────────────────────────────────────
     year = None
-    # JSON-LD
-    if ld.get("vehicleModelDate"):
-        year = _parse_year(str(ld["vehicleModelDate"]))
-    if not year and ld.get("dateVehicleFirstRegistered"):
-        year = _parse_year(str(ld["dateVehicleFirstRegistered"]))
-    if not year and ld.get("modelDate"):
-        year = _parse_year(str(ld["modelDate"]))
-    # Specs sa ključnim riječima
+
+    # 1. JSON-LD polja
+    for ld_key in ["dateVehicleFirstRegistered", "vehicleModelDate", "modelDate"]:
+        if ld.get(ld_key):
+            year = _parse_year(str(ld[ld_key]))
+            if year:
+                break
+
+    # 2. Spec ključevi koji JASNO označavaju datum registracije
     if not year:
         for k, v in specs.items():
             kl = k.lower()
-            if any(x in kl for x in ["registr", "zulassung", "first", "year", "baujahr", "godiste", "godište"]):
+            if any(x in kl for x in ["registr", "first", "zulassung", "baujahr", "godist", "erstzu"]):
                 year = _parse_year(v)
                 if year:
                     break
-    # Sve vrijednosti u specs
+
+    # 3. MM/YYYY pattern u tekstu stranice (npr. "09/2011")
     if not year:
-        for k, v in specs.items():
-            y = _parse_year(v)
-            if y:
-                year = y
-                break
-    # Tekst stranice
-    if not year:
-        # Traži pattern MM/YYYY ili YYYY
         m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', page_text)
         if m:
             year = int(m.group(2))
-    if not year:
-        year = _parse_year(page_text[:3000])
 
-    # Kilometraža
+    # 4. Samo spec ključevi koji sadrže year/year-related
+    if not year:
+        for k, v in specs.items():
+            kl = k.lower()
+            if any(x in kl for x in ["year", "datum", "date"]):
+                y = _parse_year(v)
+                if y:
+                    year = y
+                    break
+
+    # 5. Zadnji pokušaj — sredina teksta stranice (preskačemo početak koji može imati copyright)
+    if not year:
+        year = _parse_year(page_text[1000:5000])
+
+    # ── Kilometraža ──────────────────────────────────────────────────────────
     mileage = None
     if ld.get("mileageFromOdometer", {}).get("value"):
         mileage = _parse_mileage(str(ld["mileageFromOdometer"]["value"]))
@@ -286,7 +293,7 @@ async def _scrape_autoscout24(url: str) -> dict:
         if km_m:
             mileage = _parse_mileage(km_m.group(1) + " km")
 
-    # Gorivo
+    # ── Gorivo ───────────────────────────────────────────────────────────────
     fuel_type = None
     if ld.get("fuelType"):
         fuel_type = _normalize_fuel(str(ld["fuelType"]))
@@ -299,7 +306,7 @@ async def _scrape_autoscout24(url: str) -> dict:
     if not fuel_type:
         fuel_type = _normalize_fuel(page_text[:2000])
 
-    # Snaga
+    # ── Snaga ────────────────────────────────────────────────────────────────
     power_kw = None
     if ld.get("vehicleEngine", {}).get("enginePower"):
         power_kw = _parse_power_kw(str(ld["vehicleEngine"]["enginePower"]))
@@ -310,7 +317,7 @@ async def _scrape_autoscout24(url: str) -> dict:
                 power_kw = p
                 break
 
-    # Lokacija
+    # ── Lokacija ─────────────────────────────────────────────────────────────
     country, city = None, None
     loc = raw.get("location_raw", "")
     if not loc and ld.get("offers", {}).get("availableAtOrFrom", {}).get("address"):
@@ -325,7 +332,6 @@ async def _scrape_autoscout24(url: str) -> dict:
         elif parts:
             city = parts[0]
 
-    # Naslov
     title = raw.get("title", "") or ld.get("name", "")
 
     return {
