@@ -70,7 +70,6 @@ class AutoScout24Scraper(BaseScraper):
     async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list[dict]:
         all_listings = []
         seen_ids     = set()
-        # Fuel type iz filtera kao fallback
         filter_fuel  = filters.get("fuel_type")
 
         async with self:
@@ -80,13 +79,17 @@ class AutoScout24Scraper(BaseScraper):
                 page = None
                 for attempt in range(3):
                     try:
-                        page = await self.get_page(url, wait_for=None)
+                        page = await self.get_page(url, wait_for="domcontentloaded")
                         if page: break
                     except Exception as e:
                         logger.warning(f"[AutoScout24] Pokušaj {attempt+1}: {e}")
                         await asyncio.sleep(2 ** attempt)
                 if not page:
                     continue
+
+                # Čekaj da se React komponente renderuju
+                await asyncio.sleep(1)
+
                 try:
                     raw_items = await page.evaluate(self._listing_js())
                 except Exception as e:
@@ -174,27 +177,68 @@ class AutoScout24Scraper(BaseScraper):
             });
 
             return items.map(item => {
-                const id      = item.getAttribute('data-guid') || item.getAttribute('id') || '';
-                const titleEl = item.querySelector('h2,h3,[class*="title"]');
-                const title   = titleEl?.textContent?.trim() || '';
+                const id        = item.getAttribute('data-guid') || item.getAttribute('id') || '';
+                const titleEl   = item.querySelector('h2,h3,[class*="title"]');
+                const title     = titleEl?.textContent?.trim() || '';
                 const offerLink = item.querySelector('a[href*="/offers/"]');
-                const url     = offerLink?.href || (id ? 'https://www.autoscout24.com/offers/'+id : '');
-                const priceEl = item.querySelector('.cldt-price,[data-type="price_block"] .cldt-price,[class*="price"]');
+                const url       = offerLink?.href || (id ? 'https://www.autoscout24.com/offers/'+id : '');
+                const priceEl   = item.querySelector('.cldt-price,[data-type="price_block"] .cldt-price,[class*="price"]');
                 const price_raw = getCleanPrice(priceEl);
                 const fullText  = item.textContent || '';
 
-                // Godište — prioritet: MM/YYYY format, pa bare YYYY
+                // ── Godište ──────────────────────────────────────────────
                 let year_text = '';
-                const regDateMatch = fullText.match(/\b(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)\b/);
-                if (regDateMatch) {
-                    year_text = regDateMatch[2];
-                } else {
-                    // Traži 4-cifren broj koji izgleda kao godište (1990-2030)
-                    const yearMatch = fullText.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
-                    if (yearMatch) year_text = yearMatch[1];
+
+                // 1. MM/YYYY format (npr. "07/2024")
+                const regMatch = fullText.match(/\b(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)\b/);
+                if (regMatch) {
+                    year_text = regMatch[2];
                 }
 
-                // Kilometraza — iskljuci brojeve sa vise od jedne tacke
+                // 2. data-* atributi na samom item elementu
+                if (!year_text) {
+                    const dataYear = item.getAttribute('data-first-registration')
+                        || item.getAttribute('data-year')
+                        || item.getAttribute('data-model-year');
+                    if (dataYear) {
+                        const m = dataYear.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
+                        if (m) year_text = m[1];
+                    }
+                }
+
+                // 3. Specifični AS24 elementi za godište
+                if (!year_text) {
+                    const regEl = item.querySelector(
+                        '[data-item-key="fr"], [data-item-key="Erstzulassung"], ' +
+                        '[data-item-key="first-registration"], [class*="first-reg"]'
+                    );
+                    if (regEl) {
+                        const m = regEl.textContent.match(/\b(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)\b/);
+                        if (m) year_text = m[2];
+                        else {
+                            const m2 = regEl.textContent.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
+                            if (m2) year_text = m2[1];
+                        }
+                    }
+                }
+
+                // 4. Bare year kao zadnji resort (SAMO ako je izolovana cifra, ne kao dio većeg broja)
+                if (!year_text) {
+                    // Traži godište u specifičnim dijelovima teksta, ne svuda
+                    const segments = fullText.split(/[\n\r|·•]/);
+                    for (const seg of segments) {
+                        const trimmed = seg.trim();
+                        // Segment koji izgleda kao "07/2024" ili samo "2024"
+                        const m = trimmed.match(/^(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)$/)
+                               || trimmed.match(/^(19[5-9]\d|20[0-3]\d)$/);
+                        if (m) {
+                            year_text = m[m.length - 1];
+                            break;
+                        }
+                    }
+                }
+
+                // ── Kilometraža ───────────────────────────────────────────
                 let km_text = '';
                 const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
                 for (const m of kmMatches) {
@@ -204,55 +248,67 @@ class AutoScout24Scraper(BaseScraper):
                     if (val >= 1 && val <= 999999) { km_text = raw + ' km'; break; }
                 }
 
-                // Gorivo — iz teksta kartice
-                const fuelKws = [
+                // ── Gorivo ────────────────────────────────────────────────
+                const fuelPairs = [
                     ['Electric','electric'],['Elektro','electric'],['Elektrisch','electric'],
                     ['Hybrid','hybrid'],['Plug-in','hybrid'],
                     ['Diesel','diesel'],['Dizel','diesel'],
-                    ['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],
+                    ['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],['Super','petrol'],
                     ['LPG','lpg'],['Autogas','lpg'],
                     ['CNG','cng'],['Erdgas','cng'],
                 ];
                 let fuel_text = '';
-                for (const [kw, norm] of fuelKws) {
+                for (const [kw, norm] of fuelPairs) {
                     if (fullText.includes(kw)) { fuel_text = norm; break; }
                 }
 
-                // Mjenjac
+                // ── Menjač ────────────────────────────────────────────────
                 const transKws = ['Automatik','Automatic','Schaltgetriebe','Manual','DSG'];
                 let trans_text = '';
                 for (const kw of transKws) { if (fullText.includes(kw)) { trans_text=kw; break; } }
 
-                // Snaga
+                // ── Snaga ─────────────────────────────────────────────────
                 const powerMatch = fullText.match(/(\d+)\s*kW/);
                 const power_text = powerMatch ? powerMatch[1]+' kW' : '';
 
-                // Karoserija
-                const bodyKws = ['Limousine','SUV','Geländewagen','Kombi','Hatchback','Schrägheck','Coupe','Coupé','Cabrio','Kabriolet','Roadster','Van','Kleinbus','Pickup'];
+                // ── Karoserija ────────────────────────────────────────────
+                const bodyKws = ['Limousine','SUV','Geländewagen','Kombi','Hatchback',
+                                 'Schrägheck','Coupe','Coupé','Cabrio','Kabriolet',
+                                 'Roadster','Van','Kleinbus','Pickup'];
                 let body_text = '';
                 for (const kw of bodyKws) { if (fullText.includes(kw)) { body_text=kw; break; } }
 
-                const details = [year_text,km_text,fuel_text,trans_text,power_text,body_text].filter(Boolean);
+                const details = [year_text, km_text, fuel_text, trans_text, power_text, body_text].filter(Boolean);
                 const images  = Array.from(item.querySelectorAll('img'))
-                    .map(img=>img.src||img.getAttribute('data-src'))
-                    .filter(s=>s&&s.startsWith('http')&&!s.includes('logo'));
-                const locEl   = item.querySelector('.cldt-summary-seller-contact-country,[class*="country"],[class*="location"]');
+                    .map(img => img.src || img.getAttribute('data-src'))
+                    .filter(s => s && s.startsWith('http') && !s.includes('logo'));
+                const locEl = item.querySelector(
+                    '.cldt-summary-seller-contact-country,[class*="country"],[class*="location"]'
+                );
 
-                return { id, title, url, price_raw, details, images: images.slice(0,10), location_raw: locEl?.textContent?.trim()||'' };
+                return {
+                    id,
+                    title,
+                    url,
+                    price_raw,
+                    details,
+                    images: images.slice(0, 10),
+                    location_raw: locEl?.textContent?.trim() || '',
+                };
             });
         }
         """
 
     def _parse_listing(self, raw: dict, filter_fuel: str | None = None) -> dict | None:
-        ext_id = raw.get("id","").strip()
-        url    = raw.get("url","").strip()
+        ext_id = raw.get("id", "").strip()
+        url    = raw.get("url", "").strip()
         if "?" in url: url = url.split("?")[0]
         if not ext_id or not url: return None
 
-        title      = raw.get("title","").strip()
-        make, model= self._parse_title(title)
-        details    = raw.get("details",[])
-        price_raw  = raw.get("price_raw","")
+        title      = raw.get("title", "").strip()
+        make, model = self._parse_title(title)
+        details    = raw.get("details", [])
+        price_raw  = raw.get("price_raw", "")
         price_eur  = self._parse_price_eur(price_raw)
 
         mileage_raw = year = fuel_type = transmission = power_str = body_type = None
@@ -260,8 +316,7 @@ class AutoScout24Scraper(BaseScraper):
         for d in details:
             if not d: continue
             dl = d.lower()
-            # Gorivo — direktno normalizovano iz JS
-            if dl in ("diesel","petrol","electric","hybrid","lpg","cng"):
+            if dl in ("diesel", "petrol", "electric", "hybrid", "lpg", "cng"):
                 fuel_type = fuel_type or d
             elif "km" in dl and any(c.isdigit() for c in d):
                 mileage_raw = mileage_raw or d
@@ -274,11 +329,11 @@ class AutoScout24Scraper(BaseScraper):
             elif any(k in dl for k in BODY_MAP):
                 body_type = body_type or self._normalize_body(d)
 
-        # Fallback: ako JS nije pronašao gorivo, koristi filter fuel_type
+        # Fallback: gorivo iz filtera ako JS nije pronašao
         if not fuel_type and filter_fuel:
             fuel_type = filter_fuel
 
-        country, city = self._parse_location(raw.get("location_raw",""))
+        country, city = self._parse_location(raw.get("location_raw", ""))
         mileage_km    = self._parse_mileage_km(mileage_raw)
 
         return {
@@ -299,7 +354,7 @@ class AutoScout24Scraper(BaseScraper):
             "body_type":       body_type,
             "country":         country,
             "city":            city,
-            "images":          raw.get("images",[]),
+            "images":          raw.get("images", []),
             "url":             url,
         }
 
@@ -307,40 +362,42 @@ class AutoScout24Scraper(BaseScraper):
         if not title: return None, None
         for make in sorted(KNOWN_MAKES, key=len, reverse=True):
             if make.lower() in title.lower():
-                rest  = re.sub(re.escape(make),"",title,flags=re.IGNORECASE).strip()
+                rest  = re.sub(re.escape(make), "", title, flags=re.IGNORECASE).strip()
                 words = rest.split()
                 return make, (" ".join(words[:2]) if words else None)
         words = title.split()
-        return (words[0] if words else None), (" ".join(words[1:3]) if len(words)>1 else None)
+        return (words[0] if words else None), (" ".join(words[1:3]) if len(words) > 1 else None)
 
     def _parse_price_eur(self, raw: str) -> int | None:
         if not raw: return None
         m = re.search(r'\d[\d.,]+\d', raw)
         if m:
-            num = m.group(0).replace('.','').replace(',','')
+            num = m.group(0).replace('.', '').replace(',', '')
             try:
                 val = int(num)
-                return val if val <= 2000000 else None
-            except ValueError: pass
-        digits = re.sub(r'[^\d]','',raw)
+                return val if val <= 2_000_000 else None
+            except ValueError:
+                pass
+        digits = re.sub(r'[^\d]', '', raw)
         return int(digits[:6]) if digits else None
 
     def _parse_mileage_km(self, raw: str) -> int | None:
         if not raw: return None
         m = re.search(r'\d[\d.,]+\d|\d+', raw)
         if m:
-            num = m.group(0).replace('.','').replace(',','')
+            num = m.group(0).replace('.', '').replace(',', '')
             try:
                 val = int(num)
-                return val if 1 <= val <= 999999 else None
-            except ValueError: pass
+                return val if 1 <= val <= 999_999 else None
+            except ValueError:
+                pass
         return None
 
     def _extract_year(self, text: str) -> int | None:
-        # MM/YYYY format
+        # MM/YYYY
         m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', text)
         if m: return int(m.group(2))
-        # Bare year
+        # Bare 4-digit year
         m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
         return int(m.group(1)) if m else None
 
