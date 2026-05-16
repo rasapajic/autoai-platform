@@ -98,7 +98,7 @@ function getSerbiaEligibility(listing: any) {
       : 'Gorivo nepoznato — potrebna kompletna tehnička dokumentacija.'
     return {
       status: 'needs_check', emoji: '🟠',
-      label: 'Nepoznato godište — Euro norma neprovjerljiva',
+      label: 'Nepoznato godište — Euro norma neproverljiva',
       reason: `Godište nije dostupno u oglasu. ${fuelNote}`,
       tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru pre uvoza u Srbiju.',
       warnings: [
@@ -281,7 +281,7 @@ export default function SearchPage() {
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '4px 14px' }}>
               <span style={{ fontSize: 17 }}>🤖</span>
               <input value={aiQuery} onChange={e => setAiQuery(e.target.value)}
-                placeholder='npr. "Golf diesel do 15000€, max 100000km, noviji od 2018"'
+                placeholder='npr. "Golf dizel do 15000€, max 100000km, noviji od 2018"'
                 style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text)', fontSize: 15 }} />
             </div>
             <button type="submit" disabled={aiLoading} style={{
@@ -435,7 +435,6 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
 
       <div style={{ padding: '0 18px 18px' }}>
 
-        {/* Uvoz u Srbiju */}
         <div style={{
           background: `${eligColor}11`, border: `1px solid ${eligColor}44`,
           borderRadius: 10, padding: '9px 12px', marginBottom: 10,
@@ -469,7 +468,6 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           )}
         </div>
 
-        {/* EU cena */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>EU cena:</span>
           <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text2)' }}>
@@ -477,7 +475,6 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           </span>
         </div>
 
-        {/* Trošak uvoza */}
         {bd && (
           <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
             <button onClick={() => setShowBd(!showBd)} className="cb" style={{
@@ -518,7 +515,6 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
           </div>
         )}
 
-        {/* Specs */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
           {mileage && <span>🛣 {mileage}</span>}
           {listing.fuel_type && <span>⛽ {FUEL_LABELS[listing.fuel_type] || listing.fuel_type}</span>}
