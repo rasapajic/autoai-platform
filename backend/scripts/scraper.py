@@ -151,32 +151,64 @@ def save_listings(listings):
 
 async def run_autoscout24():
     print("\n=== AUTOSCOUT24 DE ===")
+    total = 0
     try:
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
-        scraper  = AutoScout24Scraper()
-        listings = await scraper.scrape_listings({}, max_pages=50)
-        print(f"  AutoScout24 DE pronadjeno: {len(listings)}")
-        saved = save_listings(listings)
-        print(f"  AutoScout24 DE saved: {saved}")
-        return saved
+
+        fuel_types = [
+            ("diesel",   15),
+            ("petrol",   15),
+            ("electric", 10),
+            ("hybrid",   10),
+        ]
+        for fuel_name, pages in fuel_types:
+            print(f"  AS24 DE — {fuel_name} ({pages} str)...")
+            scraper  = AutoScout24Scraper()
+            listings = await scraper.scrape_listings(
+                {"fuel_type": fuel_name}, max_pages=pages
+            )
+            print(f"  Pronadjeno {fuel_name}: {len(listings)}")
+            saved = save_listings(listings)
+            total += saved
+            print(f"  Saved {fuel_name}: {saved}")
+            await asyncio.sleep(3)
+
+        print(f"  AutoScout24 DE ukupno: {total}")
+        return total
     except Exception as e:
         print(f"  AutoScout24 DE greska: {e}")
         return 0
 
 async def run_autoscout24_at():
     print("\n=== AUTOSCOUT24 AT ===")
+    total = 0
     try:
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
-        scraper  = AutoScout24Scraper()
-        listings = await scraper.scrape_listings({"country": "A"}, max_pages=50)
-        print(f"  AutoScout24 AT pronadjeno: {len(listings)}")
-        saved = save_listings(listings)
-        print(f"  AutoScout24 AT saved: {saved}")
-        return saved
+
+        fuel_types = [
+            ("diesel",   10),
+            ("petrol",   10),
+            ("electric",  5),
+            ("hybrid",    5),
+        ]
+        for fuel_name, pages in fuel_types:
+            print(f"  AS24 AT — {fuel_name} ({pages} str)...")
+            scraper  = AutoScout24Scraper()
+            listings = await scraper.scrape_listings(
+                {"fuel_type": fuel_name, "country": "A"}, max_pages=pages
+            )
+            print(f"  Pronadjeno {fuel_name}: {len(listings)}")
+            saved = save_listings(listings)
+            total += saved
+            print(f"  Saved {fuel_name}: {saved}")
+            await asyncio.sleep(3)
+
+        print(f"  AutoScout24 AT ukupno: {total}")
+        return total
     except Exception as e:
         print(f"  AutoScout24 AT greska: {e}")
         return 0
@@ -188,7 +220,7 @@ async def run_mobile_de():
         sys.path.insert(0, '/app')
         from app.scrapers.mobile_de import MobileDeScraper
         scraper  = MobileDeScraper()
-        listings = await scraper.scrape_listings({}, max_pages=50)
+        listings = await scraper.scrape_listings({}, max_pages=30)
         print(f"  Mobile.de pronadjeno: {len(listings)}")
         saved = save_listings(listings)
         print(f"  Mobile.de saved: {saved}")
@@ -203,7 +235,7 @@ def main():
     total += asyncio.run(run_autoscout24())
     total += asyncio.run(run_autoscout24_at())
     total += asyncio.run(run_mobile_de())
-    print(f"\n=== UKUPNO SAČUVANO: {total} ===")
+    print(f"\n=== UKUPNO SACUVANO: {total} ===")
 
 if __name__ == "__main__":
     main()
