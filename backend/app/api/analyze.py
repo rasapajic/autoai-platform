@@ -129,54 +129,101 @@ def _calc_import_cost(price: int, carina_pct: float) -> dict:
 
 AS24_JS = r"""
 () => {
-    const get  = sel => document.querySelector(sel)?.textContent?.trim() || '';
-    const getA = sel => document.querySelector(sel)?.getAttribute('content') || '';
+    // 1. JSON-LD — najpouzdanije
+    const ldScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+    let ldData = null;
+    for (const s of ldScripts) {
+        try {
+            const d = JSON.parse(s.textContent);
+            if (d['@type'] === 'Car' || d['@type'] === 'Vehicle' || d.offers) {
+                ldData = d; break;
+            }
+        } catch {}
+    }
 
+    // 2. Cijena
     const priceEl = document.querySelector(
-        '[data-type="price_block"] .cldt-price, .cldt-price, [class*="price-label"], [class*="PriceBlock"]'
+        '[data-type="price_block"] .cldt-price, .cldt-price, [class*="price-label"], [class*="PriceBlock"], [class*="price-section"]'
     );
-    const price_raw = priceEl ? priceEl.textContent.trim() : '';
+    let price_raw = priceEl ? priceEl.textContent.trim() : '';
+    if (!price_raw && ldData?.offers?.price) {
+        price_raw = ldData.offers.price + ' €';
+    }
 
+    // 3. Specs — svi mogući selektori
     const specs = {};
+
+    // data-item-key (stari AS24)
     document.querySelectorAll('[data-item-key]').forEach(el => {
         specs[el.getAttribute('data-item-key')] = el.textContent.trim();
     });
 
-    document.querySelectorAll('dl dt, dl dd').forEach((el, i, arr) => {
-        if (el.tagName === 'DT' && arr[i+1]?.tagName === 'DD') {
-            specs['__' + el.textContent.trim()] = arr[i+1].textContent.trim();
+    // dl dt/dd parovi
+    document.querySelectorAll('dl').forEach(dl => {
+        const dts = dl.querySelectorAll('dt');
+        const dds = dl.querySelectorAll('dd');
+        dts.forEach((dt, i) => {
+            if (dds[i]) specs['dl__' + dt.textContent.trim()] = dds[i].textContent.trim();
+        });
+    });
+
+    // table rows
+    document.querySelectorAll('table tr').forEach(row => {
+        const cells = row.querySelectorAll('td, th');
+        if (cells.length >= 2) {
+            const k = cells[0].textContent.trim();
+            const v = cells[1].textContent.trim();
+            if (k && v && k.length < 60) specs['tbl__' + k] = v;
         }
     });
 
-    const title = get('h1') || get('[class*="title"]') || getA('og:title');
+    // React/Next data attributes
+    document.querySelectorAll('[data-cy], [data-testid]').forEach(el => {
+        const key = el.getAttribute('data-cy') || el.getAttribute('data-testid');
+        if (key && el.textContent.trim()) specs['cy__' + key] = el.textContent.trim();
+    });
 
+    // 4. Naslov
+    const title = ldData?.name
+        || document.querySelector('h1')?.textContent?.trim()
+        || document.querySelector('[class*="title"]')?.textContent?.trim()
+        || document.querySelector('meta[property="og:title"]')?.getAttribute('content')
+        || '';
+
+    // 5. Lokacija
     const locEl = document.querySelector(
-        '[class*="seller-contact-country"], [class*="SellerInfo"] [class*="address"], [class*="location"]'
+        '[class*="seller-contact-country"], [class*="SellerInfo"] [class*="address"], [class*="location"], [data-cy*="location"]'
     );
-    const location_raw = locEl ? locEl.textContent.trim() : '';
+    const location_raw = locEl ? locEl.textContent.trim() : (ldData?.offers?.availableAtOrFrom?.address?.addressLocality || '');
 
+    // 6. Slike
     const images = Array.from(document.querySelectorAll(
-        '.image-gallery-image img, [class*="gallery"] img, [class*="Gallery"] img'
-    )).map(i => i.src || i.getAttribute('data-src')).filter(s => s && s.startsWith('http'));
+        '.image-gallery-image img, [class*="gallery"] img, [class*="Gallery"] img, [class*="swiper"] img'
+    )).map(i => i.src || i.getAttribute('data-src') || i.getAttribute('data-lazy') || '')
+      .filter(s => s && s.startsWith('http') && !s.includes('placeholder'));
 
-    const desc = get('.cldt-stage-description, [class*="description"], [class*="Description"]');
+    // 7. Opis
+    const desc = document.querySelector('.cldt-stage-description, [class*="description"], [class*="Description"]')?.textContent?.trim() || '';
 
+    // 8. Oprema
     const features = Array.from(document.querySelectorAll(
-        '.sc-expandable-element li, [class*="equipment"] li, [class*="Equipment"] li'
+        '.sc-expandable-element li, [class*="equipment"] li, [class*="Equipment"] li, [class*="feature"] li'
     )).map(e => e.textContent.trim()).filter(Boolean);
 
-    const pageText = document.body.innerText || '';
+    const pageText = (document.body.innerText || '').slice(0, 8000);
 
-    return { title, price_raw, specs, location_raw, images: images.slice(0,12), desc, features, pageText };
+    return { title, price_raw, specs, location_raw, images: images.slice(0,12), desc, features, ldData, pageText };
 }
 """
 
 async def _scrape_autoscout24(url: str) -> dict:
     from app.scrapers.autoscout24 import AutoScout24Scraper
     async with AutoScout24Scraper() as scraper:
-        page = await scraper.get_page(url, wait_for=None)
+        page = await scraper.get_page(url, wait_for="domcontentloaded")
         if not page:
             raise RuntimeError("Stranica nije učitana")
+        # Čekaj JS render
+        await asyncio.sleep(3)
         try:
             raw = await page.evaluate(AS24_JS)
         finally:
@@ -184,47 +231,92 @@ async def _scrape_autoscout24(url: str) -> dict:
 
     specs     = raw.get("specs", {})
     page_text = raw.get("pageText", "")
+    ld        = raw.get("ldData") or {}
 
+    # Cijena
     price = _parse_price(raw.get("price_raw", ""))
+    if not price and ld.get("offers", {}).get("price"):
+        price = _parse_price(str(ld["offers"]["price"]))
 
+    # Godište — prioritet: JSON-LD → specs sa ključnim riječima → regex iz teksta
     year = None
-    for k, v in specs.items():
-        y = _parse_year(v)
-        if y:
-            year = y
-            break
+    # JSON-LD
+    if ld.get("vehicleModelDate"):
+        year = _parse_year(str(ld["vehicleModelDate"]))
+    if not year and ld.get("dateVehicleFirstRegistered"):
+        year = _parse_year(str(ld["dateVehicleFirstRegistered"]))
+    if not year and ld.get("modelDate"):
+        year = _parse_year(str(ld["modelDate"]))
+    # Specs sa ključnim riječima
     if not year:
-        year = _parse_year(page_text[:2000])
-
-    mileage = None
-    for k, v in specs.items():
-        if "km" in k.lower() or "mileage" in k.lower() or "kilomet" in k.lower():
-            mileage = _parse_mileage(v)
-            if mileage:
+        for k, v in specs.items():
+            kl = k.lower()
+            if any(x in kl for x in ["registr", "zulassung", "first", "year", "baujahr", "godiste", "godište"]):
+                year = _parse_year(v)
+                if year:
+                    break
+    # Sve vrijednosti u specs
+    if not year:
+        for k, v in specs.items():
+            y = _parse_year(v)
+            if y:
+                year = y
                 break
+    # Tekst stranice
+    if not year:
+        # Traži pattern MM/YYYY ili YYYY
+        m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', page_text)
+        if m:
+            year = int(m.group(2))
+    if not year:
+        year = _parse_year(page_text[:3000])
+
+    # Kilometraža
+    mileage = None
+    if ld.get("mileageFromOdometer", {}).get("value"):
+        mileage = _parse_mileage(str(ld["mileageFromOdometer"]["value"]))
     if not mileage:
-        km_m = re.search(r"([\d.,]+)\s*km", page_text[:3000])
+        for k, v in specs.items():
+            if any(x in k.lower() for x in ["km", "mileage", "kilomet", "laufleist"]):
+                mileage = _parse_mileage(v)
+                if mileage:
+                    break
+    if not mileage:
+        km_m = re.search(r"([\d.,]+)\s*km", page_text[:4000])
         if km_m:
             mileage = _parse_mileage(km_m.group(1) + " km")
 
+    # Gorivo
     fuel_type = None
-    for k, v in specs.items():
-        f = _normalize_fuel(v)
-        if f:
-            fuel_type = f
-            break
+    if ld.get("fuelType"):
+        fuel_type = _normalize_fuel(str(ld["fuelType"]))
+    if not fuel_type:
+        for k, v in specs.items():
+            f = _normalize_fuel(v)
+            if f:
+                fuel_type = f
+                break
     if not fuel_type:
         fuel_type = _normalize_fuel(page_text[:2000])
 
+    # Snaga
     power_kw = None
-    for k, v in specs.items():
-        p = _parse_power_kw(v)
-        if p:
-            power_kw = p
-            break
+    if ld.get("vehicleEngine", {}).get("enginePower"):
+        power_kw = _parse_power_kw(str(ld["vehicleEngine"]["enginePower"]))
+    if not power_kw:
+        for k, v in specs.items():
+            p = _parse_power_kw(v)
+            if p:
+                power_kw = p
+                break
 
+    # Lokacija
     country, city = None, None
     loc = raw.get("location_raw", "")
+    if not loc and ld.get("offers", {}).get("availableAtOrFrom", {}).get("address"):
+        addr = ld["offers"]["availableAtOrFrom"]["address"]
+        city    = addr.get("addressLocality")
+        country = addr.get("addressCountry")
     if loc:
         parts = [p.strip() for p in loc.replace("\n", ",").split(",")]
         parts = [p for p in parts if p]
@@ -233,8 +325,11 @@ async def _scrape_autoscout24(url: str) -> dict:
         elif parts:
             city = parts[0]
 
+    # Naslov
+    title = raw.get("title", "") or ld.get("name", "")
+
     return {
-        "title":           raw.get("title", ""),
+        "title":           title,
         "price":           price,
         "year":            year,
         "mileage":         mileage,
@@ -243,7 +338,7 @@ async def _scrape_autoscout24(url: str) -> dict:
         "country":         country,
         "city":            city,
         "images":          raw.get("images", []),
-        "description":     raw.get("desc"),
+        "description":     raw.get("desc") or ld.get("description"),
         "features":        raw.get("features", []),
     }
 
@@ -355,6 +450,10 @@ async def _scrape_mobile_de(url: str) -> dict:
     if not year and ld.get("vehicleModelDate"):
         year = _parse_year(str(ld["vehicleModelDate"]))
     if not year:
+        m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', page_text)
+        if m:
+            year = int(m.group(2))
+    if not year:
         year = _parse_year(page_text[:2000])
 
     mileage = None
@@ -452,11 +551,11 @@ async def analyze_url(req: AnalyzeRequest):
     risk_warnings: list[str] = list(eligibility.warnings)
     mileage = data.get("mileage")
     if mileage and mileage > 200_000:
-        risk_warnings.append(f"Visoka kilometraža ({mileage:,} km) — provjeri stanje motora i mjenjača.")
+        risk_warnings.append(f"Visoka kilometraža ({mileage:,} km) — proveri stanje motora i menjača.")
     if not data.get("year"):
-        risk_warnings.append("Godište nije pronađeno — provjeri datum prve registracije u oglasu.")
+        risk_warnings.append("Godište nije pronađeno — proveri datum prve registracije u oglasu.")
     if data.get("fuel_type") == "diesel":
-        risk_warnings.append("Dizel vozilo — provjeri stanje DPF filtera i turbine.")
+        risk_warnings.append("Dizel vozilo — proveri stanje DPF filtera i turbine.")
 
     return {
         "scrape_success":     True,
@@ -534,11 +633,11 @@ Vrati JSON sa ovim poljima (null ako nije pronađeno):
     risk_warnings: list[str] = list(eligibility.warnings)
     mileage = data.get("mileage")
     if mileage and mileage > 200_000:
-        risk_warnings.append(f"Visoka kilometraža ({mileage:,} km) — provjeri stanje motora.")
+        risk_warnings.append(f"Visoka kilometraža ({mileage:,} km) — proveri stanje motora.")
     if not data.get("year"):
         risk_warnings.append("Godište nije pronađeno u tekstu.")
     if data.get("fuel_type") == "diesel":
-        risk_warnings.append("Dizel vozilo — provjeri stanje DPF filtera i turbine.")
+        risk_warnings.append("Dizel vozilo — proveri stanje DPF filtera i turbine.")
 
     return {
         "scrape_success":     True,
