@@ -137,11 +137,7 @@ function fmtKm(km: any): string | null {
 
 function fullImg(url: string): string {
   if (!url) return url
-  return url
-    .replace('/250x188.webp', '/800x600.webp')
-    .replace('/250x188.jpg',  '/800x600.jpg')
-    .replace('/400x300.webp', '/800x600.webp')
-    .replace('/400x300.jpg',  '/800x600.jpg')
+  return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
 }
 
 export default function ListingPage({ params }: { params: { id: string } }) {
