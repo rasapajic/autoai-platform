@@ -60,11 +60,7 @@ function formatMileage(raw: any): string | null {
 
 function fullImg(url: string): string {
   if (!url) return url
-  return url
-    .replace('/250x188.webp', '/800x600.webp')
-    .replace('/250x188.jpg',  '/800x600.jpg')
-    .replace('/400x300.webp', '/800x600.webp')
-    .replace('/400x300.jpg',  '/800x600.jpg')
+  return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
 }
 
 function getSerbiaEligibility(listing: any) {
@@ -90,24 +86,7 @@ function getSerbiaEligibility(listing: any) {
     carinaPct: 5,
   }
 
-  if (!year) {
-    const fuelNote = fuel === 'diesel'
-      ? 'Dizel vozila zahtevaju posebnu proveru DPF filtera i Euro norme.'
-      : fuel === 'petrol'
-      ? 'Benzinska vozila — potrebno proveriti Euro normu.'
-      : 'Gorivo nepoznato — potrebna kompletna tehnička dokumentacija.'
-    return {
-      status: 'needs_check', emoji: '🟠',
-      label: 'Nepoznato godište — Euro norma neproverljiva',
-      reason: `Godište nije dostupno u oglasu. ${fuelNote}`,
-      tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru pre uvoza u Srbiju.',
-      warnings: [
-        'Zatraži od prodavca datum prve registracije i COC dokument.',
-        'Bez potvrde Euro norme može nastati problem pri carinjenju.',
-      ],
-      carinaPct: 5,
-    }
-  }
+  if (!year) return null
 
   if (year >= 2015) return {
     status: 'eligible', emoji: '🟢',
@@ -379,10 +358,10 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
   const img         = listing.images?.[0]
   const price       = listing.price ? Number(listing.price) : null
   const eligibility = getSerbiaEligibility(listing)
-  const bd          = price ? calcBreakdown(price, eligibility.carinaPct) : null
+  const bd          = price && eligibility ? calcBreakdown(price, eligibility.carinaPct) : null
   const delta       = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
   const mileage     = formatMileage(listing.mileage)
-  const eligColor   = ELIGIBILITY_COLORS[eligibility.status]
+  const eligColor   = eligibility ? ELIGIBILITY_COLORS[eligibility.status] : null
   const [showBd,    setShowBd]   = useState(false)
   const [showWarn,  setShowWarn] = useState(false)
 
@@ -435,38 +414,40 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
 
       <div style={{ padding: '0 18px 18px' }}>
 
-        <div style={{
-          background: `${eligColor}11`, border: `1px solid ${eligColor}44`,
-          borderRadius: 10, padding: '9px 12px', marginBottom: 10,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2, letterSpacing: '.06em', fontWeight: 600 }}>UVOZ U SRBIJU</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: eligColor }}>
-                {eligibility.emoji} {eligibility.label}
-              </div>
-              {eligibility.tooltip && (
-                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>
-                  {eligibility.tooltip}
+        {eligibility && eligColor && (
+          <div style={{
+            background: `${eligColor}11`, border: `1px solid ${eligColor}44`,
+            borderRadius: 10, padding: '9px 12px', marginBottom: 10,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2, letterSpacing: '.06em', fontWeight: 600 }}>UVOZ U SRBIJU</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: eligColor }}>
+                  {eligibility.emoji} {eligibility.label}
                 </div>
+                {eligibility.tooltip && (
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>
+                    {eligibility.tooltip}
+                  </div>
+                )}
+              </div>
+              {eligibility.warnings.length > 0 && (
+                <button onClick={() => setShowWarn(!showWarn)} className="cb" style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 11, color: 'var(--text3)', padding: '2px 4px', flexShrink: 0,
+                }}>{showWarn ? '▲' : 'ℹ️'}</button>
               )}
             </div>
-            {eligibility.warnings.length > 0 && (
-              <button onClick={() => setShowWarn(!showWarn)} className="cb" style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 11, color: 'var(--text3)', padding: '2px 4px', flexShrink: 0,
-              }}>{showWarn ? '▲' : 'ℹ️'}</button>
+            {showWarn && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${eligColor}22` }}>
+                <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 5px', lineHeight: 1.5 }}>{eligibility.reason}</p>
+                {eligibility.warnings.map((w: string, i: number) => (
+                  <p key={i} style={{ fontSize: 11, color: 'var(--text3)', margin: '3px 0', lineHeight: 1.4 }}>• {w}</p>
+                ))}
+              </div>
             )}
           </div>
-          {showWarn && (
-            <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${eligColor}22` }}>
-              <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 5px', lineHeight: 1.5 }}>{eligibility.reason}</p>
-              {eligibility.warnings.map((w: string, i: number) => (
-                <p key={i} style={{ fontSize: 11, color: 'var(--text3)', margin: '3px 0', lineHeight: 1.4 }}>• {w}</p>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>EU cena:</span>
