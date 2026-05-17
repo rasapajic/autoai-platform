@@ -1,455 +1,210 @@
+import requests
+from bs4 import BeautifulSoup
+import psycopg2
+import os
+import time
+import random
+import json
+import uuid
 import asyncio
 import logging
-import re
-from urllib.parse import urlencode
-from app.scrapers.base import BaseScraper
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-FUEL_MAP = {
-    "diesel": "diesel", "dizel": "diesel",
-    "petrol": "petrol", "benzin": "petrol", "gasoline": "petrol",
-    "electric": "electric", "elektro": "electric", "elektrisch": "electric",
-    "hybrid": "hybrid", "plug-in": "hybrid",
-    "lpg": "lpg", "autogas": "lpg",
-    "cng": "cng", "erdgas": "cng",
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "sr-RS,sr;q=0.9,en-US;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://www.polovniautomobili.com/",
+    "Connection": "keep-alive",
 }
 
-TRANSMISSION_MAP = {
-    "automatic": "automatic", "automat": "automatic", "automatik": "automatic",
-    "dsg": "automatic", "cvt": "automatic", "tiptronic": "automatic",
-    "manual": "manual", "manuell": "manual", "schaltgetriebe": "manual",
-}
+def get_conn():
+    return psycopg2.connect(DATABASE_URL)
 
-BODY_MAP = {
-    "limousine": "sedan", "sedan": "sedan",
-    "suv": "suv", "geländewagen": "suv", "crossover": "suv",
-    "kombi": "kombi", "estate": "kombi", "touring": "kombi",
-    "hatchback": "hatchback", "schrägheck": "hatchback",
-    "coupe": "coupe", "coupé": "coupe",
-    "cabrio": "cabrio", "kabriolet": "cabrio", "roadster": "cabrio",
-    "van": "van", "minivan": "van", "kleinbus": "van",
-    "pickup": "pickup",
-}
+def parse_make_model(title):
+    parts = title.strip().split(" ", 1)
+    make  = parts[0] if parts else None
+    model = parts[1] if len(parts) > 1 else None
+    return make, model
 
-KNOWN_MAKES = [
-    "Alfa Romeo","Aston Martin","Audi","BMW","Bentley","Bugatti",
-    "Citroën","Citroen","Dacia","Ferrari","Fiat","Ford",
-    "Honda","Hyundai","Jaguar","Jeep","Kia","Lamborghini",
-    "Land Rover","Lexus","Maserati","Mazda","Mercedes-Benz",
-    "Mini","Mitsubishi","Nissan","Opel","Peugeot","Porsche",
-    "Renault","Rolls-Royce","Seat","Skoda","Smart","Subaru",
-    "Suzuki","Tesla","Toyota","Volkswagen","Volvo",
-]
+def scrape_polovni_page(url, session):
+    for attempt in range(3):
+        try:
+            resp = session.get(url, timeout=30)
+            break
+        except Exception as e:
+            print(f"  Timeout pokusaj {attempt+1}/3: {e}")
+            if attempt == 2:
+                return []
+            time.sleep(5 * (attempt + 1))
+    if '<' not in resp.text[:100]:
+        return []
+    soup     = BeautifulSoup(resp.text, "html.parser")
+    items    = soup.select("article.classified")
+    listings = []
+    for item in items:
+        try:
+            title_el = item.select_one("h3.classified-title")
+            price_el = item.select_one(".price-box .price")
+            link_el  = item.select_one("a.ga-title")
+            details  = item.select(".classified-details li")
+            img_el   = item.select_one("img")
+            if not link_el:
+                continue
+            href        = link_el.get("href", "")
+            full_url    = "https://www.polovniautomobili.com" + href
+            external_id = "pola_" + href.strip("/").split("/")[-1]
+            title       = title_el.text.strip() if title_el else ""
+            make, model = parse_make_model(title)
+            price_raw   = price_el.text.strip() if price_el else ""
+            price       = int(''.join(filter(str.isdigit, price_raw)) or 0) or None
+            year = mileage = fuel_type = None
+            for d in details:
+                t = d.text.strip()
+                if t.isdigit() and len(t) == 4:
+                    year = int(t)
+                elif "km" in t.lower():
+                    mileage = int(''.join(filter(str.isdigit, t)) or 0) or None
+                elif any(f in t.lower() for f in ["dizel","benzin","elektr","hibrid","gas"]):
+                    fuel_type = t
+            img_src = img_el.get("data-src") or img_el.get("src") if img_el else None
+            images  = json.dumps([img_src]) if img_src else json.dumps([])
+            listings.append({
+                "external_id": external_id, "source": "polovniautomobili",
+                "make": make, "model": model, "year": year, "price": price,
+                "mileage": mileage, "fuel_type": fuel_type, "body_type": None,
+                "url": full_url, "images": images, "country": "RS",
+            })
+        except Exception as e:
+            print(f"  Error: {e}")
+    return listings
 
+def run_polovni():
+    print("\n=== POLOVNI AUTOMOBILI ===")
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    try:
+        session.get("https://www.polovniautomobili.com/", timeout=30)
+        time.sleep(2)
+    except: pass
+    base_url = "https://www.polovniautomobili.com/auto-oglasi/pretraga?page={}&sort=basic&without_price=1"
+    total = 0
+    for page in range(1, 3):
+        listings = scrape_polovni_page(base_url.format(page), session)
+        saved    = save_listings(listings)
+        total   += saved
+        print(f"  Polovni str {page}: {saved}")
+        time.sleep(random.uniform(2, 4))
+    print(f"  Polovni ukupno: {total}")
+    return total
 
-class AutoScout24Scraper(BaseScraper):
-    SOURCE_NAME = "autoscout24"
-    BASE_URL    = "https://www.autoscout24.com"
+def save_listings(listings):
+    conn  = get_conn()
+    cur   = conn.cursor()
+    saved = 0
+    for l in listings:
+        try:
+            images = l.get("images")
+            if isinstance(images, list):
+                images = json.dumps(images)
+            cur.execute("""
+                INSERT INTO listings
+                    (id, external_id, source, make, model, year, price,
+                     mileage, fuel_type, body_type, url, images, is_active, country)
+                VALUES
+                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
+                ON CONFLICT (external_id) DO UPDATE SET
+                    year      = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
+                    mileage   = COALESCE(EXCLUDED.mileage, listings.mileage),
+                    fuel_type = CASE WHEN listings.fuel_type IS NULL THEN EXCLUDED.fuel_type ELSE listings.fuel_type END,
+                    body_type = CASE WHEN listings.body_type IS NULL THEN EXCLUDED.body_type ELSE listings.body_type END,
+                    price     = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END
+            """, (
+                str(uuid.uuid4()),
+                l.get("external_id"), l.get("source"),
+                l.get("make"), l.get("model"), l.get("year"),
+                l.get("price"), l.get("mileage"), l.get("fuel_type"),
+                l.get("body_type"),
+                l.get("url"), images, l.get("country"),
+            ))
+            conn.commit()
+            saved += 1
+        except Exception as e:
+            conn.rollback()
+            print(f"  DB error: {e}")
+    cur.close()
+    conn.close()
+    return saved
 
-    def _build_url(self, filters: dict, page: int = 1) -> str:
-        params = {"atype": "C", "page": page, "sort": "age", "desc": 0}
-        mapping = {
-            "make": "mmvmk0", "model": "mmvmd0",
-            "min_price": "pricefrom", "max_price": "priceto",
-            "min_year": "fregfrom", "max_year": "fregto",
-            "max_km": "kmto",
-        }
-        fuel_map = {"petrol":"B","diesel":"D","electric":"E","hybrid":"M","lpg":"L","cng":"C"}
-        for key, param in mapping.items():
-            if filters.get(key):
-                params[param] = filters[key]
-        if filters.get("fuel_type"):
-            code = fuel_map.get(filters["fuel_type"])
-            if code:
-                params["fuel"] = code
-        if filters.get("country"):
-            params["cy"] = filters["country"].upper()
-        return f"{self.BASE_URL}/lst?{urlencode(params)}"
+async def run_autoscout24():
+    print("\n=== AUTOSCOUT24 DE ===")
+    total = 0
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.autoscout24 import AutoScout24Scraper
+        for fuel_name, pages in [("diesel",2),("petrol",2),("electric",1),("hybrid",1)]:
+            print(f"  AS24 DE {fuel_name}...")
+            scraper  = AutoScout24Scraper()
+            listings = await scraper.scrape_listings({"fuel_type": fuel_name}, max_pages=pages)
+            saved    = save_listings(listings)
+            total   += saved
+            print(f"  {fuel_name}: {saved}")
+            await asyncio.sleep(2)
+        print(f"  AS24 DE ukupno: {total}")
+        return total
+    except Exception as e:
+        print(f"  AS24 DE greska: {e}")
+        return 0
 
-    async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list[dict]:
-        all_listings = []
-        seen_ids     = set()
-        filter_fuel  = filters.get("fuel_type")
+async def run_autoscout24_at():
+    print("\n=== AUTOSCOUT24 AT ===")
+    total = 0
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.autoscout24 import AutoScout24Scraper
+        for fuel_name, pages in [("diesel",1),("petrol",1),("electric",1),("hybrid",1)]:
+            print(f"  AS24 AT {fuel_name}...")
+            scraper  = AutoScout24Scraper()
+            listings = await scraper.scrape_listings({"fuel_type": fuel_name, "country": "A"}, max_pages=pages)
+            saved    = save_listings(listings)
+            total   += saved
+            print(f"  {fuel_name}: {saved}")
+            await asyncio.sleep(2)
+        print(f"  AS24 AT ukupno: {total}")
+        return total
+    except Exception as e:
+        print(f"  AS24 AT greska: {e}")
+        return 0
 
-        async with self:
-            for page_num in range(1, max_pages + 1):
-                url = self._build_url(filters, page=page_num)
-                logger.info(f"[AutoScout24] Stranica {page_num}: {url}")
-                page = None
-                for attempt in range(3):
-                    try:
-                        page = await self.get_page(url, wait_for="domcontentloaded")
-                        if page: break
-                    except Exception as e:
-                        logger.warning(f"[AutoScout24] Pokušaj {attempt+1}: {e}")
-                        await asyncio.sleep(2 ** attempt)
-                if not page:
-                    continue
-                try:
-                    raw_items = await page.evaluate(self._listing_js())
-                except Exception as e:
-                    logger.error(f"[AutoScout24] JS greška: {e}")
-                    await page.close()
-                    continue
-                if not raw_items:
-                    await page.close()
-                    break
-                page_saved = 0
-                for raw in raw_items:
-                    try:
-                        parsed = self._parse_listing(raw, filter_fuel=filter_fuel)
-                        if not parsed or parsed["external_id"] in seen_ids:
-                            continue
-                        seen_ids.add(parsed["external_id"])
-                        all_listings.append(parsed)
-                        page_saved += 1
-                    except Exception as e:
-                        logger.warning(f"[AutoScout24] Parse greška: {e}")
-                logger.info(f"[AutoScout24] Str {page_num}: +{page_saved} | Ukupno: {len(all_listings)}")
-                await page.close()
-                await asyncio.sleep(2)
-        return all_listings
+async def run_mobile_de():
+    print("\n=== MOBILE.DE ===")
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.scrapers.mobile_de import MobileDeScraper
+        scraper  = MobileDeScraper()
+        listings = await scraper.scrape_listings({}, max_pages=2)
+        saved    = save_listings(listings)
+        print(f"  Mobile.de: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  Mobile.de greska: {e}")
+        return 0
 
-    async def scrape_detail(self, url: str) -> dict:
-        async with self:
-            page = await self.get_page(url, wait_for=None)
-            if not page:
-                return {}
-            try:
-                data = await page.evaluate("""
-                    () => {
-                        const getText = sel => document.querySelector(sel)?.textContent?.trim() || null;
-                        const getAll  = sel => Array.from(document.querySelectorAll(sel)).map(e=>e.textContent.trim()).filter(Boolean);
+def main():
+    total  = 0
+    total += run_polovni()
+    total += asyncio.run(run_autoscout24())
+    total += asyncio.run(run_autoscout24_at())
+    total += asyncio.run(run_mobile_de())
+    print(f"\n=== UKUPNO: {total} ===")
 
-                        const bodyText = document.body.innerText || '';
-
-                        // Godiste: "First registration" ili "Erstzulassung" -> MM/YYYY ili MM.YYYY
-                        const regMatch = bodyText.match(/First registration[:\\s]+([0-1]\\d[\\/\\.](20[0-3]\\d|19[5-9]\\d))/i)
-                                      || bodyText.match(/Erstzulassung[:\\s]+([0-1]\\d[\\/\\.](20[0-3]\\d|19[5-9]\\d))/i);
-                        const firstReg = regMatch ? regMatch[1] : null;
-                        const yearMatch = firstReg ? firstReg.match(/(20[0-3]\\d|19[5-9]\\d)$/) : null;
-                        const year = yearMatch ? parseInt(yearMatch[0]) : null;
-
-                        const images = Array.from(document.querySelectorAll(
-                            '.image-gallery-image img,[class*="gallery"] img,[class*="photo"] img'
-                        )).map(i=>i.src||i.getAttribute('data-src')).filter(Boolean);
-
-                        return {
-                            year,
-                            first_registration: firstReg,
-                            description: getText('.cldt-stage-description,[class*="description"]'),
-                            features:    getAll('.sc-expandable-element li,[class*="equipment"] li'),
-                            images:      images.slice(0,20),
-                        };
-                    }
-                """)
-                return data or {}
-            except Exception as e:
-                logger.error(f"[AutoScout24] Detail greška: {e}")
-                return {}
-            finally:
-                await page.close()
-
-    def _listing_js(self) -> str:
-        return r"""
-        () => {
-            const getCleanPrice = (el) => {
-                if (!el) return '';
-                const clone = el.cloneNode(true);
-                clone.querySelectorAll('sup,sub,[class*="footnote"],[class*="superscript"]').forEach(e=>e.remove());
-                let text = clone.textContent.trim();
-                text = text.replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]/g,'');
-                text = text.replace(/\s+\d\s*$/,'').trim();
-                return text;
-            };
-
-            const containers = [
-                ...document.querySelectorAll('article.cldt-summary-full-item'),
-                ...document.querySelectorAll('article[data-guid]'),
-                ...document.querySelectorAll('[data-testid="regular-list-item"]'),
-                ...document.querySelectorAll('[data-testid="result-list-item"]'),
-            ];
-            const seen  = new Set();
-            const items = containers.filter(el => {
-                const id = el.getAttribute('data-guid') || el.id;
-                if (!id || seen.has(id)) return false;
-                seen.add(id); return true;
-            });
-
-            return items.map(item => {
-                const id        = item.getAttribute('data-guid') || item.getAttribute('id') || '';
-                const titleEl   = item.querySelector('h2,h3,[class*="title"]');
-                const title     = titleEl?.textContent?.trim() || '';
-                const offerLink = item.querySelector('a[href*="/offers/"]');
-                const url       = offerLink?.href || (id ? 'https://www.autoscout24.com/offers/'+id : '');
-                const priceEl   = item.querySelector('.cldt-price,[data-type="price_block"] .cldt-price,[class*="price"]');
-                const price_raw = getCleanPrice(priceEl);
-                const fullText  = item.textContent || '';
-
-                // =====================
-                // GODISTE - poboljšano
-                // =====================
-                let year_text = '';
-
-                // 1. MM/YYYY ili MM.YYYY u fullText (slash ILI tačka)
-                const regMatch1 = fullText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
-                if (regMatch1) {
-                    year_text = regMatch1[2];
-                }
-
-                // 2. data atributi na elementu
-                if (!year_text) {
-                    const dataYear = item.getAttribute('data-first-registration')
-                        || item.getAttribute('data-year')
-                        || item.getAttribute('data-model-year')
-                        || item.getAttribute('data-registration-date');
-                    if (dataYear) {
-                        const m = dataYear.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
-                        if (m) year_text = m[1];
-                    }
-                }
-
-                // 3. Specifični selektori za datum registracije
-                if (!year_text) {
-                    const regEl = item.querySelector(
-                        '[data-item-key="fr"],[data-item-key="Erstzulassung"],' +
-                        '[data-item-key="first-registration"],[class*="first-reg"],' +
-                        '[class*="registration"],[data-testid="first-registration"]'
-                    );
-                    if (regEl) {
-                        const t = regEl.textContent;
-                        const m = t.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
-                        if (m) year_text = m[2];
-                        else {
-                            const m2 = t.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
-                            if (m2) year_text = m2[1];
-                        }
-                    }
-                }
-
-                // 4. Pretraga po li/span elementima unutar kartice
-                if (!year_text) {
-                    const specEls = Array.from(item.querySelectorAll(
-                        'li, [class*="item"], [class*="detail"], [class*="spec"], span'
-                    ));
-                    for (const el of specEls) {
-                        const t = el.textContent.trim();
-                        const m = t.match(/^(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)$/)
-                               || t.match(/^(19[5-9]\d|20[0-3]\d)$/);
-                        if (m) { year_text = m[m.length - 1]; break; }
-                    }
-                }
-
-                // 5. Segmenti fullText po separatorima
-                if (!year_text) {
-                    const segments = fullText.split(/[\n\r|·•,]/);
-                    for (const seg of segments) {
-                        const t = seg.trim();
-                        const m = t.match(/^(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)$/)
-                               || t.match(/^(19[5-9]\d|20[0-3]\d)$/);
-                        if (m) { year_text = m[m.length - 1]; break; }
-                    }
-                }
-
-                // 6. Poslednji fallback: standalone godina u fullText
-                if (!year_text) {
-                    const m = fullText.match(/\b(20[0-2]\d|19[5-9]\d)\b/);
-                    if (m) year_text = m[1];
-                }
-
-                // ============
-                // KILOMETRAZA
-                // ============
-                let km_text = '';
-                const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
-                for (const m of kmMatches) {
-                    const raw = m[1];
-                    if ((raw.match(/\./g)||[]).length > 1) continue;
-                    const val = parseInt(raw.replace(/\./g,'').replace(/,/g,''));
-                    if (val >= 1 && val <= 999999) { km_text = raw+' km'; break; }
-                }
-
-                // ======
-                // GORIVO
-                // ======
-                const fuelPairs = [
-                    ['Electric','electric'],['Elektro','electric'],['Elektrisch','electric'],
-                    ['Hybrid','hybrid'],['Plug-in','hybrid'],
-                    ['Diesel','diesel'],['Dizel','diesel'],
-                    ['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],['Super','petrol'],
-                    ['LPG','lpg'],['Autogas','lpg'],['CNG','cng'],['Erdgas','cng'],
-                ];
-                let fuel_text = '';
-                for (const [kw,norm] of fuelPairs) {
-                    if (fullText.includes(kw)) { fuel_text=norm; break; }
-                }
-
-                // ======
-                // MENJAC
-                // ======
-                const transKws = ['Automatik','Automatic','Schaltgetriebe','Manual','DSG'];
-                let trans_text = '';
-                for (const kw of transKws) { if (fullText.includes(kw)) { trans_text=kw; break; } }
-
-                // ======
-                // SNAGA
-                // ======
-                const powerMatch = fullText.match(/(\d+)\s*kW/);
-                const power_text = powerMatch ? powerMatch[1]+' kW' : '';
-
-                // =========
-                // KAROSERIJA
-                // =========
-                const bodyKws = ['Limousine','SUV','Geländewagen','Kombi','Hatchback',
-                                 'Schrägheck','Coupe','Coupé','Cabrio','Kabriolet',
-                                 'Roadster','Van','Kleinbus','Pickup'];
-                let body_text = '';
-                for (const kw of bodyKws) { if (fullText.includes(kw)) { body_text=kw; break; } }
-
-                const details = [year_text,km_text,fuel_text,trans_text,power_text,body_text].filter(Boolean);
-                const images  = Array.from(item.querySelectorAll('img'))
-                    .map(img=>img.src||img.getAttribute('data-src'))
-                    .filter(s=>s&&s.startsWith('http')&&!s.includes('logo'));
-                const locEl = item.querySelector(
-                    '.cldt-summary-seller-contact-country,[class*="country"],[class*="location"]'
-                );
-
-                return {
-                    id, title, url, price_raw, details,
-                    images: images.slice(0,10),
-                    location_raw: locEl?.textContent?.trim()||'',
-                };
-            });
-        }
-        """
-
-    def _parse_listing(self, raw: dict, filter_fuel: str | None = None) -> dict | None:
-        ext_id = raw.get("id","").strip()
-        url    = raw.get("url","").strip()
-        if "?" in url: url = url.split("?")[0]
-        if not ext_id or not url: return None
-
-        title       = raw.get("title","").strip()
-        make, model = self._parse_title(title)
-        details     = raw.get("details",[])
-        price_raw   = raw.get("price_raw","")
-        price_eur   = self._parse_price_eur(price_raw)
-
-        mileage_raw = year = fuel_type = transmission = power_str = body_type = None
-
-        for d in details:
-            if not d: continue
-            dl = d.lower()
-            if dl in ("diesel","petrol","electric","hybrid","lpg","cng"):
-                fuel_type = fuel_type or d
-            elif "km" in dl and any(c.isdigit() for c in d):
-                mileage_raw = mileage_raw or d
-            elif self._extract_year(d):
-                year = year or self._extract_year(d)
-            elif any(k in dl for k in TRANSMISSION_MAP):
-                transmission = transmission or self._normalize_transmission(d)
-            elif re.search(r'\d+\s*(kw|ps|hp)', dl):
-                power_str = power_str or d
-            elif any(k in dl for k in BODY_MAP):
-                body_type = body_type or self._normalize_body(d)
-
-        if not fuel_type and filter_fuel:
-            fuel_type = filter_fuel
-
-        country, city = self._parse_location(raw.get("location_raw",""))
-        mileage_km    = self._parse_mileage_km(mileage_raw)
-
-        return {
-            "external_id":     f"as24_{ext_id}",
-            "source":          self.SOURCE_NAME,
-            "title":           title,
-            "make":            make,
-            "model":           model,
-            "year":            year,
-            "price_raw":       price_raw or None,
-            "price":           price_eur,
-            "currency":        "EUR",
-            "mileage_raw":     mileage_raw if mileage_km else None,
-            "mileage":         mileage_km,
-            "fuel_type":       fuel_type,
-            "transmission":    transmission,
-            "engine_power_kw": self._parse_power_kw(power_str),
-            "body_type":       body_type,
-            "country":         country,
-            "city":            city,
-            "images":          raw.get("images",[]),
-            "url":             url,
-        }
-
-    def _parse_title(self, title: str) -> tuple:
-        if not title: return None, None
-        for make in sorted(KNOWN_MAKES, key=len, reverse=True):
-            if make.lower() in title.lower():
-                rest  = re.sub(re.escape(make),"",title,flags=re.IGNORECASE).strip()
-                words = rest.split()
-                return make, (" ".join(words[:2]) if words else None)
-        words = title.split()
-        return (words[0] if words else None), (" ".join(words[1:3]) if len(words)>1 else None)
-
-    def _parse_price_eur(self, raw: str) -> int | None:
-        if not raw: return None
-        m = re.search(r'\d[\d.,]+\d', raw)
-        if m:
-            num = m.group(0).replace('.','').replace(',','')
-            try:
-                val = int(num)
-                return val if val <= 2_000_000 else None
-            except ValueError: pass
-        digits = re.sub(r'[^\d]','',raw)
-        return int(digits[:6]) if digits else None
-
-    def _parse_mileage_km(self, raw: str) -> int | None:
-        if not raw: return None
-        m = re.search(r'\d[\d.,]+\d|\d+', raw)
-        if m:
-            num = m.group(0).replace('.','').replace(',','')
-            try:
-                val = int(num)
-                return val if 1 <= val <= 999_999 else None
-            except ValueError: pass
-        return None
-
-    def _extract_year(self, text: str) -> int | None:
-        # Podrška za MM/YYYY i MM.YYYY format
-        m = re.search(r'\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b', text)
-        if m: return int(m.group(2))
-        m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
-        return int(m.group(1)) if m else None
-
-    def _normalize_fuel(self, val: str) -> str | None:
-        v = val.lower()
-        for k, norm in FUEL_MAP.items():
-            if k in v: return norm
-        return None
-
-    def _normalize_transmission(self, val: str) -> str | None:
-        v = val.lower()
-        for k, norm in TRANSMISSION_MAP.items():
-            if k in v: return norm
-        return None
-
-    def _normalize_body(self, val: str) -> str | None:
-        v = val.lower()
-        for k, norm in BODY_MAP.items():
-            if k in v: return norm
-        return None
-
-    def _parse_power_kw(self, raw: str) -> int | None:
-        if not raw: return None
-        kw = re.search(r'(\d+)\s*kw', raw.lower())
-        if kw: return int(kw.group(1))
-        ps = re.search(r'(\d+)\s*(ps|hp)', raw.lower())
-        if ps: return round(int(ps.group(1)) * 0.7355)
-        return None
-
-    def _parse_location(self, raw: str) -> tuple:
-        if not raw: return None, None
-        parts = [p.strip() for p in raw.split(",")]
-        if len(parts) >= 2: return parts[-1], parts[0]
-        return None, parts[0]
+if __name__ == "__main__":
+    main()
