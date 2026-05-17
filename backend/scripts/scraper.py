@@ -65,19 +65,20 @@ def run_price_estimation():
                 )
             FROM (
                 SELECT
-                    make, model,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price::numeric) AS median_price
-                FROM listings
-                WHERE price IS NOT NULL
-                  AND price::numeric BETWEEN 500 AND 500000
-                  AND make IS NOT NULL
-                  AND model IS NOT NULL
-                GROUP BY make, model
-                HAVING COUNT(*) >= 2
+                    l1.id,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY l2.price::numeric) AS median_price
+                FROM listings l1
+                JOIN listings l2 ON
+                    l1.make = l2.make AND
+                    l1.model = l2.model AND
+                    l2.price IS NOT NULL AND
+                    l2.price::numeric BETWEEN 500 AND 500000 AND
+                    (l2.year IS NULL OR l1.year IS NULL OR ABS(l2.year - l1.year) <= 3)
+                WHERE l1.price IS NOT NULL
+                GROUP BY l1.id
+                HAVING COUNT(l2.id) >= 2
             ) sub
-            WHERE l.make = sub.make
-              AND l.model = sub.model
-              AND l.price IS NOT NULL
+            WHERE l.id = sub.id
               AND sub.median_price > 0
         """)
         updated = cur.rowcount
