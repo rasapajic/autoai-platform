@@ -431,7 +431,8 @@ MDE_JS = r"""
 async def _scrape_mobile_de(url: str) -> dict:
     from app.scrapers.mobile_de import MobileDeScraper
     async with MobileDeScraper() as scraper:
-        page = await scraper.get_page(url, wait_for="domcontentloaded")
+        page = await scraper.get_page(url, wait_for=None)
+await asyncio.sleep(3)
         if not page:
             raise RuntimeError("Stranica nije učitana")
         await asyncio.sleep(3)
