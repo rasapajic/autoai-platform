@@ -2,8 +2,6 @@
 analyze.py
 ----------
 POST /api/v1/analyze/
-Scrape-uje oglas sa AutoScout24 ili Mobile.de i vraća kompletnu analizu
-za uvoz u Srbiju.
 """
 
 import re
@@ -25,6 +23,81 @@ COUNTRY_LANG: dict[str, str] = {
     "HU": "Magyar",   "SK": "Slovenčina",
 }
 
+# ── VAT Detection ─────────────────────────────────────────────────────────────
+
+VAT_KEYWORDS = {
+    "vat_deductible": [
+        "mwst. ausweisbar", "mwst ausweisbar", "ust. ausweisbar",
+        "mehrwertsteuer ausweisbar", "inkl. mwst", "inkl mwst",
+        "vat deductible", "vat reclaimable", "net export",
+        "export possible", "regelbesteuert", "regelbesteuerung",
+        "netto export", "netto preis", "netto-preis",
+    ],
+    "no_vat": [
+        "differenzbesteuerung", "differenzbesteuert",
+        "margin scheme", "margin taxation",
+        "privat", "privatverkauf", "private seller", "privatperson",
+        "ohne mwst", "ohne mehrwertsteuer",
+        "vat not deductible", "nicht ausweisbar",
+        "kein vorsteuerabzug",
+    ],
+}
+
+GERMAN_VAT = 0.19  # 19%
+
+def _detect_vat_status(title: str, description: str, page_text: str) -> dict:
+    combined = (
+        (title or "") + " " +
+        (description or "") + " " +
+        (page_text or "")
+    ).lower()
+
+    for kw in VAT_KEYWORDS["vat_deductible"]:
+        if kw in combined:
+            return {"status": "vat_deductible", "keyword": kw}
+
+    for kw in VAT_KEYWORDS["no_vat"]:
+        if kw in combined:
+            return {"status": "no_vat", "keyword": kw}
+
+    return {"status": "unknown", "keyword": None}
+
+
+def _calc_vat_info(price: int | None, vat_status: str) -> dict | None:
+    if not price:
+        return None
+    if vat_status == "vat_deductible":
+        net_estimate = round(price / (1 + GERMAN_VAT))
+        saving = price - net_estimate
+        return {
+            "status":         "vat_deductible",
+            "emoji":          "🟢",
+            "label":          "Neto export moguć",
+            "bruto_price":    price,
+            "net_estimate":   net_estimate,
+            "vat_saving":     saving,
+            "disclaimer":     "Procena neto export cene. Potvrditi uslove sa prodavcem i pribaviti izvoznu dokumentaciju.",
+        }
+    if vat_status == "no_vat":
+        return {
+            "status":       "no_vat",
+            "emoji":        "🔴",
+            "label":        "PDV nije odbitljiv",
+            "bruto_price":  price,
+            "net_estimate": None,
+            "vat_saving":   None,
+            "disclaimer":   "Prodavac prodaje po Differenzbesteuerung ili kao privatno lice — PDV nije moguće odbiti za izvoz.",
+        }
+    return {
+        "status":       "unknown",
+        "emoji":        "🟠",
+        "label":        "Potrebna potvrda prodavca",
+        "bruto_price":  price,
+        "net_estimate": None,
+        "vat_saving":   None,
+        "disclaimer":   "Nije jasno da li je moguć povrat PDV-a. Preporučujemo da pitate prodavca: 'Da li je moguća prodaja bez nemačkog PDV-a za izvoz u Srbiju?'",
+    }
+
 
 class AnalyzeRequest(BaseModel):
     url: str
@@ -35,27 +108,22 @@ class AnalyzeTextRequest(BaseModel):
 
 
 def _detect_source(url: str) -> Optional[str]:
-    if "autoscout24" in url:
-        return "autoscout24"
-    if "mobile.de" in url:
-        return "mobile_de"
+    if "autoscout24" in url: return "autoscout24"
+    if "mobile.de" in url:   return "mobile_de"
     return None
 
 
 def _parse_price(text: str) -> Optional[int]:
-    if not text:
-        return None
+    if not text: return None
     digits = re.sub(r"[^\d]", "", text)
     val = int(digits) if digits else None
     return val if val and val <= 2_000_000 else None
 
 
 def _parse_mileage(text: str) -> Optional[int]:
-    if not text:
-        return None
+    if not text: return None
     m = re.search(r"[\d.,]+", text)
-    if not m:
-        return None
+    if not m: return None
     num = m.group(0)
     dot_count   = num.count(".")
     comma_count = num.count(",")
@@ -74,21 +142,17 @@ def _parse_mileage(text: str) -> Optional[int]:
 
 
 def _parse_year(text: str) -> Optional[int]:
-    if not text:
-        return None
+    if not text: return None
     m = re.search(r"\b(19[5-9]\d|20[0-3]\d)\b", text)
     return int(m.group(1)) if m else None
 
 
 def _parse_power_kw(text: str) -> Optional[int]:
-    if not text:
-        return None
+    if not text: return None
     kw = re.search(r"(\d+)\s*kw", text.lower())
-    if kw:
-        return int(kw.group(1))
+    if kw: return int(kw.group(1))
     ps = re.search(r"(\d+)\s*(ps|hp)", text.lower())
-    if ps:
-        return round(int(ps.group(1)) * 0.7355)
+    if ps: return round(int(ps.group(1)) * 0.7355)
     return None
 
 
@@ -103,12 +167,10 @@ FUEL_MAP = {
 }
 
 def _normalize_fuel(text: str) -> Optional[str]:
-    if not text:
-        return None
+    if not text: return None
     v = text.lower()
     for k, norm in FUEL_MAP.items():
-        if k in v:
-            return norm
+        if k in v: return norm
     return None
 
 
@@ -142,12 +204,10 @@ AS24_JS = r"""
     }
 
     const priceEl = document.querySelector(
-        '[data-type="price_block"] .cldt-price, .cldt-price, [class*="price-label"], [class*="PriceBlock"], [class*="price-section"]'
+        '[data-type="price_block"] .cldt-price, .cldt-price, [class*="price-label"], [class*="PriceBlock"]'
     );
     let price_raw = priceEl ? priceEl.textContent.trim() : '';
-    if (!price_raw && ldData?.offers?.price) {
-        price_raw = ldData.offers.price + ' €';
-    }
+    if (!price_raw && ldData?.offers?.price) price_raw = ldData.offers.price + ' €';
 
     const specs = {};
     document.querySelectorAll('[data-item-key]').forEach(el => {
@@ -176,28 +236,27 @@ AS24_JS = r"""
     const title = ldData?.name
         || document.querySelector('h1')?.textContent?.trim()
         || document.querySelector('[class*="title"]')?.textContent?.trim()
-        || document.querySelector('meta[property="og:title"]')?.getAttribute('content')
         || '';
 
     const locEl = document.querySelector(
-        '[class*="seller-contact-country"], [class*="SellerInfo"] [class*="address"], [class*="location"], [data-cy*="location"]'
+        '[class*="seller-contact-country"], [class*="location"], [data-cy*="location"]'
     );
     const location_raw = locEl ? locEl.textContent.trim() : '';
 
     const images = Array.from(document.querySelectorAll(
-        '.image-gallery-image img, [class*="gallery"] img, [class*="Gallery"] img, [class*="swiper"] img'
-    )).map(i => i.src || i.getAttribute('data-src') || i.getAttribute('data-lazy') || '')
+        '.image-gallery-image img, [class*="gallery"] img, [class*="swiper"] img'
+    )).map(i => i.src || i.getAttribute('data-src') || '')
       .filter(s => s && s.startsWith('http') && !s.includes('placeholder'));
 
     const desc = document.querySelector(
-        '.cldt-stage-description, [class*="description"], [class*="Description"]'
+        '.cldt-stage-description, [class*="description"]'
     )?.textContent?.trim() || '';
 
     const features = Array.from(document.querySelectorAll(
-        '.sc-expandable-element li, [class*="equipment"] li, [class*="Equipment"] li, [class*="feature"] li'
+        '.sc-expandable-element li, [class*="equipment"] li, [class*="feature"] li'
     )).map(e => e.textContent.trim()).filter(Boolean);
 
-    const pageText = (document.body.innerText || '').slice(0, 8000);
+    const pageText = (document.body.innerText || '').slice(0, 10000);
 
     return { title, price_raw, specs, location_raw, images: images.slice(0,12), desc, features, ldData, pageText };
 }
@@ -218,6 +277,8 @@ async def _scrape_autoscout24(url: str) -> dict:
     specs     = raw.get("specs", {})
     page_text = raw.get("pageText", "")
     ld        = raw.get("ldData") or {}
+    desc      = raw.get("desc", "") or ""
+    title     = raw.get("title", "") or ld.get("name", "")
 
     price = _parse_price(raw.get("price_raw", ""))
     if not price and ld.get("offers", {}).get("price"):
@@ -227,27 +288,15 @@ async def _scrape_autoscout24(url: str) -> dict:
     for ld_key in ["dateVehicleFirstRegistered", "vehicleModelDate", "modelDate"]:
         if ld.get(ld_key):
             year = _parse_year(str(ld[ld_key]))
-            if year:
-                break
+            if year: break
     if not year:
         for k, v in specs.items():
-            kl = k.lower()
-            if any(x in kl for x in ["registr", "first", "zulassung", "baujahr", "godist", "erstzu"]):
+            if any(x in k.lower() for x in ["registr", "first", "zulassung", "baujahr", "erstzu"]):
                 year = _parse_year(v)
-                if year:
-                    break
+                if year: break
     if not year:
         m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', page_text)
-        if m:
-            year = int(m.group(2))
-    if not year:
-        for k, v in specs.items():
-            kl = k.lower()
-            if any(x in kl for x in ["year", "datum", "date"]):
-                y = _parse_year(v)
-                if y:
-                    year = y
-                    break
+        if m: year = int(m.group(2))
     if not year:
         year = _parse_year(page_text[1000:5000])
 
@@ -258,12 +307,10 @@ async def _scrape_autoscout24(url: str) -> dict:
         for k, v in specs.items():
             if any(x in k.lower() for x in ["km", "mileage", "kilomet", "laufleist"]):
                 mileage = _parse_mileage(v)
-                if mileage:
-                    break
+                if mileage: break
     if not mileage:
         km_m = re.search(r"([\d.,]+)\s*km", page_text[:4000])
-        if km_m:
-            mileage = _parse_mileage(km_m.group(1) + " km")
+        if km_m: mileage = _parse_mileage(km_m.group(1) + " km")
 
     fuel_type = None
     if ld.get("fuelType"):
@@ -271,9 +318,7 @@ async def _scrape_autoscout24(url: str) -> dict:
     if not fuel_type:
         for k, v in specs.items():
             f = _normalize_fuel(v)
-            if f:
-                fuel_type = f
-                break
+            if f: fuel_type = f; break
     if not fuel_type:
         fuel_type = _normalize_fuel(page_text[:2000])
 
@@ -283,25 +328,23 @@ async def _scrape_autoscout24(url: str) -> dict:
     if not power_kw:
         for k, v in specs.items():
             p = _parse_power_kw(v)
-            if p:
-                power_kw = p
-                break
+            if p: power_kw = p; break
 
     country, city = None, None
     loc = raw.get("location_raw", "")
     if not loc and ld.get("offers", {}).get("availableAtOrFrom", {}).get("address"):
-        addr = ld["offers"]["availableAtOrFrom"]["address"]
+        addr    = ld["offers"]["availableAtOrFrom"]["address"]
         city    = addr.get("addressLocality")
         country = addr.get("addressCountry")
     if loc:
         parts = [p.strip() for p in loc.replace("\n", ",").split(",")]
         parts = [p for p in parts if p]
-        if len(parts) >= 2:
-            country, city = parts[-1], parts[0]
-        elif parts:
-            city = parts[0]
+        if len(parts) >= 2: country, city = parts[-1], parts[0]
+        elif parts: city = parts[0]
 
-    title = raw.get("title", "") or ld.get("name", "")
+    # VAT detection
+    vat_raw = _detect_vat_status(title, desc, page_text)
+    vat_info = _calc_vat_info(price, vat_raw["status"])
 
     return {
         "title":           title,
@@ -313,8 +356,10 @@ async def _scrape_autoscout24(url: str) -> dict:
         "country":         country,
         "city":            city,
         "images":          raw.get("images", []),
-        "description":     raw.get("desc") or ld.get("description"),
+        "description":     desc or ld.get("description"),
         "features":        raw.get("features", []),
+        "vat_info":        vat_info,
+        "vat_keyword":     vat_raw.get("keyword"),
     }
 
 
@@ -332,45 +377,30 @@ MDE_JS = r"""
     }
 
     const priceSelectors = [
-        '[data-testid="prime-price"]',
-        '[class*="price-block"] [class*="price"]',
-        '[class*="PriceBlock"]',
-        '.price-rating__label',
-        'h2[class*="price"]',
-        '[class*="listing-price"]',
-        '[class*="price"]',
+        '[data-testid="prime-price"]', '[class*="price-block"] [class*="price"]',
+        '[class*="PriceBlock"]', 'h2[class*="price"]', '[class*="price"]',
     ];
     let price_raw = '';
     for (const sel of priceSelectors) {
         const el = document.querySelector(sel);
         if (el && el.textContent.includes('€')) { price_raw = el.textContent.trim(); break; }
     }
-    if (!price_raw && ldData?.offers?.price) {
-        price_raw = ldData.offers.price + ' €';
-    }
+    if (!price_raw && ldData?.offers?.price) price_raw = ldData.offers.price + ' €';
 
     const title = ldData?.name
-        || document.querySelector('h1[class*="title"], h1[class*="listing"], h1')?.textContent?.trim()
-        || '';
+        || document.querySelector('h1')?.textContent?.trim() || '';
 
     let images = [];
-    const imgSelectors = [
-        '[class*="gallery"] img', '[class*="Gallery"] img',
-        '[class*="image-gallery"] img', '.media-gallery img',
-        'img[class*="main"]', 'img[class*="vehicle"]',
-    ];
+    const imgSelectors = ['[class*="gallery"] img', '[class*="Gallery"] img', '.media-gallery img'];
     for (const sel of imgSelectors) {
         const imgs = Array.from(document.querySelectorAll(sel))
-            .map(i => i.src || i.getAttribute('data-src') || i.getAttribute('data-lazy') || '')
-            .filter(s => s && s.startsWith('http') && !s.includes('placeholder') && !s.includes('logo'));
+            .map(i => i.src || i.getAttribute('data-src') || '')
+            .filter(s => s && s.startsWith('http') && !s.includes('placeholder'));
         if (imgs.length > 0) { images = imgs.slice(0, 12); break; }
-    }
-    if (images.length === 0 && ldData?.image) {
-        images = Array.isArray(ldData.image) ? ldData.image : [ldData.image];
     }
 
     const specs = {};
-    document.querySelectorAll('[class*="DataTable"] tr, [class*="data-table"] tr, dl, [class*="specs"] li, table tr').forEach(row => {
+    document.querySelectorAll('dl, table tr').forEach(row => {
         const cells = row.querySelectorAll('td, dt, dd, th');
         if (cells.length >= 2) {
             const k = cells[0].textContent.trim();
@@ -379,15 +409,9 @@ MDE_JS = r"""
         }
     });
 
-    const loc = document.querySelector(
-        '[data-testid="seller-location"], [class*="seller-location"], [class*="SellerInfo"] address, [class*="location"]'
-    )?.textContent?.trim() || '';
-
-    const features = Array.from(document.querySelectorAll(
-        '[class*="equipment"] li, [class*="features"] li, [class*="highlight"] li'
-    )).map(e => e.textContent.trim()).filter(Boolean);
-
-    const pageText = (document.body.innerText || '').slice(0, 6000);
+    const loc = document.querySelector('[data-testid="seller-location"], [class*="location"]')?.textContent?.trim() || '';
+    const features = Array.from(document.querySelectorAll('[class*="equipment"] li, [class*="features"] li')).map(e => e.textContent.trim()).filter(Boolean);
+    const pageText = (document.body.innerText || '').slice(0, 10000);
 
     return { title, price_raw, specs, location_raw: loc, images, ldData, features, pageText };
 }
@@ -408,6 +432,7 @@ async def _scrape_mobile_de(url: str) -> dict:
     specs     = raw.get("specs", {})
     page_text = raw.get("pageText", "")
     ld        = raw.get("ldData") or {}
+    title     = raw.get("title", "") or ld.get("name", "")
 
     price = _parse_price(raw.get("price_raw", ""))
     if not price and ld.get("offers", {}).get("price"):
@@ -417,36 +442,31 @@ async def _scrape_mobile_de(url: str) -> dict:
     for k, v in specs.items():
         if any(x in k.lower() for x in ["erst", "year", "zulassung", "baujahr", "registr"]):
             year = _parse_year(v)
-            if year:
-                break
+            if year: break
     if not year and ld.get("vehicleModelDate"):
         year = _parse_year(str(ld["vehicleModelDate"]))
     if not year:
         m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', page_text)
-        if m:
-            year = int(m.group(2))
+        if m: year = int(m.group(2))
     if not year:
         year = _parse_year(page_text[:2000])
 
     mileage = None
     for k, v in specs.items():
-        if "km" in k.lower() or "kilomet" in k.lower() or "laufleistung" in k.lower():
+        if "km" in k.lower() or "laufleistung" in k.lower():
             mileage = _parse_mileage(v)
-            if mileage:
-                break
+            if mileage: break
     if not mileage and ld.get("mileageFromOdometer", {}).get("value"):
         mileage = _parse_mileage(str(ld["mileageFromOdometer"]["value"]))
     if not mileage:
         km_m = re.search(r"([\d.,]+)\s*km", page_text[:3000])
-        if km_m:
-            mileage = _parse_mileage(km_m.group(1) + " km")
+        if km_m: mileage = _parse_mileage(km_m.group(1) + " km")
 
     fuel_type = None
     for k, v in specs.items():
-        if any(x in k.lower() for x in ["kraft", "fuel", "energie", "antrieb"]):
+        if any(x in k.lower() for x in ["kraft", "fuel", "antrieb"]):
             fuel_type = _normalize_fuel(v)
-            if fuel_type:
-                break
+            if fuel_type: break
     if not fuel_type and ld.get("fuelType"):
         fuel_type = _normalize_fuel(ld["fuelType"])
     if not fuel_type:
@@ -455,19 +475,18 @@ async def _scrape_mobile_de(url: str) -> dict:
     power_kw = None
     for k, v in specs.items():
         p = _parse_power_kw(v)
-        if p:
-            power_kw = p
-            break
+        if p: power_kw = p; break
 
     country, city = "DE", None
     loc = raw.get("location_raw", "")
     if loc:
         parts = [p.strip() for p in loc.replace("\n", ",").split(",")]
         parts = [p for p in parts if p]
-        if parts:
-            city = parts[0]
+        if parts: city = parts[0]
 
-    title = raw.get("title", "") or ld.get("name", "")
+    # VAT detection
+    vat_raw  = _detect_vat_status(title, "", page_text)
+    vat_info = _calc_vat_info(price, vat_raw["status"])
 
     return {
         "title":           title,
@@ -481,6 +500,8 @@ async def _scrape_mobile_de(url: str) -> dict:
         "images":          raw.get("images", []),
         "description":     ld.get("description"),
         "features":        raw.get("features", []),
+        "vat_info":        vat_info,
+        "vat_keyword":     vat_raw.get("keyword"),
     }
 
 
@@ -490,10 +511,7 @@ async def analyze_url(req: AnalyzeRequest):
     source = _detect_source(url)
 
     if not source:
-        raise HTTPException(
-            status_code=400,
-            detail="Portal nije podržan. Koristite AutoScout24 ili Mobile.de URL.",
-        )
+        raise HTTPException(status_code=400, detail="Portal nije podržan. Koristite AutoScout24 ili Mobile.de URL.")
 
     try:
         if source == "autoscout24":
@@ -506,8 +524,7 @@ async def analyze_url(req: AnalyzeRequest):
             "scrape_success": False,
             "url":            url,
             "source":         source,
-            "error_message":  "Nismo mogli automatski da pročitamo oglas. "
-                              "Kopiraj tekst oglasa ili ubaci screenshot.",
+            "error_message":  "Nismo mogli automatski da pročitamo oglas.",
         }
 
     from app.core.serbia_import_rules import check_serbia_eligibility
@@ -529,6 +546,11 @@ async def analyze_url(req: AnalyzeRequest):
     if data.get("fuel_type") == "diesel":
         risk_warnings.append("Dizel vozilo — proveri stanje DPF filtera i turbine.")
 
+    # VAT warning
+    vat_info = data.get("vat_info")
+    if vat_info and vat_info.get("status") == "unknown":
+        risk_warnings.append("PDV status nepoznat — pitaj prodavca o mogućnosti neto izvoza.")
+
     return {
         "scrape_success":     True,
         "url":                url,
@@ -544,6 +566,7 @@ async def analyze_url(req: AnalyzeRequest):
         "images":             data.get("images", []),
         "description":        data.get("description"),
         "features":           data.get("features", []),
+        "vat_info":           vat_info,
         "serbia_eligibility": eligibility.to_dict(),
         "import_cost":        import_cost,
         "seller_language":    seller_lang,
@@ -557,7 +580,7 @@ async def analyze_from_text(req: AnalyzeTextRequest):
     import anthropic
 
     if not req.text or len(req.text.strip()) < 30:
-        raise HTTPException(400, detail="Tekst je prekratak. Zalijepi kompletan tekst oglasa.")
+        raise HTTPException(400, detail="Tekst je prekratak.")
 
     try:
         client = anthropic.AsyncAnthropic()
@@ -566,7 +589,7 @@ async def analyze_from_text(req: AnalyzeTextRequest):
             max_tokens=800,
             messages=[{
                 "role": "user",
-                "content": f"""Izvuci podatke o vozilu iz ovog teksta oglasa. Vrati SAMO validan JSON, bez ikakvog drugog teksta.
+                "content": f"""Izvuci podatke o vozilu iz ovog teksta oglasa. Vrati SAMO validan JSON.
 
 Tekst oglasa:
 {req.text[:4000]}
@@ -589,7 +612,11 @@ Vrati JSON sa ovim poljima (null ako nije pronađeno):
         data = json.loads(text)
     except Exception as e:
         logger.error(f"[analyze/from-text] AI error: {e}")
-        raise HTTPException(500, detail="Greška pri AI analizi teksta. Pokušaj ponovo.")
+        raise HTTPException(500, detail="Greška pri AI analizi teksta.")
+
+    # VAT detection from pasted text
+    vat_raw  = _detect_vat_status(data.get("title", ""), "", req.text)
+    vat_info = _calc_vat_info(data.get("price"), vat_raw["status"])
 
     from app.core.serbia_import_rules import check_serbia_eligibility
     eligibility = check_serbia_eligibility(
@@ -625,6 +652,7 @@ Vrati JSON sa ovim poljima (null ako nije pronađeno):
         "images":             [],
         "description":        None,
         "features":           [],
+        "vat_info":           vat_info,
         "serbia_eligibility": eligibility.to_dict(),
         "import_cost":        import_cost,
         "seller_language":    seller_lang,
