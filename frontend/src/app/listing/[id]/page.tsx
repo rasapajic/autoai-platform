@@ -209,7 +209,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const eligColor  = ELIGIBILITY_COLORS[elig.status] || '#F97316'
   const price      = listing.price ? Number(listing.price) : null
   const bd         = price ? calcImport(price, elig.carinaPct) : null
-  const missingData = !listing.year || !listing.mileage
+  const missingData = !listing.year && !listing.mileage
 
   const specs = [
     { label: 'Godište',     value: listing.year },
