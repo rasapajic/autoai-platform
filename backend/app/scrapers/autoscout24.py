@@ -79,7 +79,7 @@ class AutoScout24Scraper(BaseScraper):
                 page = None
                 for attempt in range(3):
                     try:
-                        page = await self.get_page(url, wait_for="domcontentloaded")
+                        page = await self.get_page(url, wait_for=None)
                         if page: break
                     except Exception as e:
                         logger.warning(f"[AutoScout24] Pokušaj {attempt+1}: {e}")
