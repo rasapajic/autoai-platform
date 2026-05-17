@@ -95,6 +95,7 @@ def _parse_power_kw(text: str) -> Optional[int]:
 FUEL_MAP = {
     "diesel": "diesel", "dizel": "diesel",
     "petrol": "petrol", "benzin": "petrol", "gasoline": "petrol",
+    "ethanol": "petrol", "flexifuel": "petrol",
     "electric": "electric", "elektro": "electric", "elektrisch": "electric",
     "hybrid": "hybrid", "plug-in hybrid": "hybrid",
     "lpg": "lpg", "autogas": "lpg",
@@ -129,7 +130,6 @@ def _calc_import_cost(price: int, carina_pct: float) -> dict:
 
 AS24_JS = r"""
 () => {
-    // 1. JSON-LD — najpouzdanije
     const ldScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
     let ldData = null;
     for (const s of ldScripts) {
@@ -141,7 +141,6 @@ AS24_JS = r"""
         } catch {}
     }
 
-    // 2. Cijena
     const priceEl = document.querySelector(
         '[data-type="price_block"] .cldt-price, .cldt-price, [class*="price-label"], [class*="PriceBlock"], [class*="price-section"]'
     );
@@ -150,15 +149,10 @@ AS24_JS = r"""
         price_raw = ldData.offers.price + ' €';
     }
 
-    // 3. Specs — svi mogući selektori
     const specs = {};
-
-    // data-item-key (stari AS24)
     document.querySelectorAll('[data-item-key]').forEach(el => {
         specs[el.getAttribute('data-item-key')] = el.textContent.trim();
     });
-
-    // dl dt/dd parovi
     document.querySelectorAll('dl').forEach(dl => {
         const dts = dl.querySelectorAll('dt');
         const dds = dl.querySelectorAll('dd');
@@ -166,8 +160,6 @@ AS24_JS = r"""
             if (dds[i]) specs['dl__' + dt.textContent.trim()] = dds[i].textContent.trim();
         });
     });
-
-    // table rows
     document.querySelectorAll('table tr').forEach(row => {
         const cells = row.querySelectorAll('td, th');
         if (cells.length >= 2) {
@@ -176,38 +168,31 @@ AS24_JS = r"""
             if (k && v && k.length < 60) specs['tbl__' + k] = v;
         }
     });
-
-    // React/Next data attributes
     document.querySelectorAll('[data-cy], [data-testid]').forEach(el => {
         const key = el.getAttribute('data-cy') || el.getAttribute('data-testid');
         if (key && el.textContent.trim()) specs['cy__' + key] = el.textContent.trim();
     });
 
-    // 4. Naslov
     const title = ldData?.name
         || document.querySelector('h1')?.textContent?.trim()
         || document.querySelector('[class*="title"]')?.textContent?.trim()
         || document.querySelector('meta[property="og:title"]')?.getAttribute('content')
         || '';
 
-    // 5. Lokacija
     const locEl = document.querySelector(
         '[class*="seller-contact-country"], [class*="SellerInfo"] [class*="address"], [class*="location"], [data-cy*="location"]'
     );
     const location_raw = locEl ? locEl.textContent.trim() : '';
 
-    // 6. Slike
     const images = Array.from(document.querySelectorAll(
         '.image-gallery-image img, [class*="gallery"] img, [class*="Gallery"] img, [class*="swiper"] img'
     )).map(i => i.src || i.getAttribute('data-src') || i.getAttribute('data-lazy') || '')
       .filter(s => s && s.startsWith('http') && !s.includes('placeholder'));
 
-    // 7. Opis
     const desc = document.querySelector(
         '.cldt-stage-description, [class*="description"], [class*="Description"]'
     )?.textContent?.trim() || '';
 
-    // 8. Oprema
     const features = Array.from(document.querySelectorAll(
         '.sc-expandable-element li, [class*="equipment"] li, [class*="Equipment"] li, [class*="feature"] li'
     )).map(e => e.textContent.trim()).filter(Boolean);
@@ -222,7 +207,6 @@ async def _scrape_autoscout24(url: str) -> dict:
     from app.scrapers.autoscout24 import AutoScout24Scraper
     async with AutoScout24Scraper() as scraper:
         page = await scraper.get_page(url, wait_for=None)
-await asyncio.sleep(3)
         if not page:
             raise RuntimeError("Stranica nije učitana")
         await asyncio.sleep(3)
@@ -235,22 +219,16 @@ await asyncio.sleep(3)
     page_text = raw.get("pageText", "")
     ld        = raw.get("ldData") or {}
 
-    # Cijena
     price = _parse_price(raw.get("price_raw", ""))
     if not price and ld.get("offers", {}).get("price"):
         price = _parse_price(str(ld["offers"]["price"]))
 
-    # ── Godište ──────────────────────────────────────────────────────────────
     year = None
-
-    # 1. JSON-LD polja
     for ld_key in ["dateVehicleFirstRegistered", "vehicleModelDate", "modelDate"]:
         if ld.get(ld_key):
             year = _parse_year(str(ld[ld_key]))
             if year:
                 break
-
-    # 2. Spec ključevi koji JASNO označavaju datum registracije
     if not year:
         for k, v in specs.items():
             kl = k.lower()
@@ -258,14 +236,10 @@ await asyncio.sleep(3)
                 year = _parse_year(v)
                 if year:
                     break
-
-    # 3. MM/YYYY pattern u tekstu stranice (npr. "09/2011")
     if not year:
         m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', page_text)
         if m:
             year = int(m.group(2))
-
-    # 4. Samo spec ključevi koji sadrže year/year-related
     if not year:
         for k, v in specs.items():
             kl = k.lower()
@@ -274,12 +248,9 @@ await asyncio.sleep(3)
                 if y:
                     year = y
                     break
-
-    # 5. Zadnji pokušaj — sredina teksta stranice (preskačemo početak koji može imati copyright)
     if not year:
         year = _parse_year(page_text[1000:5000])
 
-    # ── Kilometraža ──────────────────────────────────────────────────────────
     mileage = None
     if ld.get("mileageFromOdometer", {}).get("value"):
         mileage = _parse_mileage(str(ld["mileageFromOdometer"]["value"]))
@@ -294,7 +265,6 @@ await asyncio.sleep(3)
         if km_m:
             mileage = _parse_mileage(km_m.group(1) + " km")
 
-    # ── Gorivo ───────────────────────────────────────────────────────────────
     fuel_type = None
     if ld.get("fuelType"):
         fuel_type = _normalize_fuel(str(ld["fuelType"]))
@@ -307,7 +277,6 @@ await asyncio.sleep(3)
     if not fuel_type:
         fuel_type = _normalize_fuel(page_text[:2000])
 
-    # ── Snaga ────────────────────────────────────────────────────────────────
     power_kw = None
     if ld.get("vehicleEngine", {}).get("enginePower"):
         power_kw = _parse_power_kw(str(ld["vehicleEngine"]["enginePower"]))
@@ -318,7 +287,6 @@ await asyncio.sleep(3)
                 power_kw = p
                 break
 
-    # ── Lokacija ─────────────────────────────────────────────────────────────
     country, city = None, None
     loc = raw.get("location_raw", "")
     if not loc and ld.get("offers", {}).get("availableAtOrFrom", {}).get("address"):
@@ -385,15 +353,12 @@ MDE_JS = r"""
         || document.querySelector('h1[class*="title"], h1[class*="listing"], h1')?.textContent?.trim()
         || '';
 
-    const imgSelectors = [
-        '[class*="gallery"] img',
-        '[class*="Gallery"] img',
-        '[class*="image-gallery"] img',
-        '.media-gallery img',
-        'img[class*="main"]',
-        'img[class*="vehicle"]',
-    ];
     let images = [];
+    const imgSelectors = [
+        '[class*="gallery"] img', '[class*="Gallery"] img',
+        '[class*="image-gallery"] img', '.media-gallery img',
+        'img[class*="main"]', 'img[class*="vehicle"]',
+    ];
     for (const sel of imgSelectors) {
         const imgs = Array.from(document.querySelectorAll(sel))
             .map(i => i.src || i.getAttribute('data-src') || i.getAttribute('data-lazy') || '')
@@ -432,7 +397,6 @@ async def _scrape_mobile_de(url: str) -> dict:
     from app.scrapers.mobile_de import MobileDeScraper
     async with MobileDeScraper() as scraper:
         page = await scraper.get_page(url, wait_for=None)
-await asyncio.sleep(3)
         if not page:
             raise RuntimeError("Stranica nije učitana")
         await asyncio.sleep(3)
@@ -589,7 +553,6 @@ async def analyze_url(req: AnalyzeRequest):
 
 @router.post("/from-text")
 async def analyze_from_text(req: AnalyzeTextRequest):
-    """Analizira oglas iz zalijepljenog teksta koristeći Claude AI."""
     import json
     import anthropic
 
