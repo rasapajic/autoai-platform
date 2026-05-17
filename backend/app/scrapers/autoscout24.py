@@ -293,7 +293,7 @@ class AutoScout24Scraper(BaseScraper):
                     ['Electric','electric'],['Elektro','electric'],['Elektrisch','electric'],
                     ['Hybrid','hybrid'],['Plug-in','hybrid'],
                     ['Diesel','diesel'],['Dizel','diesel'],
-                    ['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],['Super','petrol'],
+                    ['Ethanol','petrol'],['Flexifuel','petrol'],['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],['Super','petrol'],
                     ['LPG','lpg'],['Autogas','lpg'],['CNG','cng'],['Erdgas','cng'],
                 ];
                 let fuel_text = '';
