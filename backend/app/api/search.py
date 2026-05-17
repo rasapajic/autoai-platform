@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 
@@ -9,22 +9,37 @@ from app.api.schemas import SearchFilters, SearchResponse, ListingCard
 router = APIRouter()
 
 FUEL_MAP = {
-    "dizel": ["diesel", "dizel"],
-    "diesel": ["diesel", "dizel"],
-    "benzin": ["petrol", "benzin", "gasoline"],
-    "petrol": ["petrol", "benzin", "gasoline"],
-    "električni": ["electric", "elektro", "električni"],
-    "electric": ["electric", "elektro", "električni"],
-    "hibrid": ["hybrid", "hibrid"],
-    "hybrid": ["hybrid", "hibrid"],
-    "plin": ["lpg", "autogas", "plin"],
-    "lpg": ["lpg", "autogas", "plin"],
-    "cng": ["cng", "erdgas"],
+    "dizel":     ["diesel", "dizel"],
+    "diesel":    ["diesel", "dizel"],
+    "benzin":    ["petrol", "benzin", "gasoline"],
+    "petrol":    ["petrol", "benzin", "gasoline"],
+    "električni":["electric", "elektro", "električni"],
+    "electric":  ["electric", "elektro", "električni"],
+    "hibrid":    ["hybrid", "hibrid"],
+    "hybrid":    ["hybrid", "hibrid"],
+    "plin":      ["lpg", "autogas", "plin"],
+    "lpg":       ["lpg", "autogas", "plin"],
+    "cng":       ["cng", "erdgas"],
+}
+
+BODY_KEYWORDS = {
+    "cabrio":    ["Cabrio", "Cabriolet", "Convertible", "Roadster", "Kabriolet", "Spider", "Spyder", "Targa"],
+    "suv":       ["SUV", "Geländewagen", "Crossover", "4x4", "Allroad", "Offroad"],
+    "kombi":     ["Kombi", "Estate", "Touring", "Avant", "Variant", "SW", "Break", "Sports Tourer", "Sportourer"],
+    "hatchback": ["Hatchback", "Schrägheck", "3-Türer", "5-Türer"],
+    "coupe":     ["Coupe", "Coupé", "Fastback"],
+    "sedan":     ["Limousine", "Sedan", "Berlina", "Saloon"],
+    "van":       ["Van", "Minivan", "MPV", "Kleinbus", "Multivan", "Sharan", "Galaxy"],
+    "pickup":    ["Pickup", "Pick-up", "Ranger", "Navara", "Amarok", "Hilux"],
 }
 
 @router.get("/", response_model=SearchResponse)
 def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
-    q = db.query(Listing).filter(Listing.is_active == True, Listing.price != None, Listing.price > 0)
+    q = db.query(Listing).filter(
+        Listing.is_active == True,
+        Listing.price != None,
+        Listing.price > 0,
+    )
 
     if filters.make:
         q = q.filter(Listing.make.ilike(f"%{filters.make}%"))
@@ -58,7 +73,12 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
         q = q.filter(Listing.transmission == filters.transmission)
 
     if filters.body_type:
-        q = q.filter(Listing.body_type == filters.body_type)
+        keywords = BODY_KEYWORDS.get(filters.body_type.lower(), [])
+        title_conditions = [Listing.title.ilike(f"%{kw}%") for kw in keywords]
+        q = q.filter(or_(
+            Listing.body_type == filters.body_type,
+            *title_conditions
+        ))
 
     if filters.country:
         q = q.filter(Listing.country.ilike(f"%{filters.country}%"))
@@ -78,18 +98,18 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
         ))
 
     sort_options = {
-        "date":       Listing.scraped_at.desc(),
-        "price_asc":  Listing.price.asc(),
-        "price_desc": Listing.price.desc(),
-        "best_deal":  Listing.price_delta_pct.asc(),
-        "year_desc":  Listing.year.desc(),
-        "km_asc":     Listing.mileage.asc(),
+        "date":      Listing.scraped_at.desc(),
+        "price_asc": Listing.price.asc(),
+        "price_desc":Listing.price.desc(),
+        "best_deal": Listing.price_delta_pct.asc(),
+        "year_desc": Listing.year.desc(),
+        "km_asc":    Listing.mileage.asc(),
     }
     q = q.order_by(sort_options.get(filters.sort_by, Listing.scraped_at.desc()))
 
-    total = q.count()
+    total   = q.count()
     results = q.offset((filters.page - 1) * filters.limit).limit(filters.limit).all()
-    pages = (total + filters.limit - 1) // filters.limit
+    pages   = (total + filters.limit - 1) // filters.limit
 
     return SearchResponse(
         total=total,
