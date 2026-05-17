@@ -141,6 +141,48 @@ def save_listings(listings):
     conn.close()
     return saved
 
+def run_price_estimation():
+    """Proceni cene na osnovu mediane sličnih vozila u bazi."""
+    print("\n=== PRICE ESTIMATION ===")
+    conn = get_conn()
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE listings l
+            SET
+                price_estimated = sub.median_price,
+                price_delta_pct = ROUND(
+                    ((l.price - sub.median_price) / sub.median_price * 100)::numeric, 1
+                )
+            FROM (
+                SELECT
+                    make, model,
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price) AS median_price
+                FROM listings
+                WHERE price IS NOT NULL
+                  AND price BETWEEN 500 AND 500000
+                  AND make IS NOT NULL
+                  AND model IS NOT NULL
+                GROUP BY make, model
+                HAVING COUNT(*) >= 2
+            ) sub
+            WHERE l.make = sub.make
+              AND l.model = sub.model
+              AND l.price IS NOT NULL
+              AND sub.median_price > 0
+        """)
+        updated = cur.rowcount
+        conn.commit()
+        print(f"  Price estimation: {updated} oglasa azurirano")
+        return updated
+    except Exception as e:
+        conn.rollback()
+        print(f"  Price estimation greska: {e}")
+        return 0
+    finally:
+        cur.close()
+        conn.close()
+
 async def run_autoscout24():
     print("\n=== AUTOSCOUT24 DE ===")
     total = 0
@@ -204,6 +246,7 @@ def main():
     total += asyncio.run(run_autoscout24())
     total += asyncio.run(run_autoscout24_at())
     total += asyncio.run(run_mobile_de())
+    run_price_estimation()
     print(f"\n=== UKUPNO: {total} ===")
 
 if __name__ == "__main__":
