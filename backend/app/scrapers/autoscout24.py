@@ -121,21 +121,26 @@ class AutoScout24Scraper(BaseScraper):
                     () => {
                         const getText = sel => document.querySelector(sel)?.textContent?.trim() || null;
                         const getAll  = sel => Array.from(document.querySelectorAll(sel)).map(e=>e.textContent.trim()).filter(Boolean);
-                        const specs   = {};
-                        document.querySelectorAll('[data-item-key]').forEach(el => {
-                            specs[el.getAttribute('data-item-key')] = el.textContent.trim();
-                        });
+
+                        const bodyText = document.body.innerText || '';
+
+                        // Godiste: "First registration" ili "Erstzulassung" -> MM/YYYY ili MM.YYYY
+                        const regMatch = bodyText.match(/First registration[:\\s]+([0-1]\\d[\\/\\.](20[0-3]\\d|19[5-9]\\d))/i)
+                                      || bodyText.match(/Erstzulassung[:\\s]+([0-1]\\d[\\/\\.](20[0-3]\\d|19[5-9]\\d))/i);
+                        const firstReg = regMatch ? regMatch[1] : null;
+                        const yearMatch = firstReg ? firstReg.match(/(20[0-3]\\d|19[5-9]\\d)$/) : null;
+                        const year = yearMatch ? parseInt(yearMatch[0]) : null;
+
                         const images = Array.from(document.querySelectorAll(
-                            '.image-gallery-image img,[class*="gallery"] img'
+                            '.image-gallery-image img,[class*="gallery"] img,[class*="photo"] img'
                         )).map(i=>i.src||i.getAttribute('data-src')).filter(Boolean);
+
                         return {
+                            year,
+                            first_registration: firstReg,
                             description: getText('.cldt-stage-description,[class*="description"]'),
                             features:    getAll('.sc-expandable-element li,[class*="equipment"] li'),
                             images:      images.slice(0,20),
-                            vin:         specs['vin']       || null,
-                            doors:       specs['doors']     || null,
-                            seats:       specs['seats']     || null,
-                            drivetrain:  specs['drivetrain']|| null,
                         };
                     }
                 """)
@@ -182,46 +187,80 @@ class AutoScout24Scraper(BaseScraper):
                 const price_raw = getCleanPrice(priceEl);
                 const fullText  = item.textContent || '';
 
-                // Godište
+                // =====================
+                // GODISTE - poboljšano
+                // =====================
                 let year_text = '';
-                const regMatch = fullText.match(/\b(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)\b/);
-                if (regMatch) {
-                    year_text = regMatch[2];
+
+                // 1. MM/YYYY ili MM.YYYY u fullText (slash ILI tačka)
+                const regMatch1 = fullText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
+                if (regMatch1) {
+                    year_text = regMatch1[2];
                 }
+
+                // 2. data atributi na elementu
                 if (!year_text) {
                     const dataYear = item.getAttribute('data-first-registration')
                         || item.getAttribute('data-year')
-                        || item.getAttribute('data-model-year');
+                        || item.getAttribute('data-model-year')
+                        || item.getAttribute('data-registration-date');
                     if (dataYear) {
                         const m = dataYear.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
                         if (m) year_text = m[1];
                     }
                 }
+
+                // 3. Specifični selektori za datum registracije
                 if (!year_text) {
                     const regEl = item.querySelector(
                         '[data-item-key="fr"],[data-item-key="Erstzulassung"],' +
-                        '[data-item-key="first-registration"],[class*="first-reg"]'
+                        '[data-item-key="first-registration"],[class*="first-reg"],' +
+                        '[class*="registration"],[data-testid="first-registration"]'
                     );
                     if (regEl) {
-                        const m = regEl.textContent.match(/\b(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)\b/);
+                        const t = regEl.textContent;
+                        const m = t.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
                         if (m) year_text = m[2];
                         else {
-                            const m2 = regEl.textContent.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
+                            const m2 = t.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
                             if (m2) year_text = m2[1];
                         }
                     }
                 }
+
+                // 4. Pretraga po li/span elementima unutar kartice
                 if (!year_text) {
-                    const segments = fullText.split(/[\n\r|·•]/);
-                    for (const seg of segments) {
-                        const t = seg.trim();
-                        const m = t.match(/^(0[1-9]|1[0-2])\/(19[5-9]\d|20[0-3]\d)$/)
+                    const specEls = Array.from(item.querySelectorAll(
+                        'li, [class*="item"], [class*="detail"], [class*="spec"], span'
+                    ));
+                    for (const el of specEls) {
+                        const t = el.textContent.trim();
+                        const m = t.match(/^(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)$/)
                                || t.match(/^(19[5-9]\d|20[0-3]\d)$/);
-                        if (m) { year_text = m[m.length-1]; break; }
+                        if (m) { year_text = m[m.length - 1]; break; }
                     }
                 }
 
-                // Kilometraža
+                // 5. Segmenti fullText po separatorima
+                if (!year_text) {
+                    const segments = fullText.split(/[\n\r|·•,]/);
+                    for (const seg of segments) {
+                        const t = seg.trim();
+                        const m = t.match(/^(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)$/)
+                               || t.match(/^(19[5-9]\d|20[0-3]\d)$/);
+                        if (m) { year_text = m[m.length - 1]; break; }
+                    }
+                }
+
+                // 6. Poslednji fallback: standalone godina u fullText
+                if (!year_text) {
+                    const m = fullText.match(/\b(20[0-2]\d|19[5-9]\d)\b/);
+                    if (m) year_text = m[1];
+                }
+
+                // ============
+                // KILOMETRAZA
+                // ============
                 let km_text = '';
                 const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
                 for (const m of kmMatches) {
@@ -231,7 +270,9 @@ class AutoScout24Scraper(BaseScraper):
                     if (val >= 1 && val <= 999999) { km_text = raw+' km'; break; }
                 }
 
-                // Gorivo
+                // ======
+                // GORIVO
+                // ======
                 const fuelPairs = [
                     ['Electric','electric'],['Elektro','electric'],['Elektrisch','electric'],
                     ['Hybrid','hybrid'],['Plug-in','hybrid'],
@@ -244,16 +285,22 @@ class AutoScout24Scraper(BaseScraper):
                     if (fullText.includes(kw)) { fuel_text=norm; break; }
                 }
 
-                // Menjač
+                // ======
+                // MENJAC
+                // ======
                 const transKws = ['Automatik','Automatic','Schaltgetriebe','Manual','DSG'];
                 let trans_text = '';
                 for (const kw of transKws) { if (fullText.includes(kw)) { trans_text=kw; break; } }
 
-                // Snaga
+                // ======
+                // SNAGA
+                // ======
                 const powerMatch = fullText.match(/(\d+)\s*kW/);
                 const power_text = powerMatch ? powerMatch[1]+' kW' : '';
 
-                // Karoserija
+                // =========
+                // KAROSERIJA
+                // =========
                 const bodyKws = ['Limousine','SUV','Geländewagen','Kombi','Hatchback',
                                  'Schrägheck','Coupe','Coupé','Cabrio','Kabriolet',
                                  'Roadster','Van','Kleinbus','Pickup'];
@@ -369,7 +416,8 @@ class AutoScout24Scraper(BaseScraper):
         return None
 
     def _extract_year(self, text: str) -> int | None:
-        m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', text)
+        # Podrška za MM/YYYY i MM.YYYY format
+        m = re.search(r'\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b', text)
         if m: return int(m.group(2))
         m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
         return int(m.group(1)) if m else None
