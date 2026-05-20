@@ -113,12 +113,13 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
 }
 
 export default function SearchPage() {
-  const searchParams = useSearchParams()
+  const searchParams  = useSearchParams()
   const [results,     setResults]     = useState<any>(null)
   const [loading,     setLoading]     = useState(true)
   const [aiQuery,     setAiQuery]     = useState(searchParams.get('q') || '')
   const [aiLoading,   setAiLoading]   = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [customMake,  setCustomMake]  = useState(false)
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '',
@@ -165,6 +166,8 @@ export default function SearchPage() {
     filters.min_year, filters.max_year, filters.max_km,
     filters.fuel_type, filters.price_rating,
   ].filter(Boolean).length
+
+  const isCustomMakeActive = filters.make && !POPULAR_MAKES.includes(filters.make)
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -251,7 +254,7 @@ export default function SearchPage() {
           <div className="mkgrid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 }}>
             {POPULAR_MAKES.map(make => (
               <button key={make} className="mkbtn cb"
-                onClick={() => setFilter('make', filters.make === make ? '' : make)}
+                onClick={() => { setCustomMake(false); setFilter('make', filters.make === make ? '' : make) }}
                 style={{
                   padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
                   background: filters.make === make ? 'rgba(255,107,0,.12)' : 'var(--bg2)',
@@ -263,8 +266,87 @@ export default function SearchPage() {
                 {make === 'Mercedes-Benz' ? 'Mercedes' : make === 'Volkswagen' ? 'VW' : make}
               </button>
             ))}
+
+            {/* Ostale marke dugme */}
+            {!customMake && !isCustomMakeActive && (
+              <button
+                className="mkbtn cb"
+                onClick={() => setCustomMake(true)}
+                style={{
+                  padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
+                  background: 'var(--bg2)', border: '1px dashed var(--border)',
+                  color: 'var(--text3)', cursor: 'pointer', textAlign: 'center',
+                  gridColumn: 'span 2',
+                }}
+              >
+                + Ostale marke
+              </button>
+            )}
+
+            {/* Aktivna custom marka */}
+            {isCustomMakeActive && !customMake && (
+              <button
+                className="mkbtn cb"
+                onClick={() => setFilter('make', '')}
+                style={{
+                  padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                  background: 'rgba(255,107,0,.12)', border: '1px solid var(--accent)',
+                  color: 'var(--accent)', cursor: 'pointer', textAlign: 'center',
+                  gridColumn: 'span 2',
+                }}
+              >
+                {filters.make} ✕
+              </button>
+            )}
+
+            {/* Input za unos marke */}
+            {customMake && (
+              <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, marginTop: 2 }}>
+                <input
+                  autoFocus
+                  placeholder="Upiši marku npr. Porsche, Jeep, Ferrari..."
+                  defaultValue={isCustomMakeActive ? filters.make : ''}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const val = (e.target as HTMLInputElement).value.trim()
+                      if (val) setFilter('make', val)
+                      setCustomMake(false)
+                    }
+                    if (e.key === 'Escape') setCustomMake(false)
+                  }}
+                  style={{
+                    flex: 1, background: 'var(--bg3)',
+                    border: '1px solid var(--accent)',
+                    borderRadius: 10, padding: '9px 14px',
+                    color: 'var(--text)', fontSize: 13, outline: 'none',
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const input = document.querySelector('input[placeholder*="Upiši marku"]') as HTMLInputElement
+                    const val   = input?.value.trim()
+                    if (val) setFilter('make', val)
+                    setCustomMake(false)
+                  }}
+                  style={{
+                    padding: '9px 16px', borderRadius: 10,
+                    background: 'var(--accent)', border: 'none',
+                    color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >Traži</button>
+                <button
+                  onClick={() => setCustomMake(false)}
+                  style={{
+                    padding: '9px 14px', borderRadius: 10,
+                    background: 'transparent', border: '1px solid var(--border)',
+                    color: 'var(--text3)', fontSize: 12, cursor: 'pointer',
+                  }}
+                >✕</button>
+              </div>
+            )}
           </div>
-          {filters.make && (
+
+          {filters.make && !customMake && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
               Prikazujem: <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{filters.make}</span>
               <button onClick={() => setFilter('make', '')} style={{
