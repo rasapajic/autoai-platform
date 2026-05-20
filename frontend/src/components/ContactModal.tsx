@@ -13,18 +13,18 @@ const QUICK_QUESTIONS = [
 ]
 
 const COUNTRY_LANG: Record<string, { name: string; code: string }> = {
-  DE: { name: 'Nemačkom (Deutsch)',     code: 'German'  },
-  AT: { name: 'Nemačkom (Deutsch)',     code: 'German'  },
-  CH: { name: 'Nemačkom (Deutsch)',     code: 'German'  },
-  FR: { name: 'Francuskom (Français)', code: 'French'  },
-  IT: { name: 'Italijanskom (Italiano)',code: 'Italian' },
-  NL: { name: 'Holandskom (Nederlands)',code: 'Dutch'   },
-  BE: { name: 'Holandskom (Nederlands)',code: 'Dutch'   },
-  ES: { name: 'Španskom (Español)',     code: 'Spanish' },
-  DK: { name: 'Danskom (Dansk)',        code: 'Danish'  },
-  SE: { name: 'Švedskom (Svenska)',     code: 'Swedish' },
-  NO: { name: 'Norveškom (Norsk)',      code: 'Norwegian'},
-  PL: { name: 'Poljskom (Polski)',      code: 'Polish'  },
+  DE: { name: 'Nemačkom (Deutsch)',      code: 'German'    },
+  AT: { name: 'Nemačkom (Deutsch)',      code: 'German'    },
+  CH: { name: 'Nemačkom (Deutsch)',      code: 'German'    },
+  FR: { name: 'Francuskom (Français)',  code: 'French'    },
+  IT: { name: 'Italijanskom (Italiano)', code: 'Italian'   },
+  NL: { name: 'Holandskom (Nederlands)',code: 'Dutch'     },
+  BE: { name: 'Holandskom (Nederlands)',code: 'Dutch'     },
+  ES: { name: 'Španskom (Español)',      code: 'Spanish'   },
+  DK: { name: 'Danskom (Dansk)',         code: 'Danish'    },
+  SE: { name: 'Švedskom (Svenska)',      code: 'Swedish'   },
+  NO: { name: 'Norveškom (Norsk)',       code: 'Norwegian' },
+  PL: { name: 'Poljskom (Polski)',       code: 'Polish'    },
 }
 
 interface Props {
@@ -77,11 +77,17 @@ export default function ContactModal({ listing, onClose }: Props) {
     setCopied(true); setTimeout(() => setCopied(false), 2200)
   }
 
- const openEmail = () => {
+  const openEmail = () => {
     const sub  = encodeURIComponent(`Inquiry: ${listing.year || ''} ${listing.make || ''} ${listing.model || ''}`)
     const body = encodeURIComponent(message)
     window.location.href = `mailto:?subject=${sub}&body=${body}`
-}
+  }
+
+  const openWhatsApp = () => {
+    const text = encodeURIComponent(message)
+    window.open(`https://wa.me/?text=${text}`, '_blank')
+  }
+
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
@@ -109,7 +115,8 @@ export default function ContactModal({ listing, onClose }: Props) {
               🤖 Kontaktiraj prodavca
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text3)', margin: 0 }}>
-              AI generiše profesionalnu poruku na <strong style={{ color: 'var(--accent)' }}>{langInfo.name}</strong>
+              AI generiše profesionalnu poruku na{' '}
+              <strong style={{ color: 'var(--accent)' }}>{langInfo.name}</strong>
             </p>
           </div>
           <button onClick={onClose} style={{
@@ -131,7 +138,8 @@ export default function ContactModal({ listing, onClose }: Props) {
                 {listing.year && `${listing.year} `}{listing.make} {listing.model}
               </div>
               <div style={{ color: 'var(--text3)', fontSize: 13 }}>
-                {listing.price ? `${Number(listing.price).toLocaleString()} €` : ''} · {listing.country}
+                {listing.price ? `${Number(listing.price).toLocaleString()} €` : ''}{' '}
+                {listing.country ? `· ${listing.country}` : ''}
               </div>
             </div>
           </div>
@@ -219,7 +227,8 @@ export default function ContactModal({ listing, onClose }: Props) {
                 whiteSpace: 'pre-wrap',
               }}>{message}</div>
 
-              <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              {/* Akcijska dugmad */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <button onClick={copy} style={{
                   flex: 1, padding: '11px', borderRadius: 10,
                   background: copied ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
@@ -228,13 +237,21 @@ export default function ContactModal({ listing, onClose }: Props) {
                   fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all .15s',
                 }}>{copied ? '✓ Kopirano!' : '📋 Kopiraj'}</button>
 
+                <button onClick={openWhatsApp} style={{
+                  flex: 1, padding: '11px', borderRadius: 10,
+                  background: 'rgba(37,211,102,.1)',
+                  border: '1px solid rgba(37,211,102,.35)',
+                  color: '#25D366',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}>💬 WhatsApp</button>
+
                 <button onClick={openEmail} style={{
                   flex: 1, padding: '11px', borderRadius: 10,
                   background: 'rgba(255,107,0,.1)',
                   border: '1px solid rgba(255,107,0,.3)',
                   color: 'var(--accent)',
                   fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                }}>✉️ Otvori email</button>
+                }}>✉️ Email</button>
               </div>
 
               <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: 0, lineHeight: 1.5 }}>
