@@ -49,12 +49,12 @@ class AutoScout24Scraper(BaseScraper):
 
     def _build_url(self, filters: dict, page: int = 1) -> str:
         params = {
-            "atype":    "C",
-            "page":     page,
-            "sort":     "age",
-            "desc":     0,
-            "fregfrom": 2008,   # min godište
-            "pricefrom": 3000,  # min cena EUR
+            "atype":     "C",
+            "page":      page,
+            "sort":      "age",
+            "desc":      0,
+            "fregfrom":  2008,
+            "pricefrom": 3000,
         }
         mapping = {
             "make": "mmvmk0", "model": "mmvmd0",
@@ -345,7 +345,6 @@ class AutoScout24Scraper(BaseScraper):
         price_raw   = raw.get("price_raw","")
         price_eur   = self._parse_price_eur(price_raw)
 
-        # Preskoči ako je cena preniska
         if price_eur and price_eur < 3000:
             return None
 
@@ -367,7 +366,6 @@ class AutoScout24Scraper(BaseScraper):
             elif any(k in dl for k in BODY_MAP):
                 body_type = body_type or self._normalize_body(d)
 
-        # Preskoči ako je godište pre 2005
         if year and year < 2005:
             return None
 
@@ -438,12 +436,6 @@ class AutoScout24Scraper(BaseScraper):
         m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
         return int(m.group(1)) if m else None
 
-    def _normalize_fuel(self, val: str) -> str | None:
-        v = val.lower()
-        for k, norm in FUEL_MAP.items():
-            if k in v: return norm
-        return None
-
     def _normalize_transmission(self, val: str) -> str | None:
         v = val.lower()
         for k, norm in TRANSMISSION_MAP.items():
@@ -466,6 +458,25 @@ class AutoScout24Scraper(BaseScraper):
 
     def _parse_location(self, raw: str) -> tuple:
         if not raw: return None, None
+
+        # Ukloni "Show more vehicles" i slične dodatke
+        raw = raw.split('\n')[0].strip()
+
+        # Format: "IT-20841 Carate Brianza" ili "DE-80331 München"
+        m = re.match(r'^([A-Z]{2})-\d+\s+(.+)', raw)
+        if m:
+            country = m.group(1)
+            city    = m.group(2).split(' - ')[0].strip()
+            return country, city
+
+        # Format: "Torino - To, IT" ili "München, DE" ili "City, Country"
         parts = [p.strip() for p in raw.split(",")]
-        if len(parts) >= 2: return parts[-1], parts[0]
-        return None, parts[0]
+        if len(parts) >= 2:
+            country = parts[-1].strip()
+            city    = parts[0].split(' - ')[0].strip()
+            # Ako je country duži od 2 slova, vjerovatno nije country code
+            if len(country) <= 3:
+                return country, city
+            return None, parts[0]
+
+        return None, raw
