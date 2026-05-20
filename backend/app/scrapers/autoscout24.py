@@ -48,7 +48,14 @@ class AutoScout24Scraper(BaseScraper):
     BASE_URL    = "https://www.autoscout24.com"
 
     def _build_url(self, filters: dict, page: int = 1) -> str:
-        params = {"atype": "C", "page": page, "sort": "age", "desc": 0}
+        params = {
+            "atype":    "C",
+            "page":     page,
+            "sort":     "age",
+            "desc":     0,
+            "fregfrom": 2008,   # min godište
+            "pricefrom": 3000,  # min cena EUR
+        }
         mapping = {
             "make": "mmvmk0", "model": "mmvmd0",
             "min_price": "pricefrom", "max_price": "priceto",
@@ -87,7 +94,6 @@ class AutoScout24Scraper(BaseScraper):
                 if not page:
                     continue
 
-                # Čekanje da React renderuje listing kartice (max 8 sekundi)
                 for selector in [
                     'article[data-guid]',
                     '[data-testid="regular-list-item"]',
@@ -101,7 +107,6 @@ class AutoScout24Scraper(BaseScraper):
                     except Exception:
                         continue
 
-                # Dodatno čekanje da se specifikacije učitaju
                 await asyncio.sleep(2)
 
                 try:
@@ -111,7 +116,6 @@ class AutoScout24Scraper(BaseScraper):
                     await page.close()
                     continue
 
-                # Debug: loguj šta vidimo za prvi oglas
                 if raw_items:
                     first = raw_items[0]
                     logger.info(
@@ -215,12 +219,10 @@ class AutoScout24Scraper(BaseScraper):
 
                 let year_text = '';
 
-                // 1. MM/YYYY ili MM.YYYY
                 const regMatch1 = fullText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/)
                                || innerText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
                 if (regMatch1) year_text = regMatch1[2];
 
-                // 2. data atributi
                 if (!year_text) {
                     const dataYear = item.getAttribute('data-first-registration')
                         || item.getAttribute('data-year')
@@ -232,7 +234,6 @@ class AutoScout24Scraper(BaseScraper):
                     }
                 }
 
-                // 3. Specifični selektori
                 if (!year_text) {
                     const regEl = item.querySelector(
                         '[data-item-key="fr"],[data-item-key="Erstzulassung"],' +
@@ -250,7 +251,6 @@ class AutoScout24Scraper(BaseScraper):
                     }
                 }
 
-                // 4. Svi span/li/p elementi
                 if (!year_text) {
                     const specEls = Array.from(item.querySelectorAll(
                         'li, span, p, [class*="item"], [class*="detail"], [class*="spec"], [class*="key"]'
@@ -263,7 +263,6 @@ class AutoScout24Scraper(BaseScraper):
                     }
                 }
 
-                // 5. Segmenti innerText
                 if (!year_text) {
                     const segments = innerText.split(/[\n\r|·•,\t]/);
                     for (const seg of segments) {
@@ -274,7 +273,6 @@ class AutoScout24Scraper(BaseScraper):
                     }
                 }
 
-                // 6. Fallback: standalone godina
                 if (!year_text) {
                     const m = fullText.match(/\b(20[0-2]\d|19[5-9]\d)\b/);
                     if (m) year_text = m[1];
@@ -293,7 +291,8 @@ class AutoScout24Scraper(BaseScraper):
                     ['Electric','electric'],['Elektro','electric'],['Elektrisch','electric'],
                     ['Hybrid','hybrid'],['Plug-in','hybrid'],
                     ['Diesel','diesel'],['Dizel','diesel'],
-                    ['Ethanol','petrol'],['Flexifuel','petrol'],['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],['Super','petrol'],
+                    ['Ethanol','petrol'],['Flexifuel','petrol'],
+                    ['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],['Super','petrol'],
                     ['LPG','lpg'],['Autogas','lpg'],['CNG','cng'],['Erdgas','cng'],
                 ];
                 let fuel_text = '';
@@ -346,6 +345,10 @@ class AutoScout24Scraper(BaseScraper):
         price_raw   = raw.get("price_raw","")
         price_eur   = self._parse_price_eur(price_raw)
 
+        # Preskoči ako je cena preniska
+        if price_eur and price_eur < 3000:
+            return None
+
         mileage_raw = year = fuel_type = transmission = power_str = body_type = None
 
         for d in details:
@@ -363,6 +366,10 @@ class AutoScout24Scraper(BaseScraper):
                 power_str = power_str or d
             elif any(k in dl for k in BODY_MAP):
                 body_type = body_type or self._normalize_body(d)
+
+        # Preskoči ako je godište pre 2005
+        if year and year < 2005:
+            return None
 
         if not fuel_type and filter_fuel:
             fuel_type = filter_fuel
