@@ -29,7 +29,6 @@ class ListingBase(BaseModel):
 
 
 class ListingCard(ListingBase):
-    """Kratak prikaz za listu oglasa."""
     id:               UUID
     source:           str
     images:           list = []
@@ -48,7 +47,6 @@ class ListingCard(ListingBase):
 
 
 class ListingDetail(ListingCard):
-    """Puni detalji oglasa."""
     variant:          Optional[str] = None
     engine_cc:        Optional[int] = None
     doors:            Optional[int] = None
@@ -77,8 +75,7 @@ class PriceHistoryPoint(BaseModel):
 
 
 class SearchFilters(BaseModel):
-    """Filteri za pretragu."""
-    query:        Optional[str] = None     # prirodni jezik
+    query:        Optional[str] = None
     make:         Optional[str] = None
     model:        Optional[str] = None
     min_price:    Optional[int] = None
@@ -91,16 +88,16 @@ class SearchFilters(BaseModel):
     transmission: Optional[str] = None
     body_type:    Optional[str] = None
     country:      Optional[str] = None
-    price_rating: Optional[str] = None    # 'great', 'good', 'fair'
+    price_rating: Optional[str] = None
     source:       Optional[str] = None
-    sort_by:      str = "date"             # 'date', 'price_asc', 'price_desc', 'best_deal'
+    sort_by:      str = "date"
     page:         int = 1
-    limit:        int = 20
+    limit:        int = 40
 
     @field_validator("limit")
     @classmethod
     def limit_max(cls, v):
-        return min(v, 50)
+        return min(v, 100)
 
     @field_validator("page")
     @classmethod
