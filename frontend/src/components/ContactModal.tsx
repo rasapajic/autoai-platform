@@ -77,15 +77,15 @@ export default function ContactModal({ listing, onClose }: Props) {
     setCopied(true); setTimeout(() => setCopied(false), 2200)
   }
 
-  const openEmail = () => {
-    const sub  = encodeURIComponent(`Inquiry: ${listing.year || ''} ${listing.make || ''} ${listing.model || ''}`)
-    const body = encodeURIComponent(message)
-    window.location.href = `mailto:?subject=${sub}&body=${body}`
-  }
-
   const openWhatsApp = () => {
     const text = encodeURIComponent(message)
     window.open(`https://wa.me/?text=${text}`, '_blank')
+  }
+
+  const openGmail = () => {
+    const sub  = encodeURIComponent(`Inquiry: ${listing.year || ''} ${listing.make || ''} ${listing.model || ''}`)
+    const body = encodeURIComponent(message)
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${sub}&body=${body}`, '_blank')
   }
 
   return (
@@ -138,8 +138,8 @@ export default function ContactModal({ listing, onClose }: Props) {
                 {listing.year && `${listing.year} `}{listing.make} {listing.model}
               </div>
               <div style={{ color: 'var(--text3)', fontSize: 13 }}>
-                {listing.price ? `${Number(listing.price).toLocaleString()} €` : ''}{' '}
-                {listing.country ? `· ${listing.country}` : ''}
+                {listing.price ? `${Number(listing.price).toLocaleString()} €` : ''}
+                {listing.country ? ` · ${listing.country}` : ''}
               </div>
             </div>
           </div>
@@ -245,13 +245,13 @@ export default function ContactModal({ listing, onClose }: Props) {
                   fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 }}>💬 WhatsApp</button>
 
-                <button onClick={openEmail} style={{
+                <button onClick={openGmail} style={{
                   flex: 1, padding: '11px', borderRadius: 10,
-                  background: 'rgba(255,107,0,.1)',
-                  border: '1px solid rgba(255,107,0,.3)',
-                  color: 'var(--accent)',
+                  background: 'rgba(234,67,53,.1)',
+                  border: '1px solid rgba(234,67,53,.35)',
+                  color: '#EA4335',
                   fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                }}>✉️ Email</button>
+                }}>✉️ Gmail</button>
               </div>
 
               <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: 0, lineHeight: 1.5 }}>
