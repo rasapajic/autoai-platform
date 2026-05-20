@@ -47,6 +47,117 @@ function getInsight(listing: any): string | null {
   return null
 }
 
+function formatMileage(raw: any): string | null {
+  const km = Number(raw)
+  if (!km || km < 1 || km > 999999) return null
+  return km.toLocaleString('de-DE') + ' km'
+}
+
+function fullImg(url: string): string {
+  if (!url) return url
+  return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
+}
+
+function Pagination({ pages, current, onPage }: { pages: number; current: number; onPage: (p: number) => void }) {
+  const items: (number | string)[] = []
+
+  if (pages <= 10) {
+    for (let i = 1; i <= pages; i++) items.push(i)
+  } else {
+    items.push(1)
+    if (current > 4) items.push('...')
+    for (let i = Math.max(2, current - 2); i <= Math.min(pages - 1, current + 2); i++) items.push(i)
+    if (current < pages - 3) items.push('...')
+    items.push(pages)
+  }
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 40, flexWrap: 'wrap', alignItems: 'center' }}>
+      <button
+        onClick={() => current > 1 && onPage(current - 1)}
+        disabled={current === 1}
+        style={{
+          width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
+          background: 'var(--bg2)', color: current === 1 ? 'var(--text3)' : 'var(--text2)',
+          fontSize: 16, cursor: current === 1 ? 'default' : 'pointer',
+        }}>‹</button>
+
+      {items.map((p, i) => p === '...'
+        ? <span key={`e${i}`} style={{ width: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 14 }}>…</span>
+        : <button key={p} onClick={() => onPage(p as number)} style={{
+            width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
+            background: current === p ? 'var(--accent)' : 'var(--bg2)',
+            color: current === p ? '#fff' : 'var(--text2)',
+            fontSize: 14, cursor: 'pointer', fontWeight: current === p ? 700 : 400,
+          }}>{p}</button>
+      )}
+
+      <button
+        onClick={() => current < pages && onPage(current + 1)}
+        disabled={current === pages}
+        style={{
+          width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
+          background: 'var(--bg2)', color: current === pages ? 'var(--text3)' : 'var(--text2)',
+          fontSize: 16, cursor: current === pages ? 'default' : 'pointer',
+        }}>›</button>
+    </div>
+  )
+}
+
+function getSerbiaEligibility(listing: any) {
+  const year = listing.year ? Number(listing.year) : null
+  const fuel = listing.fuel_type || null
+  const age  = year ? (2026 - year) : null
+
+  if (fuel === 'electric') return {
+    status: 'eligible', emoji: '🟢',
+    label: 'Može uvoz u Srbiju',
+    tooltip: 'Električna vozila su oslobođena carine pri uvozu u Srbiju.',
+    carinaPct: 0,
+  }
+  if (age !== null && age >= 30) return {
+    status: 'oldtimer', emoji: '🟣',
+    label: 'Oldtimer izuzetak',
+    tooltip: 'Oldtimer vozila mogu se uvesti pod posebnim uslovima.',
+    carinaPct: 5,
+  }
+  if (!year) return null
+  if (year >= 2015) return {
+    status: 'eligible', emoji: '🟢',
+    label: 'Može uvoz u Srbiju',
+    tooltip: 'Euro 6 vozila bez problema prolaze carinjenje u Srbiji.',
+    carinaPct: 5,
+  }
+  if (year >= 2011) return {
+    status: 'eligible', emoji: '🟢',
+    label: 'Može uvoz u Srbiju',
+    tooltip: 'Euro 5 vozila se mogu uvesti u Srbiju bez ograničenja.',
+    carinaPct: 5,
+  }
+  if (year >= 2006) return {
+    status: 'eligible', emoji: '🟢',
+    label: fuel === 'diesel' ? 'Može uvoz — proveri Euro 4' : 'Može uvoz u Srbiju',
+    tooltip: 'Euro 4 je minimalni standard za uvoz u Srbiju.',
+    carinaPct: 5,
+  }
+  if (year >= 2001) return {
+    status: 'needs_check', emoji: '🟠',
+    label: 'Potrebna provera Euro norme',
+    tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru.',
+    carinaPct: 5,
+  }
+  return {
+    status: 'not_recommended', emoji: '🔴',
+    label: 'Uvoz nije preporučljiv',
+    tooltip: 'Stara emisiona norma — registracija u Srbiji je otežana.',
+    carinaPct: 5,
+  }
+}
+
+const ELIGIBILITY_COLORS: Record<string, string> = {
+  eligible: '#22C55E', needs_check: '#F97316', not_recommended: '#EF4444', oldtimer: '#A855F7',
+}
+
 export default function SearchPage() {
   const searchParams = useSearchParams()
   const [results,     setResults]     = useState<any>(null)
@@ -176,9 +287,7 @@ export default function SearchPage() {
           </div>
           <div className="mkgrid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 }}>
             {POPULAR_MAKES.map(make => (
-              <button
-                key={make}
-                className="mkbtn cb"
+              <button key={make} className="mkbtn cb"
                 onClick={() => setFilter('make', filters.make === make ? '' : make)}
                 style={{
                   padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
@@ -187,8 +296,7 @@ export default function SearchPage() {
                   color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
                   cursor: 'pointer', textAlign: 'center', whiteSpace: 'nowrap',
                   overflow: 'hidden', textOverflow: 'ellipsis',
-                }}
-              >
+                }}>
                 {make === 'Mercedes-Benz' ? 'Mercedes' : make === 'Volkswagen' ? 'VW' : make}
               </button>
             ))}
@@ -197,9 +305,9 @@ export default function SearchPage() {
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
               Prikazujem: <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{filters.make}</span>
               <button onClick={() => setFilter('make', '')} style={{
-                marginLeft: 8, background: 'none', border: 'none', color: 'var(--text3)',
-                cursor: 'pointer', fontSize: 12,
-              }}>✕ Ukloni filter</button>
+                marginLeft: 8, background: 'none', border: 'none',
+                color: 'var(--text3)', cursor: 'pointer', fontSize: 12,
+              }}>✕ Ukloni</button>
             </div>
           )}
         </div>
@@ -263,7 +371,7 @@ export default function SearchPage() {
 
             {loading ? (
               <div className="rg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 20 }}>
-                {[...Array(6)].map((_,i) => <div key={i} className="skeleton" style={{ height: 420, borderRadius: 16 }} />)}
+                {[...Array(8)].map((_,i) => <div key={i} className="skeleton" style={{ height: 420, borderRadius: 16 }} />)}
               </div>
             ) : results?.results?.length ? (
               <>
@@ -271,16 +379,11 @@ export default function SearchPage() {
                   {results.results.map((l: any) => <ListingCard key={l.id} listing={l} />)}
                 </div>
                 {results.pages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 40, flexWrap: 'wrap' }}>
-                    {[...Array(Math.min(results.pages, 8))].map((_,i) => (
-                      <button key={i} onClick={() => setFilter('page', i+1)} style={{
-                        width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
-                        background: filters.page === i+1 ? 'var(--accent)' : 'var(--bg2)',
-                        color: filters.page === i+1 ? '#fff' : 'var(--text2)',
-                        fontSize: 14, cursor: 'pointer', fontWeight: 600,
-                      }}>{i+1}</button>
-                    ))}
-                  </div>
+                  <Pagination
+                    pages={results.pages}
+                    current={filters.page}
+                    onPage={p => setFilter('page', p)}
+                  />
                 )}
               </>
             ) : (
@@ -298,24 +401,22 @@ export default function SearchPage() {
 }
 
 function ListingCard({ listing }: { listing: any }) {
-  const badge   = AI_BADGES[listing.price_rating]
-  const insight = getInsight(listing)
-  const img     = listing.images?.[0]
-  const price   = listing.price ? Number(listing.price) : null
-  const bd      = price ? calcBreakdown(price) : null
-  const delta   = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
-  const [showBreakdown, setShowBreakdown] = useState(false)
+  const badge       = AI_BADGES[listing.price_rating]
+  const insight     = getInsight(listing)
+  const img         = listing.images?.[0]
+  const price       = listing.price ? Number(listing.price) : null
+  const bd          = price ? calcBreakdown(price) : null
+  const delta       = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
+  const mileage     = formatMileage(listing.mileage)
+  const eligibility = getSerbiaEligibility(listing)
+  const eligColor   = eligibility ? ELIGIBILITY_COLORS[eligibility.status] : null
+  const [showBd,    setShowBd] = useState(false)
 
   return (
-    <div className="ch" style={{
-      background: 'var(--bg2)', border: '1px solid var(--border)',
-      borderRadius: 16, overflow: 'hidden',
-    }}>
+    <div className="ch" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+
       {badge ? (
-        <div style={{
-          background: badge.bg, borderBottom: `2px solid ${badge.color}`,
-          padding: '9px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
+        <div style={{ background: badge.bg, borderBottom: `2px solid ${badge.color}`, padding: '9px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: badge.color, fontSize: 13, fontWeight: 800, letterSpacing: '.03em' }}>{badge.label}</span>
           {delta !== null && (
             <span style={{ color: delta < 0 ? '#22C55E' : '#EF4444', fontSize: 12, fontWeight: 600 }}>
@@ -331,24 +432,22 @@ function ListingCard({ listing }: { listing: any }) {
 
       <a href={`/listing/${listing.id}`} style={{ display: 'block', textDecoration: 'none' }}>
         <div style={{ height: 185, background: 'var(--bg3)', position: 'relative', overflow: 'hidden' }}>
-          {img ? (
-            <img src={img} alt={`${listing.make} ${listing.model}`}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 48, opacity: .35 }}>🚗</div>
-          )}
-          <span style={{
-            position: 'absolute', bottom: 10, left: 10,
-            background: 'rgba(0,0,0,.75)', borderRadius: 6, padding: '3px 8px',
-            fontSize: 11, color: 'rgba(255,255,255,.65)', backdropFilter: 'blur(4px)',
-          }}>{listing.source}</span>
+          {img
+            ? <img src={fullImg(img)} alt={`${listing.make} ${listing.model}`}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={e => { (e.target as HTMLImageElement).src = img }} />
+            : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 48, opacity: .35 }}>🚗</div>
+          }
+          <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,.75)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: 'rgba(255,255,255,.65)', backdropFilter: 'blur(4px)' }}>
+            {listing.source}
+          </span>
         </div>
-        <div style={{ padding: '16px 18px 0' }}>
+        <div style={{ padding: '14px 18px 0' }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px', fontFamily: 'Syne,sans-serif', lineHeight: 1.3, color: 'var(--text)' }}>
             {listing.year && `${listing.year} `}{listing.make} {listing.model}
           </h3>
           {insight && (
-            <p style={{ fontSize: 12, color: badge?.color || '#818CF8', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <p style={{ fontSize: 12, color: badge?.color || '#818CF8', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 5 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: badge?.color || '#818CF8', display: 'inline-block', flexShrink: 0 }} />
               {insight}
             </p>
@@ -357,25 +456,35 @@ function ListingCard({ listing }: { listing: any }) {
       </a>
 
       <div style={{ padding: '0 18px 18px' }}>
+
+        {eligibility && eligColor && (
+          <div style={{ background: `${eligColor}11`, border: `1px solid ${eligColor}44`, borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2, letterSpacing: '.06em', fontWeight: 600 }}>UVOZ U SRBIJU</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: eligColor }}>{eligibility.emoji} {eligibility.label}</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>{eligibility.tooltip}</div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>EU cena:</span>
           <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text2)' }}>
-            {price ? `${price.toLocaleString()} €` : 'Na upit'}
+            {price ? `${price.toLocaleString('de-DE')} €` : 'Na upit'}
           </span>
         </div>
+
         {bd && (
-          <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 10, overflow: 'hidden' }}>
-            <button onClick={() => setShowBreakdown(!showBreakdown)} className="cb" style={{
+          <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+            <button onClick={() => setShowBd(!showBd)} className="cb" style={{
               width: '100%', background: 'none', border: 'none', cursor: 'pointer',
               padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>🇷🇸 Ukupno za Srbiju</div>
-                <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString()} €</div>
+                <div style={{ fontSize: 19, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString('de-DE')} €</div>
               </div>
-              <span style={{ fontSize: 11, color: 'rgba(255,107,0,.6)' }}>{showBreakdown ? '▲ sakrij' : '▼ detalji'}</span>
+              <span style={{ fontSize: 11, color: 'rgba(255,107,0,.6)' }}>{showBd ? '▲' : '▼ detalji'}</span>
             </button>
-            {showBreakdown && (
+            {showBd && (
               <div style={{ padding: '0 14px 12px', borderTop: '1px solid rgba(255,107,0,.15)' }}>
                 {[
                   { label: 'EU cena',        val: price!,       note: '' },
@@ -386,27 +495,24 @@ function ListingCard({ listing }: { listing: any }) {
                 ].map(({ label, val, note }, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.04)', marginTop: i === 0 ? 8 : 0 }}>
                     <span style={{ fontSize: 12, color: i === 0 ? 'var(--text2)' : 'var(--text3)' }}>
-                      {i > 0 && '+ '}{label}
-                      {note && <span style={{ fontSize: 10, marginLeft: 4, opacity: .5 }}>({note})</span>}
+                      {i > 0 && '+ '}{label}{note && <span style={{ fontSize: 10, marginLeft: 4, opacity: .5 }}>({note})</span>}
                     </span>
                     <span style={{ fontSize: 12, fontWeight: i === 0 ? 400 : 500, color: i === 0 ? 'var(--text2)' : '#fb923c' }}>
-                      {i === 0 ? '' : '+'}{val.toLocaleString()} €
+                      {i === 0 ? '' : '+'}{val.toLocaleString('de-DE')} €
                     </span>
                   </div>
                 ))}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,107,0,.25)' }}>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>Ukupno Srbija</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString()} €</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>{bd.total.toLocaleString('de-DE')} €</span>
                 </div>
-                <p style={{ fontSize: 10, color: 'var(--text3)', margin: '8px 0 0', lineHeight: 1.4 }}>
-                  * Procena na osnovu standardnih stopa. Stvarni troškovi mogu varirati.
-                </p>
               </div>
             )}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-          {listing.mileage && <span>🛣 {Number(listing.mileage).toLocaleString()} km</span>}
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text3)', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+          {mileage && <span>🛣 {mileage}</span>}
           {listing.fuel_type && <span>⛽ {FUEL_LABELS[listing.fuel_type] || listing.fuel_type}</span>}
           {listing.country && <span>📍 {listing.country}</span>}
         </div>
