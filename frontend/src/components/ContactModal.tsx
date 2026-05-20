@@ -270,9 +270,12 @@ export default function ContactModal({ listing, onClose }: Props) {
                 }}>✉️ Gmail</button>
               </div>
 
-              <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: 0, lineHeight: 1.5 }}>
-                Poruka je generisana AI-om. Preporučujemo da je pregledate pre slanja.
-              </p>
+              <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: '0 0 6px', lineHeight: 1.5 }}>
+  Poruka je generisana AI-om. Preporučujemo da je pregledate pre slanja.
+</p>
+<p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: 0, lineHeight: 1.5, opacity: .7 }}>
+  💡 Email adresu prodavca nađi na <a href={listing.url} target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none' }}>originalnom oglasu →</a>
+</p>
             </div>
           )}
         </div>
