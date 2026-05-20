@@ -77,12 +77,11 @@ export default function ContactModal({ listing, onClose }: Props) {
     setCopied(true); setTimeout(() => setCopied(false), 2200)
   }
 
-  const openEmail = () => {
+ const openEmail = () => {
     const sub  = encodeURIComponent(`Inquiry: ${listing.year || ''} ${listing.make || ''} ${listing.model || ''}`)
     const body = encodeURIComponent(message)
-    window.open(`mailto:?subject=${sub}&body=${body}`)
-  }
-
+    window.location.href = `mailto:?subject=${sub}&body=${body}`
+}
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
