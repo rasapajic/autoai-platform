@@ -40,7 +40,22 @@ export default function ContactModal({ listing, onClose }: Props) {
   const [copied,   setCopied]   = useState(false)
   const [error,    setError]    = useState('')
 
-  const langInfo = COUNTRY_LANG[listing.country || 'DE'] || COUNTRY_LANG.DE
+  const detectCountry = (): string => {
+    if (listing.country && listing.country.length <= 3) return listing.country
+    const city = (listing.city || listing.country || '').toLowerCase()
+    if (/napoli|roma|milano|torino|firenze|venezia|bologna|palermo|genova|cardito|bari|catania/i.test(city)) return 'IT'
+    if (/paris|lyon|marseille|bordeaux|toulouse|nice|nantes|strasbourg|lille|rennes/i.test(city)) return 'FR'
+    if (/wien|graz|salzburg|linz|innsbruck|klagenfurt|wels/i.test(city)) return 'AT'
+    if (/amsterdam|rotterdam|utrecht|den haag|eindhoven|tilburg|groningen/i.test(city)) return 'NL'
+    if (/madrid|barcelona|sevilla|valencia|bilbao|zaragoza|malaga/i.test(city)) return 'ES'
+    if (/warsaw|krakow|gdansk|wroclaw|poznan|lodz|katowice/i.test(city)) return 'PL'
+    if (/stockholm|göteborg|malmö|uppsala|västerås/i.test(city)) return 'SE'
+    if (/copenhagen|aarhus|odense|aalborg/i.test(city)) return 'DK'
+    return 'DE'
+  }
+
+  const country   = detectCountry()
+  const langInfo  = COUNTRY_LANG[country] || COUNTRY_LANG.DE
 
   const toggleQ = (q: string) =>
     setSelected(s => s.includes(q) ? s.filter(x => x !== q) : [...s, q])
@@ -55,7 +70,7 @@ export default function ContactModal({ listing, onClose }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          country:     listing.country || 'DE',
+          country:     country,
           make:        listing.make,
           model:       listing.model,
           year:        listing.year,
@@ -139,6 +154,7 @@ export default function ContactModal({ listing, onClose }: Props) {
               </div>
               <div style={{ color: 'var(--text3)', fontSize: 13 }}>
                 {listing.price ? `${Number(listing.price).toLocaleString()} €` : ''}
+                {listing.city ? ` · ${listing.city}` : ''}
                 {listing.country ? ` · ${listing.country}` : ''}
               </div>
             </div>
