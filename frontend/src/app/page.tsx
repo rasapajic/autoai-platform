@@ -60,7 +60,6 @@ function fullImg(url: string): string {
 
 function Pagination({ pages, current, onPage }: { pages: number; current: number; onPage: (p: number) => void }) {
   const items: (number | string)[] = []
-
   if (pages <= 10) {
     for (let i = 1; i <= pages; i++) items.push(i)
   } else {
@@ -70,18 +69,13 @@ function Pagination({ pages, current, onPage }: { pages: number; current: number
     if (current < pages - 3) items.push('...')
     items.push(pages)
   }
-
   return (
     <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 40, flexWrap: 'wrap', alignItems: 'center' }}>
-      <button
-        onClick={() => current > 1 && onPage(current - 1)}
-        disabled={current === 1}
-        style={{
-          width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
-          background: 'var(--bg2)', color: current === 1 ? 'var(--text3)' : 'var(--text2)',
-          fontSize: 16, cursor: current === 1 ? 'default' : 'pointer',
-        }}>‹</button>
-
+      <button onClick={() => current > 1 && onPage(current - 1)} disabled={current === 1} style={{
+        width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
+        background: 'var(--bg2)', color: current === 1 ? 'var(--text3)' : 'var(--text2)',
+        fontSize: 16, cursor: current === 1 ? 'default' : 'pointer',
+      }}>‹</button>
       {items.map((p, i) => p === '...'
         ? <span key={`e${i}`} style={{ width: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 14 }}>…</span>
         : <button key={p} onClick={() => onPage(p as number)} style={{
@@ -91,15 +85,11 @@ function Pagination({ pages, current, onPage }: { pages: number; current: number
             fontSize: 14, cursor: 'pointer', fontWeight: current === p ? 700 : 400,
           }}>{p}</button>
       )}
-
-      <button
-        onClick={() => current < pages && onPage(current + 1)}
-        disabled={current === pages}
-        style={{
-          width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
-          background: 'var(--bg2)', color: current === pages ? 'var(--text3)' : 'var(--text2)',
-          fontSize: 16, cursor: current === pages ? 'default' : 'pointer',
-        }}>›</button>
+      <button onClick={() => current < pages && onPage(current + 1)} disabled={current === pages} style={{
+        width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
+        background: 'var(--bg2)', color: current === pages ? 'var(--text3)' : 'var(--text2)',
+        fontSize: 16, cursor: current === pages ? 'default' : 'pointer',
+      }}>›</button>
     </div>
   )
 }
@@ -108,50 +98,14 @@ function getSerbiaEligibility(listing: any) {
   const year = listing.year ? Number(listing.year) : null
   const fuel = listing.fuel_type || null
   const age  = year ? (2026 - year) : null
-
-  if (fuel === 'electric') return {
-    status: 'eligible', emoji: '🟢',
-    label: 'Može uvoz u Srbiju',
-    tooltip: 'Električna vozila su oslobođena carine pri uvozu u Srbiju.',
-    carinaPct: 0,
-  }
-  if (age !== null && age >= 30) return {
-    status: 'oldtimer', emoji: '🟣',
-    label: 'Oldtimer izuzetak',
-    tooltip: 'Oldtimer vozila mogu se uvesti pod posebnim uslovima.',
-    carinaPct: 5,
-  }
+  if (fuel === 'electric') return { status: 'eligible', emoji: '🟢', label: 'Može uvoz u Srbiju', tooltip: 'Električna vozila su oslobođena carine pri uvozu u Srbiju.', carinaPct: 0 }
+  if (age !== null && age >= 30) return { status: 'oldtimer', emoji: '🟣', label: 'Oldtimer izuzetak', tooltip: 'Oldtimer vozila mogu se uvesti pod posebnim uslovima.', carinaPct: 5 }
   if (!year) return null
-  if (year >= 2015) return {
-    status: 'eligible', emoji: '🟢',
-    label: 'Može uvoz u Srbiju',
-    tooltip: 'Euro 6 vozila bez problema prolaze carinjenje u Srbiji.',
-    carinaPct: 5,
-  }
-  if (year >= 2011) return {
-    status: 'eligible', emoji: '🟢',
-    label: 'Može uvoz u Srbiju',
-    tooltip: 'Euro 5 vozila se mogu uvesti u Srbiju bez ograničenja.',
-    carinaPct: 5,
-  }
-  if (year >= 2006) return {
-    status: 'eligible', emoji: '🟢',
-    label: fuel === 'diesel' ? 'Može uvoz — proveri Euro 4' : 'Može uvoz u Srbiju',
-    tooltip: 'Euro 4 je minimalni standard za uvoz u Srbiju.',
-    carinaPct: 5,
-  }
-  if (year >= 2001) return {
-    status: 'needs_check', emoji: '🟠',
-    label: 'Potrebna provera Euro norme',
-    tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru.',
-    carinaPct: 5,
-  }
-  return {
-    status: 'not_recommended', emoji: '🔴',
-    label: 'Uvoz nije preporučljiv',
-    tooltip: 'Stara emisiona norma — registracija u Srbiji je otežana.',
-    carinaPct: 5,
-  }
+  if (year >= 2015) return { status: 'eligible', emoji: '🟢', label: 'Može uvoz u Srbiju', tooltip: 'Euro 6 vozila bez problema prolaze carinjenje u Srbiji.', carinaPct: 5 }
+  if (year >= 2011) return { status: 'eligible', emoji: '🟢', label: 'Može uvoz u Srbiju', tooltip: 'Euro 5 vozila se mogu uvesti u Srbiju bez ograničenja.', carinaPct: 5 }
+  if (year >= 2006) return { status: 'eligible', emoji: '🟢', label: fuel === 'diesel' ? 'Može uvoz — proveri Euro 4' : 'Može uvoz u Srbiju', tooltip: 'Euro 4 je minimalni standard za uvoz u Srbiju.', carinaPct: 5 }
+  if (year >= 2001) return { status: 'needs_check', emoji: '🟠', label: 'Potrebna provera Euro norme', tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru.', carinaPct: 5 }
+  return { status: 'not_recommended', emoji: '🔴', label: 'Uvoz nije preporučljiv', tooltip: 'Stara emisiona norma — registracija u Srbiji je otežana.', carinaPct: 5 }
 }
 
 const ELIGIBILITY_COLORS: Record<string, string> = {
@@ -219,7 +173,9 @@ export default function SearchPage() {
           .sg{grid-template-columns:1fr!important}
           .rg{grid-template-columns:1fr!important}
           .sd{display:none!important}
-          .ht{font-size:18px!important}
+          .ht{font-size:20px!important;line-height:1.2!important}
+          .hsub{font-size:12px!important}
+          .hbadges{display:none!important}
           .mkgrid{grid-template-columns:repeat(3,1fr)!important}
         }
         @media(min-width:769px){.mfb{display:none!important}.sm{display:none!important}}
@@ -234,24 +190,31 @@ export default function SearchPage() {
 
         {/* Hero */}
         <div style={{
-          background: 'linear-gradient(135deg,rgba(255,107,0,.09),rgba(255,107,0,.03))',
-          border: '1px solid rgba(255,107,0,.22)', borderRadius: 16,
-          padding: '18px 22px', marginBottom: 18,
+          background: 'linear-gradient(135deg,rgba(255,107,0,.07),rgba(255,107,0,.02))',
+          border: '1px solid rgba(255,107,0,.16)', borderRadius: 16,
+          padding: '20px 24px', marginBottom: 18,
           display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap',
         }}>
           <div style={{ flex: 1, minWidth: 180 }}>
-            <p className="ht" style={{ fontSize: 21, fontWeight: 700, margin: 0, fontFamily: 'Syne,sans-serif', lineHeight: 1.3 }}>
-              Ne kupuj auto iz EU naslepo
+            <p className="ht" style={{
+              fontSize: 24, fontWeight: 700, margin: 0,
+              fontFamily: 'Syne,sans-serif', lineHeight: 1.25,
+              letterSpacing: '-.01em',
+            }}>
+              AI pomoćnik za kupovinu auta iz EU
             </p>
-            <p style={{ fontSize: 13, color: 'var(--text2)', margin: '5px 0 0' }}>
-              AI analizira cene · Računa pravi trošak uvoza · Otkriva precenjene ponude
+            <p className="hsub" style={{
+              fontSize: 13, color: 'var(--text3)',
+              margin: '8px 0 0', lineHeight: 1.6,
+            }}>
+              AI analiza cijene · Trošak uvoza za Srbiju · Provjera oglasa
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {['🤖 AI analiza', '🛡 Zaštita od prevare', '🇷🇸 Trošak uvoza'].map(t => (
+          <div className="hbadges" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {['🤖 AI analiza', '🇷🇸 Uvoz kalkulator', '✅ Provjera oglasa'].map(t => (
               <span key={t} style={{
                 padding: '5px 11px', borderRadius: 20, fontSize: 12, fontWeight: 500,
-                background: 'rgba(255,107,0,.1)', border: '1px solid rgba(255,107,0,.25)',
+                background: 'rgba(255,107,0,.08)', border: '1px solid rgba(255,107,0,.18)',
                 color: 'var(--accent)', whiteSpace: 'nowrap',
               }}>{t}</span>
             ))}
@@ -379,11 +342,7 @@ export default function SearchPage() {
                   {results.results.map((l: any) => <ListingCard key={l.id} listing={l} />)}
                 </div>
                 {results.pages > 1 && (
-                  <Pagination
-                    pages={results.pages}
-                    current={filters.page}
-                    onPage={p => setFilter('page', p)}
-                  />
+                  <Pagination pages={results.pages} current={filters.page} onPage={p => setFilter('page', p)} />
                 )}
               </>
             ) : (
@@ -414,7 +373,6 @@ function ListingCard({ listing }: { listing: any }) {
 
   return (
     <div className="ch" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-
       {badge ? (
         <div style={{ background: badge.bg, borderBottom: `2px solid ${badge.color}`, padding: '9px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: badge.color, fontSize: 13, fontWeight: 800, letterSpacing: '.03em' }}>{badge.label}</span>
@@ -456,7 +414,6 @@ function ListingCard({ listing }: { listing: any }) {
       </a>
 
       <div style={{ padding: '0 18px 18px' }}>
-
         {eligibility && eligColor && (
           <div style={{ background: `${eligColor}11`, border: `1px solid ${eligColor}44`, borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
             <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 2, letterSpacing: '.06em', fontWeight: 600 }}>UVOZ U SRBIJU</div>
