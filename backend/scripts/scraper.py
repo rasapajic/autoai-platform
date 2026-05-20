@@ -56,6 +56,7 @@ def run_price_estimation():
     conn = get_conn()
     cur  = conn.cursor()
     try:
+        # Korak 1: Izračunaj median cenu po make/model/godiste/km segmentu
         cur.execute("""
             UPDATE listings l
             SET
@@ -94,6 +95,24 @@ def run_price_estimation():
         updated = cur.rowcount
         conn.commit()
         print(f"  Price estimation: {updated} oglasa azurirano")
+
+        # Korak 2: Postavi price_rating na osnovu price_delta_pct
+        cur.execute("""
+            UPDATE listings
+            SET price_rating = CASE
+                WHEN price_delta_pct < -10 THEN 'great'
+                WHEN price_delta_pct < -3  THEN 'good'
+                WHEN price_delta_pct <= 5  THEN 'fair'
+                WHEN price_delta_pct <= 15 THEN 'high'
+                WHEN price_delta_pct > 15  THEN 'overpriced'
+                ELSE NULL
+            END
+            WHERE price_estimated IS NOT NULL
+        """)
+        rated = cur.rowcount
+        conn.commit()
+        print(f"  Price rating: {rated} oglasa azurirano")
+
         return updated
     except Exception as e:
         conn.rollback()
