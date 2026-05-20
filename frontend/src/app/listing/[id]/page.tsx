@@ -1,11 +1,20 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { getListing, getPriceHistory, getSimilar, fraudCheck, addFavorite } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
 
 const ELIGIBILITY_COLORS: Record<string, string> = {
   eligible: '#22C55E', needs_check: '#F97316', not_recommended: '#EF4444', oldtimer: '#A855F7',
 }
+
+const AI_SCAN_MESSAGES = [
+  '🧠 AI proverava detalje oglasa...',
+  '🧠 Provera Euro norme...',
+  '🧠 Analiza kilometraže...',
+  '🧠 Izračunavanje troška uvoza...',
+  '🧠 Ažuriranje podataka sa originalnog portala...',
+  '🧠 AI analizira uslove uvoza u Srbiju...',
+]
 
 function getSerbiaEligibility(listing: any) {
   const year = listing.year ? Number(listing.year) : null
@@ -17,100 +26,59 @@ function getSerbiaEligibility(listing: any) {
     label: 'Može uvoz u Srbiju',
     reason: 'Električna vozila se uvoze bez carine (0%). Potrebna COC dokumentacija.',
     tooltip: 'Električna vozila su oslobođena carine pri uvozu u Srbiju.',
-    warnings: ['Proveri kompatibilnost punjača (Tip 2 / CCS).', 'Baterijska garancija može biti ograničena van EU.'],
+    warnings: ['Proveri kompatibilnost punjača (Tip 2 / CCS).'],
     carinaPct: 0,
   }
-
   if (age !== null && age >= 30) return {
     status: 'oldtimer', emoji: '🟣',
     label: 'Oldtimer izuzetak',
     reason: `Vozilo (${year}) starije od 30 godina — poseban režim uvoza.`,
     tooltip: 'Oldtimer vozila mogu se uvesti pod posebnim uslovima.',
-    warnings: ['Registracija kao oldtimer zahteva poseban tehnički pregled.', 'Proveri propise MUP-a Srbije za oldtimer tablice.'],
+    warnings: ['Registracija kao oldtimer zahteva poseban tehnički pregled.'],
     carinaPct: 5,
   }
-
-  if (!year) {
-    const fuelNote = fuel === 'diesel'
+  if (!year) return {
+    status: 'needs_check', emoji: '🟠',
+    label: 'Nepoznato godište — Euro norma neprovjerljiva',
+    reason: fuel === 'diesel'
       ? 'Dizel vozila zahtevaju posebnu proveru DPF filtera i Euro norme.'
-      : fuel === 'petrol'
-      ? 'Benzinska vozila — potrebno proveriti Euro normu.'
-      : 'Gorivo nepoznato — potrebna kompletna tehnička dokumentacija.'
-    return {
-      status: 'needs_check', emoji: '🟠',
-      label: 'Nepoznato godište — Euro norma neprovjerljiva',
-      reason: `Godište nije dostupno u oglasu. ${fuelNote}`,
-      tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru pre uvoza u Srbiju.',
-      warnings: [
-        'Zatraži od prodavca datum prve registracije i COC dokument.',
-        'Bez potvrde Euro norme može nastati problem pri carinjenju.',
-      ],
-      carinaPct: 5,
-    }
+      : 'Potrebno proveriti Euro normu pre uvoza.',
+    tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru pre uvoza u Srbiju.',
+    warnings: ['Zatraži od prodavca datum prve registracije i COC dokument.', 'Bez potvrde Euro norme može nastati problem pri carinjenju.'],
+    carinaPct: 5,
   }
-
   if (year >= 2015) return {
     status: 'eligible', emoji: '🟢',
     label: 'Može uvoz u Srbiju',
     reason: `Vozilo (${year}) ispunjava Euro 6 normu — nema ograničenja za uvoz.`,
     tooltip: 'Euro 6 vozila bez problema prolaze carinjenje u Srbiji.',
-    warnings: [
-      'Pribavi COC dokument za potvrdu Euro norme.',
-      ...(fuel === 'diesel' ? ['Proveri stanje DPF filtera — zamena je skupa.'] : []),
-    ],
+    warnings: ['Pribavi COC dokument za potvrdu Euro norme.', ...(fuel === 'diesel' ? ['Proveri stanje DPF filtera — zamena je skupa.'] : [])],
     carinaPct: 5,
   }
-
   if (year >= 2011) return {
     status: 'eligible', emoji: '🟢',
     label: 'Može uvoz u Srbiju',
     reason: `Vozilo (${year}) verovatno ispunjava Euro 5 normu.`,
     tooltip: 'Euro 5 vozila se mogu uvesti u Srbiju bez ograničenja.',
-    warnings: [
-      'Pribavi COC dokument za potvrdu Euro 5 norme.',
-      ...(fuel === 'diesel' ? ['Dizel Euro 5 — proveri DPF filter pre kupovine.'] : []),
-    ],
+    warnings: ['Pribavi COC dokument za potvrdu Euro 5 norme.', ...(fuel === 'diesel' ? ['Dizel Euro 5 — proveri DPF filter pre kupovine.'] : [])],
     carinaPct: 5,
   }
-
   if (year >= 2006) return {
     status: 'eligible', emoji: '🟢',
     label: fuel === 'diesel' ? 'Može uvoz — proveri Euro 4 normu' : 'Može uvoz u Srbiju',
     reason: `Vozilo (${year}) verovatno ispunjava Euro 4 normu — minimalni uslov za uvoz.`,
     tooltip: 'Euro 4 je minimalni standard za uvoz u Srbiju.',
-    warnings: [
-      'Euro 4 je granica — obavezno pribavi COC dokument pre kupovine.',
-      ...(fuel === 'diesel' ? ['Dizel Euro 4 — proveri DPF i turbinu.'] : []),
-      'Bez COC dokumenta može biti problem pri tehničkom pregledu.',
-    ],
+    warnings: ['Euro 4 je granica — obavezno pribavi COC dokument.', ...(fuel === 'diesel' ? ['Dizel Euro 4 — proveri DPF i turbinu.'] : [])],
     carinaPct: 5,
   }
-
   if (year >= 2001) return {
     status: 'needs_check', emoji: '🟠',
     label: 'Potrebna provera Euro norme (verovatno Euro 3)',
     reason: `Vozilo (${year}) je verovatno Euro 3 norma — uvoz je moguć uz dodatnu dokumentaciju.`,
-    tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru pre uvoza u Srbiju.',
-    warnings: [
-      'Euro 3 vozila mogu imati poteškoće pri tehničkom pregledu u Srbiji.',
-      'Obavezno proveri Euro normu u COC dokumentu pre kupovine.',
-      'Konsultuj carinskog agenta ili MUP Srbije pre uvoza.',
-    ],
+    tooltip: 'Kupovina je moguća, ali preporučujemo dodatnu proveru.',
+    warnings: ['Euro 3 vozila mogu imati poteškoće pri tehničkom pregledu.', 'Konsultuj carinskog agenta pre uvoza.'],
     carinaPct: 5,
   }
-
-  if (year >= 1997) return {
-    status: 'not_recommended', emoji: '🔴',
-    label: 'Vozilo možda ne ispunjava Euro 3 standard',
-    reason: `Vozilo (${year}) je verovatno Euro 1 ili Euro 2 — uvoz nije preporučljiv.`,
-    tooltip: 'Stara emisiona norma — registracija u Srbiji je veoma otežana.',
-    warnings: [
-      'Euro 1/2 vozila teško prolaze tehnički pregled u Srbiji.',
-      'Razmotri oldtimer status ako je vozilo starije od 30 godina.',
-    ],
-    carinaPct: 5,
-  }
-
   return {
     status: 'not_recommended', emoji: '🔴',
     label: 'Uvoz nije preporučljiv — staro vozilo',
@@ -150,8 +118,10 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [loading,     setLoading]     = useState(true)
   const [showContact, setShowContact] = useState(false)
   const [showBd,      setShowBd]      = useState(false)
-  const [refreshing,  setRefreshing]  = useState(false)
-  const [refreshed,   setRefreshed]   = useState(false)
+  const [enriching,   setEnriching]   = useState(false)
+  const [enriched,    setEnriched]    = useState(false)
+  const [scanMsg,     setScanMsg]     = useState(AI_SCAN_MESSAGES[0])
+  const scanInterval = useRef<any>(null)
 
   useEffect(() => {
     Promise.allSettled([
@@ -160,22 +130,42 @@ export default function ListingPage({ params }: { params: { id: string } }) {
       getSimilar(params.id),
       fraudCheck(params.id),
     ]).then(([l, h, s, f]) => {
-      if (l.status === 'fulfilled') setListing(l.value)
+      if (l.status === 'fulfilled') {
+        const data = l.value
+        setListing(data)
+        if (data?.url && (!data.year || !data.mileage)) {
+          autoEnrich(data.url)
+        }
+      }
       if (h.status === 'fulfilled') setHistory(h.value)
       if (s.status === 'fulfilled') setSimilar(s.value)
       if (f.status === 'fulfilled') setFraud(f.value)
     }).finally(() => setLoading(false))
   }, [params.id])
 
-  async function refreshFromPortal() {
-    if (!listing?.url || refreshing) return
-    setRefreshing(true)
+  const startScanMessages = () => {
+    let i = 0
+    setScanMsg(AI_SCAN_MESSAGES[0])
+    scanInterval.current = setInterval(() => {
+      i = (i + 1) % AI_SCAN_MESSAGES.length
+      setScanMsg(AI_SCAN_MESSAGES[i])
+    }, 1800)
+  }
+
+  const stopScanMessages = () => {
+    if (scanInterval.current) clearInterval(scanInterval.current)
+  }
+
+  const autoEnrich = async (url: string) => {
+    if (enriching || enriched) return
+    setEnriching(true)
+    startScanMessages()
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
       const res  = await fetch(`${apiBase}/analyze/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: listing.url }),
+        body: JSON.stringify({ url }),
       })
       const data = await res.json()
       if (data.scrape_success) {
@@ -190,22 +180,28 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           transmission:    data.transmission     || prev.transmission,
           images:          (data.images?.length || 0) > (prev.images?.length || 0) ? data.images : prev.images,
         }))
-        setRefreshed(true)
+        setEnriched(true)
       }
     } catch {}
-    setRefreshing(false)
+    stopScanMessages()
+    setEnriching(false)
+  }
+
+  const manualRefresh = async () => {
+    if (!listing?.url || enriching) return
+    setEnriched(false)
+    await autoEnrich(listing.url)
   }
 
   if (loading) return <PageSkeleton />
   if (!listing) return <div style={{ textAlign:'center', padding:'80px 0', color:'var(--text3)' }}>Oglas nije pronađen.</div>
 
-  const images     = listing.images || []
-  const deltaGood  = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
-  const elig       = getSerbiaEligibility(listing)
-  const eligColor  = ELIGIBILITY_COLORS[elig.status] || '#F97316'
-  const price      = listing.price ? Number(listing.price) : null
-  const bd         = price ? calcImport(price, elig.carinaPct) : null
-  const missingData = !listing.year && !listing.mileage
+  const images    = listing.images || []
+  const elig      = getSerbiaEligibility(listing)
+  const eligColor = ELIGIBILITY_COLORS[elig.status] || '#F97316'
+  const price     = listing.price ? Number(listing.price) : null
+  const bd        = price ? calcImport(price, elig.carinaPct) : null
+  const deltaGood = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
 
   const specs = [
     { label: 'Godište',     value: listing.year },
@@ -216,12 +212,16 @@ export default function ListingPage({ params }: { params: { id: string } }) {
     { label: 'Karoserija',  value: listing.body_type },
     { label: 'Zemlja',      value: listing.country },
     { label: 'Grad',        value: listing.city },
-    { label: 'Stanje',      value: listing.accident_free ? '✅ Bez udesa' : null },
   ].filter(s => s.value)
 
   return (
     <div style={{ padding: '32px 0 80px' }}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+      `}</style>
+
       <div className="container">
 
         <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>
@@ -230,52 +230,42 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           <span style={{ color: 'var(--text)' }}>{listing.make} {listing.model}</span>
         </div>
 
-        {missingData && !refreshed && (
+        {/* AI Enrichment scanning banner */}
+        {enriching && (
           <div style={{
-            background: 'rgba(255,107,0,.08)', border: '1px solid rgba(255,107,0,.25)',
-            borderRadius: 12, padding: '12px 16px', marginBottom: 20,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+            background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.3)',
+            borderRadius: 12, padding: '14px 20px', marginBottom: 20,
+            display: 'flex', alignItems: 'center', gap: 12,
           }}>
-            <div>
-              <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }}>⚠️ Nepotpuni podaci</span>
-              <span style={{ fontSize: 13, color: 'var(--text3)', marginLeft: 8 }}>
-                Godište i kilometraža nisu dostupni iz pretrage.
-              </span>
-            </div>
-            <button onClick={refreshFromPortal} disabled={refreshing} style={{
-              padding: '8px 16px', borderRadius: 8, border: 'none', whiteSpace: 'nowrap',
-              background: refreshing ? 'var(--bg3)' : 'var(--accent)',
-              color: refreshing ? 'var(--text3)' : '#fff',
-              fontSize: 13, fontWeight: 600, cursor: refreshing ? 'default' : 'pointer',
-            }}>
-              {refreshing ? '⏳ Učitavam...' : '🔄 Ažuriraj podatke'}
-            </button>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#818CF8', animation: 'pulse 1s infinite' }} />
+            <span style={{ fontSize: 14, color: '#818CF8', fontWeight: 600 }}>{scanMsg}</span>
           </div>
         )}
 
-        {refreshed && (
+        {enriched && !enriching && (
           <div style={{
             background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.25)',
             borderRadius: 12, padding: '12px 16px', marginBottom: 20,
-            fontSize: 13, color: '#22C55E',
+            fontSize: 13, color: '#22C55E', fontWeight: 600,
           }}>
-            ✅ Podaci ažurirani sa originalnog portala.
+            ✅ AutoAI je automatski analizirao ovaj oglas.
           </div>
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 28, alignItems: 'start' }}>
 
+          {/* Leva kolona */}
           <div>
+            {/* Galerija */}
             <div style={{ marginBottom: 24 }}>
               <div style={{ height: 420, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8 }}>
-                {images[activeImg]
-                  ? <img
-                      src={fullImg(images[activeImg])}
-                      alt={`${listing.make} ${listing.model}`}
-                      style={{ width:'100%', height:'100%', objectFit:'cover' }}
-                      onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }}
-                    />
-                  : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', fontSize:60 }}>🚗</div>
+                {enriching && images.length === 0
+                  ? <div className="skeleton" style={{ width: '100%', height: '100%' }} />
+                  : images[activeImg]
+                    ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`}
+                        style={{ width:'100%', height:'100%', objectFit:'cover' }}
+                        onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }} />
+                    : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', fontSize:60 }}>🚗</div>
                 }
               </div>
               {images.length > 1 && (
@@ -292,9 +282,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
+            {/* Specifikacije */}
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
               <h2 style={{ fontSize:16, marginBottom:16 }}>Specifikacije</h2>
-              {specs.length > 0 ? (
+              {enriching && specs.length === 0 ? (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+                  {[...Array(3)].map((_,i) => <div key={i} className="skeleton" style={{ height:52, borderRadius:8 }} />)}
+                </div>
+              ) : specs.length > 0 ? (
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
                   {specs.map(s => (
                     <div key={s.label} style={{ background:'var(--bg3)', borderRadius:8, padding:'10px 14px' }}>
@@ -304,19 +299,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   ))}
                 </div>
               ) : (
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-                  <p style={{ color:'var(--text3)', fontSize:13, margin:0 }}>
-                    Specifikacije nisu dostupne. Klikni "Ažuriraj podatke" da ih učitaš.
-                  </p>
-                  <button onClick={refreshFromPortal} disabled={refreshing} style={{
-                    padding:'8px 14px', borderRadius:8, border:'none', whiteSpace:'nowrap',
-                    background: refreshing ? 'var(--bg3)' : 'var(--accent)',
-                    color: refreshing ? 'var(--text3)' : '#fff',
-                    fontSize:12, fontWeight:600, cursor: refreshing ? 'default' : 'pointer',
-                  }}>
-                    {refreshing ? '⏳' : '🔄 Ažuriraj'}
-                  </button>
-                </div>
+                <p style={{ color:'var(--text3)', fontSize:13, margin:0 }}>Specifikacije se učitavaju...</p>
               )}
             </div>
 
@@ -356,16 +339,13 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                     }}>
                       <div style={{ height:130, background:'var(--bg3)', overflow:'hidden' }}>
                         {s.images?.[0]
-                          ? <img src={fullImg(s.images[0])} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}
-                              onError={e => { (e.target as HTMLImageElement).src = s.images[0] }} />
+                          ? <img src={fullImg(s.images[0])} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.target as HTMLImageElement).src = s.images[0] }} />
                           : <div style={{ height:'100%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28 }}>🚗</div>
                         }
                       </div>
                       <div style={{ padding:12 }}>
                         <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{s.year} {s.make} {s.model}</div>
-                        <div style={{ fontSize:14, color:'var(--accent)', fontWeight:700, marginTop:4 }}>
-                          {s.price ? `${fmt(s.price)} €` : '—'}
-                        </div>
+                        <div style={{ fontSize:14, color:'var(--accent)', fontWeight:700, marginTop:4 }}>{s.price ? `${fmt(s.price)} €` : '—'}</div>
                         {fmtKm(s.mileage) && <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>🛣 {fmtKm(s.mileage)}</div>}
                       </div>
                     </a>
@@ -375,6 +355,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             )}
           </div>
 
+          {/* Desna kolona — sidebar */}
           <div style={{ position:'sticky', top:80, display:'flex', flexDirection:'column', gap:14 }}>
 
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:22 }}>
@@ -400,14 +381,16 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               )}
 
+              {/* Pogledaj oglas — primarno */}
               <a href={listing.url} target="_blank" rel="noopener" style={{
-                display:'block', width:'100%', padding:'12px', textAlign:'center',
+                display:'block', width:'100%', padding:'13px', textAlign:'center',
                 background:'var(--accent)', color:'#fff', borderRadius:10,
-                fontWeight:600, fontSize:14, marginBottom:8, textDecoration:'none',
+                fontWeight:700, fontSize:15, marginBottom:10, textDecoration:'none',
               }}>Pogledaj oglas →</a>
 
+              {/* Kontaktiraj prodavca */}
               <button onClick={() => setShowContact(true)} style={{
-                width:'100%', padding:'12px', marginBottom:8,
+                width:'100%', padding:'12px', marginBottom:10,
                 background:'rgba(99,102,241,.1)', border:'1px solid rgba(99,102,241,.35)',
                 color:'#818CF8', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer',
               }}>
@@ -417,16 +400,42 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               </button>
 
-              <button onClick={refreshFromPortal} disabled={refreshing || refreshed} style={{
-                width:'100%', padding:'10px', marginBottom:8,
-                background: refreshed ? 'rgba(34,197,94,.08)' : 'rgba(255,107,0,.08)',
-                border: `1px solid ${refreshed ? 'rgba(34,197,94,.25)' : 'rgba(255,107,0,.25)'}`,
-                color: refreshed ? '#22C55E' : 'var(--accent)',
-                borderRadius:10, fontSize:13, cursor: (refreshing || refreshed) ? 'default' : 'pointer',
-              }}>
-                {refreshing ? '⏳ Učitavam podatke...' : refreshed ? '✅ Podaci ažurirani' : '🔄 Ažuriraj podatke sa portala'}
+              {/* VELIKO AZURIRAJ DUGME — primarna akcija */}
+              <button
+                onClick={manualRefresh}
+                disabled={enriching || enriched}
+                style={{
+                  width:'100%', padding:'14px', marginBottom:10,
+                  background: enriched
+                    ? 'rgba(34,197,94,.1)'
+                    : enriching
+                    ? 'var(--bg3)'
+                    : 'linear-gradient(135deg, rgba(99,102,241,.15), rgba(99,102,241,.08))',
+                  border: `2px solid ${enriched ? '#22C55E' : enriching ? 'var(--border)' : 'rgba(99,102,241,.5)'}`,
+                  color: enriched ? '#22C55E' : enriching ? 'var(--text3)' : '#818CF8',
+                  borderRadius:12, fontSize:14, fontWeight:700,
+                  cursor: (enriching || enriched) ? 'default' : 'pointer',
+                  transition:'all .2s',
+                }}
+              >
+                {enriching ? (
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                    <div style={{ width:8, height:8, borderRadius:'50%', background:'#818CF8', animation:'pulse 1s infinite' }} />
+                    AI analizira oglas...
+                  </div>
+                ) : enriched ? (
+                  '✅ Oglas analiziran'
+                ) : (
+                  <div>
+                    🔍 Analiziraj oglas sa AI
+                    <div style={{ fontSize:11, fontWeight:400, color:'rgba(129,140,248,.7)', marginTop:3 }}>
+                      Učitaj godište, km, slike i Euro normu
+                    </div>
+                  </div>
+                )}
               </button>
 
+              {/* Sačuvaj oglas */}
               <button onClick={async () => { await addFavorite(listing.id); setFavorited(true) }} style={{
                 width:'100%', padding:'10px', background:'transparent',
                 border: `1px solid ${favorited ? 'var(--accent)' : 'var(--border)'}`,
@@ -437,23 +446,27 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </button>
             </div>
 
+            {/* Uvoz u Srbiju */}
             <div style={{ background:`${eligColor}11`, border:`1px solid ${eligColor}33`, borderRadius:'var(--radius)', padding:18 }}>
               <div style={{ fontSize:11, color:'var(--text3)', letterSpacing:'.07em', fontWeight:600, marginBottom:6 }}>UVOZ U SRBIJU</div>
-              <div style={{ fontSize:14, fontWeight:800, color:eligColor, marginBottom:4 }}>{elig.emoji} {elig.label}</div>
-              {elig.tooltip && (
-                <div style={{ fontSize:11, color:'var(--text3)', marginBottom:8, lineHeight:1.4 }}>{elig.tooltip}</div>
-              )}
-              <p style={{ fontSize:12, color:'var(--text2)', margin:'0 0 8px', lineHeight:1.5 }}>{elig.reason}</p>
-              {elig.warnings.map((w: string, i: number) => (
-                <div key={i} style={{ fontSize:11, color:'var(--text3)', paddingLeft:10, borderLeft:`2px solid ${eligColor}55`, marginBottom:3, lineHeight:1.4 }}>{w}</div>
-              ))}
-              {missingData && !refreshed && (
-                <div style={{ fontSize:11, color:'var(--text3)', marginTop:8, padding:'6px 10px', background:'rgba(255,255,255,.04)', borderRadius:6 }}>
-                  💡 Ažuriraj podatke za precizniju procenu
-                </div>
+              {enriching && !listing.year ? (
+                <>
+                  <div className="skeleton" style={{ height:20, borderRadius:6, marginBottom:8, width:'70%' }} />
+                  <div className="skeleton" style={{ height:14, borderRadius:6, width:'90%' }} />
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize:14, fontWeight:800, color:eligColor, marginBottom:4 }}>{elig.emoji} {elig.label}</div>
+                  {elig.tooltip && <div style={{ fontSize:11, color:'var(--text3)', marginBottom:8, lineHeight:1.4 }}>{elig.tooltip}</div>}
+                  <p style={{ fontSize:12, color:'var(--text2)', margin:'0 0 8px', lineHeight:1.5 }}>{elig.reason}</p>
+                  {elig.warnings.map((w: string, i: number) => (
+                    <div key={i} style={{ fontSize:11, color:'var(--text3)', paddingLeft:10, borderLeft:`2px solid ${eligColor}55`, marginBottom:3, lineHeight:1.4 }}>{w}</div>
+                  ))}
+                </>
               )}
             </div>
 
+            {/* Troškovi uvoza */}
             {bd && (
               <div style={{ background:'rgba(255,107,0,.07)', border:'1px solid rgba(255,107,0,.2)', borderRadius:'var(--radius)', overflow:'hidden' }}>
                 <button onClick={() => setShowBd(!showBd)} style={{
@@ -473,7 +486,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                       { label:`Carina (${bd.carinaPct}%)`, val: bd.carina, note: bd.carinaPct===0?'oslobođeno':'srbija' },
                       { label:'PDV (20%)',        val: bd.pdv,       note:'srbija' },
                       { label:'Transport EU→RS',  val: bd.transport, note:'procena' },
-                      { label:'Registracija',    val: bd.reg,       note:'procena' },
+                      { label:'Registracija',     val: bd.reg,       note:'procena' },
                     ].map(({ label, val, note }, i) => (
                       <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderTop: i===0?'none':'1px solid rgba(255,255,255,.04)', marginTop: i===0?8:0 }}>
                         <span style={{ fontSize:12, color: i===0?'var(--text2)':'var(--text3)' }}>
@@ -496,6 +509,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
+            {/* Provera prevare */}
             {fraud && (
               <div style={{
                 background:'var(--bg2)', border:`1px solid ${fraud.badge?.color+'40'||'var(--border)'}`,
@@ -517,7 +531,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ))}
               </div>
             )}
-
           </div>
         </div>
       </div>
