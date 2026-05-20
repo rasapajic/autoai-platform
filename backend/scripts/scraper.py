@@ -73,7 +73,17 @@ def run_price_estimation():
                     l1.model = l2.model AND
                     l2.price IS NOT NULL AND
                     l2.price::numeric BETWEEN 500 AND 500000 AND
-                    (l2.year IS NULL OR l1.year IS NULL OR ABS(l2.year - l1.year) <= 3)
+                    (l1.year IS NULL OR l2.year IS NULL OR ABS(l2.year - l1.year) <= 2) AND
+                    (
+                        l1.mileage IS NULL OR l2.mileage IS NULL OR
+                        (
+                            CASE
+                                WHEN l1.mileage < 50000  THEN l2.mileage < 50000
+                                WHEN l1.mileage < 150000 THEN l2.mileage BETWEEN 50000 AND 150000
+                                ELSE l2.mileage >= 150000
+                            END
+                        )
+                    )
                 WHERE l1.price IS NOT NULL
                 GROUP BY l1.id
                 HAVING COUNT(l2.id) >= 2
@@ -102,7 +112,7 @@ async def run_autoscout24():
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
-        for fuel_name, pages in [("diesel",2),("petrol",2),("electric",1),("hybrid",1)]:
+        for fuel_name, pages in [("diesel",4),("petrol",4),("electric",2),("hybrid",2)]:
             print(f"  AS24 DE {fuel_name}...")
             scraper  = AutoScout24Scraper()
             listings = await scraper.scrape_listings({"fuel_type": fuel_name}, max_pages=pages)
@@ -123,7 +133,7 @@ async def run_autoscout24_at():
         import sys
         sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
-        for fuel_name, pages in [("diesel",1),("petrol",1),("electric",1),("hybrid",1)]:
+        for fuel_name, pages in [("diesel",2),("petrol",2),("electric",1),("hybrid",1)]:
             print(f"  AS24 AT {fuel_name}...")
             scraper  = AutoScout24Scraper()
             listings = await scraper.scrape_listings({"fuel_type": fuel_name, "country": "A"}, max_pages=pages)
