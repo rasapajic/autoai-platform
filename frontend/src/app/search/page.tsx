@@ -311,6 +311,14 @@ const handleSaveSearch = async () => {
                 <span style={{ fontSize: 15, fontWeight: 600 }}>{loading ? '...' : `${results?.total?.toLocaleString() || 0} vozila`}</span>
                 {!loading && results?.total > 0 && <span style={{ color: 'var(--text3)', fontSize: 13, marginLeft: 8 }}>analiziranih AI-om</span>}
               </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {saveSuccess && <span style={{ fontSize:12, color:'#22C55E', fontWeight:600 }}>✅ Sačuvano!</span>}
+                <button onClick={() => setShowSaveModal(true)} style={{
+                  padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight:600,
+                  background:'rgba(99,102,241,.1)', border:'1px solid rgba(99,102,241,.3)',
+                  color:'#818CF8', cursor:'pointer', whiteSpace:'nowrap',
+                }}>🔔 Sačuvaj pretragu</button>
+              </div>
               <select value={filters.sort_by} onChange={e => setFilter('sort_by', e.target.value)}
                 style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: 'var(--text)', fontSize: 13, outline: 'none', cursor: 'pointer' }}>
                 <option value="date">Najnoviji</option>
