@@ -55,6 +55,7 @@ function Navbar() {
             { href: '/search',            label: 'Pretraga' },
             { href: '/analyze',           label: 'Proveri oglas' },
             { href: '/import-calculator', label: 'Uvoz kalkulator' },
+            { href: '/favorites', label: '❤️ Sačuvani' }
           ].map(link => (
             <a key={link.href} href={link.href} style={{
               padding: '6px 14px', borderRadius: 8, fontSize: 14,
