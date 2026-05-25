@@ -318,6 +318,27 @@ const handleSaveSearch = async () => {
             }}>{aiLoading ? '⏳ Analiziram...' : '🔍 AI Pretraga'}</button>
           </div>
         </form>
+        {/* Brzi izbor marke */}
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.08em', marginBottom:10 }}>BRZI IZBOR MARKE</div>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {['VW','BMW','Mercedes','Audi','Toyota','Ford','Opel','Skoda','Renault','Peugeot','Hyundai','Kia','Volvo','Seat','Mazda'].map(make => (
+              <button key={make} onClick={() => setFilter('make', filters.make === make ? '' : make)} style={{
+                padding:'6px 13px', borderRadius:8, fontSize:13, fontWeight:500,
+                background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
+                border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
+                color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
+                cursor:'pointer', whiteSpace:'nowrap',
+              }}>{make}</button>
+            ))}
+          </div>
+          {filters.make && (
+            <div style={{ marginTop:8, fontSize:12, color:'var(--text3)' }}>
+              Prikazujem: <strong style={{ color:'var(--accent)' }}>{filters.make}</strong>
+              <button onClick={() => setFilter('make', '')} style={{ marginLeft:8, background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:12 }}>✕ Ukloni</button>
+            </div>
+          )}
+        </div>
 {/* Sačuvaj pretragu dugme */}
         <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
           {saveSuccess && (
