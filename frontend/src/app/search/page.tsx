@@ -318,7 +318,21 @@ const handleSaveSearch = async () => {
             }}>{aiLoading ? '⏳ Analiziram...' : '🔍 AI Pretraga'}</button>
           </div>
         </form>
-
+{/* Sačuvaj pretragu dugme */}
+        <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
+          {saveSuccess && (
+            <span style={{ fontSize:13, color:'#22C55E', fontWeight:600, marginRight:12, alignSelf:'center' }}>
+              ✅ Pretraga sačuvana!
+            </span>
+          )}
+          <button onClick={() => setShowSaveModal(true)} style={{
+            padding:'10px 18px', borderRadius:10, fontSize:14, fontWeight:600,
+            background:'rgba(99,102,241,.12)', border:'1px solid rgba(99,102,241,.35)',
+            color:'#818CF8', cursor:'pointer', display:'flex', alignItems:'center', gap:8,
+          }}>
+            🔔 Sačuvaj pretragu i aktiviraj alert
+          </button>
+        </div>
         <button className="mfb cb" onClick={() => setSidebarOpen(!sidebarOpen)} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           padding: '11px 16px', borderRadius: 10, marginBottom: 16, width: '100%',
