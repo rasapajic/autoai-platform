@@ -443,7 +443,19 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </button>
 
               {/* Sačuvaj oglas */}
-              <button onClick={async () => { await addFavorite(listing.id); setFavorited(true) }} style={{
+              <button onClick={async () => {
+                const token = localStorage.getItem('autoai_token')
+                if (!token) { window.location.href = '/login'; return }
+                try {
+                  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
+                  const res = await fetch(`${apiBase}/users/me/favorites`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ listing_id: listing.id }),
+                  })
+                  if (res.ok) setFavorited(true)
+                } catch {}
+              }} style={{
                 width:'100%', padding:'10px', background:'transparent',
                 border: `1px solid ${favorited ? 'var(--accent)' : 'var(--border)'}`,
                 color: favorited ? 'var(--accent)' : 'var(--text2)',
