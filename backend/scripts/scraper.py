@@ -58,7 +58,6 @@ def run_price_estimation():
     conn = get_conn()
     cur  = conn.cursor()
     try:
-        # Korak 1: Izračunaj median cenu po make/model/godiste/km segmentu
         cur.execute("""
             UPDATE listings l
             SET
@@ -98,7 +97,6 @@ def run_price_estimation():
         conn.commit()
         print(f"  Price estimation: {updated} oglasa azurirano")
 
-        # Korak 2: Postavi price_rating na osnovu price_delta_pct
         cur.execute("""
             UPDATE listings
             SET price_rating = CASE
@@ -114,7 +112,6 @@ def run_price_estimation():
         rated = cur.rowcount
         conn.commit()
         print(f"  Price rating: {rated} oglasa azurirano")
-
         return updated
     except Exception as e:
         conn.rollback()
@@ -130,8 +127,6 @@ async def run_autoscout24():
     print("\n=== AUTOSCOUT24 DE ===")
     total = 0
     try:
-        import sys
-        sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
         for fuel_name, pages in [("diesel",4),("petrol",4),("electric",2),("hybrid",2)]:
             print(f"  AS24 DE {fuel_name}...")
@@ -151,8 +146,6 @@ async def run_autoscout24_at():
     print("\n=== AUTOSCOUT24 AT ===")
     total = 0
     try:
-        import sys
-        sys.path.insert(0, '/app')
         from app.scrapers.autoscout24 import AutoScout24Scraper
         for fuel_name, pages in [("diesel",2),("petrol",2),("electric",1),("hybrid",1)]:
             print(f"  AS24 AT {fuel_name}...")
@@ -171,8 +164,6 @@ async def run_autoscout24_at():
 async def run_mobile_de():
     print("\n=== MOBILE.DE ===")
     try:
-        import sys
-        sys.path.insert(0, '/app')
         from app.scrapers.mobile_de import MobileDeScraper
         scraper  = MobileDeScraper()
         listings = await scraper.scrape_listings({}, max_pages=2)
@@ -184,16 +175,11 @@ async def run_mobile_de():
         return 0
 
 def check_alerts():
-  
-
-
-def main():
     print("\n=== ALERT CHECK ===")
     try:
         conn = get_conn()
         cur = conn.cursor()
 
-        # Uzmi sve aktivne alerte sa email korisnika
         cur.execute("""
             SELECT a.id, a.name, a.filters, a.last_checked, u.email
             FROM saved_searches a
@@ -205,7 +191,6 @@ def main():
 
         for alert_id, alert_name, filters, last_checked, user_email in alerts:
             try:
-                # Izgradi WHERE uslove iz filtera
                 conditions = ["created_at > %s"]
                 params = [last_checked]
 
@@ -240,11 +225,9 @@ def main():
                     LIMIT 5
                 """, params)
                 matches = cur.fetchall()
-
                 print(f"  Alert '{alert_name}' ({user_email}): {len(matches)} novih")
 
                 for listing_id, make, model, year, price, url in matches:
-                    # Proveri da li je email već poslat
                     cur.execute("""
                         SELECT 1 FROM alert_log
                         WHERE alert_id = %s AND listing_id = %s
@@ -252,7 +235,6 @@ def main():
                     if cur.fetchone():
                         continue
 
-                    # Pošalji email
                     title = f"{year} {make} {model}"
                     sent = send_alert_email(
                         to_email=user_email,
@@ -269,7 +251,6 @@ def main():
                         """, (alert_id, str(listing_id)))
                         conn.commit()
 
-                # Ažuriraj last_checked
                 cur.execute("""
                     UPDATE saved_searches SET last_checked = NOW()
                     WHERE id = %s
