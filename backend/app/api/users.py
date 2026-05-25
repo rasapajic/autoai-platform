@@ -95,3 +95,28 @@ def delete_account(
     user.is_active = False
     db.commit()
     return MessageResponse(message="Nalog deaktiviran")
+from app.models import Favorite
+
+@router.post("/me/favorites")
+def add_favorite(
+    data: dict,
+    db:   Session = Depends(get_db),
+    user: User    = Depends(get_current_user),
+):
+    listing_id = data.get("listing_id")
+    if not listing_id:
+        raise HTTPException(status_code=400, detail="listing_id required")
+    
+    # Proveri da li već postoji
+    existing = db.query(Favorite).filter(
+        Favorite.user_id == user.id,
+        Favorite.listing_id == listing_id,
+    ).first()
+    
+    if existing:
+        return {"message": "Već u favoritima"}
+    
+    fav = Favorite(user_id=user.id, listing_id=listing_id)
+    db.add(fav)
+    db.commit()
+    return {"message": "Sačuvano"}
