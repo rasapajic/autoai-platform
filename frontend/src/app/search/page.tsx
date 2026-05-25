@@ -207,9 +207,50 @@ const handleSaveSearch = async () => {
             borderRadius:16, padding:28, width:340, maxWidth:'90vw',
           }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin:'0 0 16px', fontSize:17 }}>🔔 Sačuvaj pretragu</h3>
-            <p style={{ fontSize:13, color:'var(--text3)', margin:'0 0 16px' }}>
-              Dobijaš email kada se pojavi novi oglas koji odgovara ovim filterima.
-            </p>
+            <p style={{ fontSize:13, color:'var(--text3)', margin:'0 0 12px' }}>
+            Dobijaš email čim se pojavi novi oglas koji odgovara ovim filterima.
+          </p>
+
+          <div style={{
+            background:'var(--bg3)', border:'1px solid var(--border)',
+            borderRadius:10, padding:'12px 14px', marginBottom:14,
+          }}>
+            <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:8, letterSpacing:'.07em' }}>
+              AKTIVNI FILTERI
+            </div>
+            {[
+              filters.make      && `🚗 ${filters.make}`,
+              filters.model     && `📋 ${filters.model}`,
+              filters.min_price && `od ${Number(filters.min_price).toLocaleString()} €`,
+              filters.max_price && `do ${Number(filters.max_price).toLocaleString()} €`,
+              filters.min_year  && `od ${filters.min_year}.`,
+              filters.max_year  && `do ${filters.max_year}.`,
+              filters.max_km    && `max ${Number(filters.max_km).toLocaleString()} km`,
+              filters.fuel_type && `⛽ ${filters.fuel_type}`,
+            ].filter(Boolean).length > 0 ? (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                {[
+                  filters.make      && `🚗 ${filters.make}`,
+                  filters.model     && `📋 ${filters.model}`,
+                  filters.min_price && `od ${Number(filters.min_price).toLocaleString()} €`,
+                  filters.max_price && `do ${Number(filters.max_price).toLocaleString()} €`,
+                  filters.min_year  && `od ${filters.min_year}.`,
+                  filters.max_year  && `do ${filters.max_year}.`,
+                  filters.max_km    && `max ${Number(filters.max_km).toLocaleString()} km`,
+                  filters.fuel_type && `⛽ ${filters.fuel_type}`,
+                ].filter(Boolean).map((tag, i) => (
+                  <span key={i} style={{
+                    background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.25)',
+                    color:'var(--accent)', borderRadius:20, padding:'3px 10px', fontSize:12,
+                  }}>{tag as string}</span>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize:12, color:'#F97316', margin:0 }}>
+                ⚠️ Nema filtera — alert će se okidati za sve nove oglase.
+              </p>
+            )}
+          </div>
             <input
               placeholder="Naziv pretrage (npr. BMW 3 do 10k)"
               value={saveName}
