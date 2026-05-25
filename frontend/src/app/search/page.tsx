@@ -179,7 +179,40 @@ export default function SearchPage() {
       {contactListing && (
         <ContactModal listing={contactListing} onClose={() => setContactListing(null)} />
       )}
-
+{showSaveModal && (
+        <div style={{
+          position:'fixed', inset:0, background:'rgba(0,0,0,.7)',
+          display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000,
+        }} onClick={() => setShowSaveModal(false)}>
+          <div style={{
+            background:'var(--bg2)', border:'1px solid var(--border)',
+            borderRadius:16, padding:28, width:340, maxWidth:'90vw',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin:'0 0 16px', fontSize:17 }}>🔔 Sačuvaj pretragu</h3>
+            <p style={{ fontSize:13, color:'var(--text3)', margin:'0 0 16px' }}>
+              Dobijaš email kada se pojavi novi oglas koji odgovara ovim filterima.
+            </p>
+            <input
+              placeholder="Naziv pretrage (npr. BMW 3 do 10k)"
+              value={saveName}
+              onChange={e => setSaveName(e.target.value)}
+              style={{
+                width:'100%', boxSizing:'border-box' as any,
+                background:'var(--bg3)', border:'1px solid var(--border)',
+                borderRadius:8, padding:'10px 14px', color:'var(--text)',
+                fontSize:14, outline:'none', marginBottom:14,
+              }}
+            />
+            <button onClick={handleSaveSearch} disabled={saving} style={{
+              width:'100%', padding:'12px', borderRadius:10,
+              background:'var(--accent)', color:'#fff',
+              border:'none', fontSize:14, fontWeight:700, cursor:'pointer',
+            }}>
+              {saving ? 'Čuvam...' : '✅ Sačuvaj i aktiviraj alert'}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="container" style={{ padding: '20px 16px 80px' }}>
 
         <div style={{
