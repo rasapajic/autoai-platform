@@ -16,7 +16,10 @@ export default function FavoritesPage() {
   useEffect(() => {
     const token = localStorage.getItem('autoai_token')
     if (!token) { window.location.href = '/login'; return }
+    fetchFavorites(token)
+  }, [])
 
+  const fetchFavorites = (token: string) => {
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
     fetch(`${apiBase}/users/me/favorites`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -24,7 +27,20 @@ export default function FavoritesPage() {
       .then(res => res.json())
       .then(data => { setFavorites(Array.isArray(data) ? data : []); setLoading(false) })
       .catch(() => { setError('Greška pri učitavanju'); setLoading(false) })
-  }, [])
+  }
+
+  const removeFavorite = async (listingId: string) => {
+    const token = localStorage.getItem('autoai_token')
+    if (!token) return
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
+    try {
+      await fetch(`${apiBase}/users/me/favorites/${listingId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      setFavorites(prev => prev.filter(f => f.id !== listingId))
+    } catch {}
+  }
 
   return (
     <div style={{ minHeight: '100vh', padding: '40px 0 80px' }}>
@@ -62,33 +78,48 @@ export default function FavoritesPage() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 20 }}>
             {favorites.map((l: any) => (
-              <a key={l.id} href={`/listing/${l.id}`} style={{
+              <div key={l.id} style={{
                 background: 'var(--bg2)', border: '1px solid var(--border)',
-                borderRadius: 16, overflow: 'hidden', display: 'block', textDecoration: 'none',
-                transition: 'all .2s',
+                borderRadius: 16, overflow: 'hidden', position: 'relative',
               }}>
-                <div style={{ height: 180, background: 'var(--bg3)', overflow: 'hidden' }}>
-                  {l.images?.[0]
-                    ? <img src={fullImg(l.images[0])} alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={e => { (e.target as HTMLImageElement).src = l.images[0] }} />
-                    : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>🚗</div>
-                  }
-                </div>
-                <div style={{ padding: '14px 16px' }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
-                    {l.year} {l.make} {l.model}
+                {/* X dugme */}
+                <button
+                  onClick={() => removeFavorite(l.id)}
+                  title="Ukloni iz sačuvanih"
+                  style={{
+                    position: 'absolute', top: 10, right: 10, zIndex: 10,
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: 'rgba(0,0,0,.6)', border: 'none',
+                    color: '#fff', fontSize: 14, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                >✕</button>
+
+                <a href={`/listing/${l.id}`} style={{ display: 'block', textDecoration: 'none' }}>
+                  <div style={{ height: 180, background: 'var(--bg3)', overflow: 'hidden' }}>
+                    {l.images?.[0]
+                      ? <img src={fullImg(l.images[0])} alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          onError={e => { (e.target as HTMLImageElement).src = l.images[0] }} />
+                      : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40 }}>🚗</div>
+                    }
                   </div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}>
-                    {l.price ? `${fmt(l.price)} €` : 'Na upit'}
-                  </div>
-                  {l.mileage && (
-                    <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                      🛣 {Number(l.mileage).toLocaleString('de-DE')} km
+                  <div style={{ padding: '14px 16px' }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+                      {l.year} {l.make} {l.model}
                     </div>
-                  )}
-                </div>
-              </a>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', marginBottom: 8 }}>
+                      {l.price ? `${fmt(l.price)} €` : 'Na upit'}
+                    </div>
+                    {l.mileage && (
+                      <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+                        🛣 {Number(l.mileage).toLocaleString('de-DE')} km
+                      </div>
+                    )}
+                  </div>
+                </a>
+              </div>
             ))}
           </div>
         )}
