@@ -4,7 +4,9 @@ import json
 import uuid
 import asyncio
 import logging
-
+import sys
+sys.path.insert(0, '/app')
+from app.core.email import send_alert_email
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
