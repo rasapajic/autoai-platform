@@ -48,10 +48,14 @@ function Navbar() {
             onMouseLeave={e => { (e.target as HTMLElement).style.color = 'var(--text2)'; (e.target as HTMLElement).style.background = 'transparent' }}
             >{link.label}</a>
           ))}
-          <a href="/search" style={{
-            marginLeft: 8, padding: '7px 16px', borderRadius: 8,
+          <a href="/login" style={{
+            marginLeft: 8, padding: '7px 16px', borderRadius: 8, fontSize: 14,
+            color: 'var(--text2)', border: '1px solid var(--border)', fontWeight: 500,
+          }}>Prijava</a>
+          <a href="/register" style={{
+            marginLeft: 4, padding: '7px 16px', borderRadius: 8,
             background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 500,
-          }}>Traži auto</a>
+          }}>Registracija</a>
         </nav>
       </div>
     </header>
