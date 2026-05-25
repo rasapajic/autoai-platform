@@ -120,3 +120,15 @@ def add_favorite(
     db.add(fav)
     db.commit()
     return {"message": "Sačuvano"}
+@router.delete("/me/favorites/{listing_id}")
+def remove_favorite(
+    listing_id: str,
+    db:   Session = Depends(get_db),
+    user: User    = Depends(get_current_user),
+):
+    db.query(Favorite).filter(
+        Favorite.user_id == user.id,
+        Favorite.listing_id == listing_id,
+    ).delete()
+    db.commit()
+    return {"message": "Uklonjeno"}
