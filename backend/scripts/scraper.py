@@ -183,8 +183,11 @@ async def run_mobile_de():
         print(f"  Mobile.de greska: {e}")
         return 0
 
+def check_alerts():
+    pass
+
+
 def main():
-    def check_alerts():
     print("\n=== ALERT CHECK ===")
     try:
         conn = get_conn()
