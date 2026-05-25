@@ -298,7 +298,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                         {s.value}
                         {s.label === 'Grad' && (
                           
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(s.value))}`}
+                            href={`https://www.google.com/maps/search/...`}
                             target="_blank"
                             rel="noopener noreferrer"
                             title="Otvori na Google Maps"
