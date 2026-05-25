@@ -182,12 +182,115 @@ async def run_mobile_de():
         return 0
 
 def main():
+    def check_alerts():
+    print("\n=== ALERT CHECK ===")
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+
+        # Uzmi sve aktivne alerte sa email korisnika
+        cur.execute("""
+            SELECT a.id, a.name, a.filters, a.last_checked, u.email
+            FROM saved_searches a
+            JOIN users u ON u.id = a.user_id
+            WHERE a.is_active = TRUE
+        """)
+        alerts = cur.fetchall()
+        print(f"  Aktivnih alerta: {len(alerts)}")
+
+        for alert_id, alert_name, filters, last_checked, user_email in alerts:
+            try:
+                # Izgradi WHERE uslove iz filtera
+                conditions = ["created_at > %s"]
+                params = [last_checked]
+
+                if filters.get("make"):
+                    conditions.append("LOWER(make) = LOWER(%s)")
+                    params.append(filters["make"])
+                if filters.get("model"):
+                    conditions.append("LOWER(model) LIKE LOWER(%s)")
+                    params.append(f"%{filters['model']}%")
+                if filters.get("price_max"):
+                    conditions.append("price <= %s")
+                    params.append(filters["price_max"])
+                if filters.get("price_min"):
+                    conditions.append("price >= %s")
+                    params.append(filters["price_min"])
+                if filters.get("year_min"):
+                    conditions.append("year >= %s")
+                    params.append(filters["year_min"])
+                if filters.get("mileage_max"):
+                    conditions.append("mileage <= %s")
+                    params.append(filters["mileage_max"])
+                if filters.get("fuel_type"):
+                    conditions.append("LOWER(fuel_type) = LOWER(%s)")
+                    params.append(filters["fuel_type"])
+
+                where = " AND ".join(conditions)
+                cur.execute(f"""
+                    SELECT id, make, model, year, price, url
+                    FROM listings
+                    WHERE {where}
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                """, params)
+                matches = cur.fetchall()
+
+                print(f"  Alert '{alert_name}' ({user_email}): {len(matches)} novih")
+
+                for listing_id, make, model, year, price, url in matches:
+                    # Proveri da li je email već poslat
+                    cur.execute("""
+                        SELECT 1 FROM alert_log
+                        WHERE alert_id = %s AND listing_id = %s
+                    """, (alert_id, str(listing_id)))
+                    if cur.fetchone():
+                        continue
+
+                    # Pošalji email
+                    title = f"{year} {make} {model}"
+                    sent = send_alert_email(
+                        to_email=user_email,
+                        car_title=title,
+                        car_price=float(price),
+                        car_url=url,
+                        search_name=alert_name,
+                    )
+
+                    if sent:
+                        cur.execute("""
+                            INSERT INTO alert_log (alert_id, listing_id)
+                            VALUES (%s, %s)
+                        """, (alert_id, str(listing_id)))
+                        conn.commit()
+
+                # Ažuriraj last_checked
+                cur.execute("""
+                    UPDATE saved_searches SET last_checked = NOW()
+                    WHERE id = %s
+                """, (alert_id,))
+                conn.commit()
+
+            except Exception as e:
+                print(f"  Alert greška ({alert_name}): {e}")
+                conn.rollback()
+
+        cur.close()
+        conn.close()
+
+    except Exception as e:
+        print(f"  Alert check greška: {e}")
+
+
+def main():
     total  = 0
     total += asyncio.run(run_autoscout24())
     total += asyncio.run(run_autoscout24_at())
     total += asyncio.run(run_mobile_de())
     run_price_estimation()
+    check_alerts()
     print(f"\n=== UKUPNO: {total} ===")
+
 
 if __name__ == "__main__":
     main()
