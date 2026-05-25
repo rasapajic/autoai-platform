@@ -347,12 +347,12 @@ const handleSaveSearch = async () => {
           )}
 
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10, width: '100%' }}>
               <div>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>{loading ? '...' : `${results?.total?.toLocaleString() || 0} vozila`}</span>
                 {!loading && results?.total > 0 && <span style={{ color: 'var(--text3)', fontSize: 13, marginLeft: 8 }}>analiziranih AI-om</span>}
               </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <div style={{ display:'flex', gap:8, alignItems:'center', flexShrink: 0 }}>
                 {saveSuccess && <span style={{ fontSize:12, color:'#22C55E', fontWeight:600 }}>✅ Sačuvano!</span>}
                 <button onClick={() => setShowSaveModal(true)} style={{
                   padding:'8px 14px', borderRadius:8, fontSize:13, fontWeight:600,
