@@ -206,7 +206,10 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const specs = [
     { label: 'Godište',     value: listing.year },
     { label: 'Kilometraža', value: fmtKm(listing.mileage) },
-    { label: 'Gorivo',      value: listing.fuel_type },
+    { label: 'Gorivo', value: listing.fuel_type ? ({
+  diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni',
+  hybrid: 'Hibrid', lpg: 'Plin', gasoline: 'Benzin',
+} as any)[listing.fuel_type] || listing.fuel_type : null },
     { label: 'Menjač',      value: listing.transmission === 'automatic' ? 'Automatik' : listing.transmission === 'manual' ? 'Manuel' : listing.transmission },
     { label: 'Snaga',       value: listing.engine_power_kw ? `${listing.engine_power_kw} kW` : null },
     { label: 'Karoserija',  value: listing.body_type },
