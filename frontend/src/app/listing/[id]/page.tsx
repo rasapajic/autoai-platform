@@ -294,7 +294,20 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   {specs.map(s => (
                     <div key={s.label} style={{ background:'var(--bg3)', borderRadius:8, padding:'10px 14px' }}>
                       <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>{s.label}</div>
-                      <div style={{ fontSize:14, fontWeight:500 }}>{s.value}</div>
+                      <div style={{ fontSize:14, fontWeight:500, display:'flex', alignItems:'center', gap:6 }}>
+                        {s.value}
+                        {s.label === 'Grad' && (
+                          
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(s.value))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Otvori na Google Maps"
+                            style={{ fontSize:16, textDecoration:'none', lineHeight:1 }}
+                          >
+                            🗺️
+                          </a>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
