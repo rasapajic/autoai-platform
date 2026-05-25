@@ -124,6 +124,10 @@ export default function SearchPage() {
   const [aiLoading,   setAiLoading]   = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [contactListing, setContactListing] = useState<any>(null)
+const [showSaveModal, setShowSaveModal] = useState(false)
+const [saveName,      setSaveName]      = useState('')
+const [saving,        setSaving]        = useState(false)
+const [saveSuccess,   setSaveSuccess]   = useState(false)
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '', model: searchParams.get('model') || '',
@@ -159,7 +163,21 @@ export default function SearchPage() {
       setFilters(next); doSearch(next)
     } finally { setAiLoading(false) }
   }
-
+const handleSaveSearch = async () => {
+    const token = localStorage.getItem('autoai_token')
+    if (!token) { window.location.href = '/login'; return }
+    setSaving(true)
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
+      const res = await fetch(`${apiBase}/alerts/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: saveName || 'Moja pretraga', filters, frequency: 'daily' }),
+      })
+      if (res.ok) { setSaveSuccess(true); setShowSaveModal(false); setSaveName('') }
+    } catch {}
+    finally { setSaving(false) }
+  }
   const activeCount = [
     filters.make, filters.model, filters.min_price, filters.max_price,
     filters.min_year, filters.max_year, filters.max_km,
