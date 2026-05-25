@@ -144,12 +144,13 @@ export default function SearchPage() {
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
       <style>{`
-        @media(max-width:768px){
-          .sg{grid-template-columns:1fr!important}
+       @media(max-width:768px){
+          .sg{grid-template-columns:1fr!important;display:block!important}
           .rg{grid-template-columns:1fr!important}
           .sd{display:none!important}
           .hero{display:none!important}
           .ht{font-size:16px!important}
+          .container{padding-left:12px!important;padding-right:12px!important}
         }
         @media(min-width:769px){.mfb{display:none!important}.sm{display:none!important}}
         .ch{transition:all .22s ease!important}
