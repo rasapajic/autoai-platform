@@ -184,7 +184,7 @@ async def run_mobile_de():
         return 0
 
 def check_alerts():
-    pass
+  
 
 
 def main():
