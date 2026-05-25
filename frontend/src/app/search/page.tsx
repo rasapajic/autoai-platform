@@ -391,7 +391,7 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
       )}
 
       <a href={`/listing/${listing.id}`} style={{ display:'block', textDecoration:'none' }}>
-        <div style={{ height:185, background:'var(--bg3)', position:'relative', overflow:'hidden' }}>
+        <div style={{ height:220, background:'var(--bg3)', position:'relative', overflow:'hidden' }}>
           {img
             ? <img src={fullImg(img)} alt={`${listing.make} ${listing.model}`}
                 style={{ width:'100%', height:'100%', objectFit:'cover' }}
