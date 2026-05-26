@@ -166,10 +166,10 @@ export default function ContactModal({ listing, onClose }: Props) {
             <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 10px', fontWeight: 600, letterSpacing: '.07em' }}>
               BRZA PITANJA (odaberi jedno ili više)
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {QUICK_QUESTIONS.map(q => (
                 <button key={q} onClick={() => toggleQ(q)} style={{
-                  padding: '7px 13px', borderRadius: 20, fontSize: 12,
+                  padding: '9px 15px', borderRadius: 20, fontSize: 14,
                   background: selected.includes(q) ? 'rgba(255,107,0,.14)' : 'var(--bg3)',
                   border: `1px solid ${selected.includes(q) ? 'var(--accent)' : 'var(--border)'}`,
                   color: selected.includes(q) ? 'var(--accent)' : 'var(--text2)',
