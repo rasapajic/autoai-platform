@@ -446,6 +446,29 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </button>
 
               {/* Sačuvaj oglas */}
+              {/* Share dugme */}
+              <button onClick={() => {
+                const url = window.location.href
+                if (navigator.share) {
+                  navigator.share({
+                    title: `${listing.year} ${listing.make} ${listing.model}`,
+                    text: `Pogledaj ovaj oglas na AutoAI — ${listing.year} ${listing.make} ${listing.model} za ${listing.price ? Number(listing.price).toLocaleString() + ' €' : 'na upit'}`,
+                    url,
+                  })
+                } else {
+                  navigator.clipboard.writeText(url)
+                  alert('Link kopiran!')
+                }
+              }} style={{
+                width:'100%', padding:'10px', marginBottom:10,
+                background:'transparent',
+                border:'1px solid var(--border)',
+                color:'var(--text2)',
+                borderRadius:10, fontSize:13, cursor:'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+              }}>
+                🔗 Podeli oglas
+              </button>
               <button onClick={async () => {
                 const token = localStorage.getItem('autoai_token')
                 if (!token) { window.location.href = '/login'; return }
