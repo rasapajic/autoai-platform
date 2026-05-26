@@ -1,10 +1,9 @@
 import asyncio
-import logging
 import json
-import aiohttp
 import re
+import aiohttp
 
-logger = logging.getLogger(__name__)
+BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenmarkt"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
@@ -14,10 +13,8 @@ HEADERS = {
     "x-wh-client": "api=v1.24.0",
 }
 
-BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenmarkt"
 
-
-def _parse_price(val) -> float | None:
+def _parse_price(val):
     if val is None:
         return None
     try:
@@ -27,7 +24,7 @@ def _parse_price(val) -> float | None:
         return None
 
 
-def _parse_int(val) -> int | None:
+def _parse_int(val):
     if val is None:
         return None
     try:
@@ -37,7 +34,7 @@ def _parse_int(val) -> int | None:
         return None
 
 
-def _normalize_fuel(val) -> str | None:
+def _normalize_fuel(val):
     if not val:
         return None
     val = val.lower().strip()
@@ -52,7 +49,7 @@ def _normalize_fuel(val) -> str | None:
     return val
 
 
-def _normalize_transmission(val) -> str | None:
+def _normalize_transmission(val):
     if not val:
         return None
     val = val.lower().strip()
@@ -63,7 +60,7 @@ def _normalize_transmission(val) -> str | None:
     return val
 
 
-def _normalize_body(val) -> str | None:
+def _normalize_body(val):
     if not val:
         return None
     val = val.lower().strip()
@@ -81,7 +78,7 @@ def _normalize_body(val) -> str | None:
     return val
 
 
-def _get_attr(attributes: list, name: str):
+def _get_attr(attributes, name):
     for attr in attributes:
         if attr.get("name") == name:
             vals = attr.get("values", [])
@@ -89,24 +86,24 @@ def _get_attr(attributes: list, name: str):
     return None
 
 
-def _parse_ad(ad: dict) -> dict | None:
+def _parse_ad(ad):
     try:
         attrs = ad.get("attributes", {}).get("attribute", [])
         def g(name):
             return _get_attr(attrs, name)
 
-        ad_id = str(ad.get("id", ""))
-        make  = g("MAKE")
-        model = g("MODEL")
-        year_str = g("YEAR")
+        ad_id     = str(ad.get("id", ""))
+        make      = g("MAKE")
+        model     = g("MODEL")
+        year_str  = g("YEAR")
         price_str = g("PRICE_FOR_DISPLAY") or g("PRICE")
         mileage_str = g("MILEAGE")
-        fuel = g("FUEL_TYPE") or ""
+        fuel      = g("FUEL_TYPE") or ""
         transmission = g("TRANSMISSION_TYPE") or ""
-        body = g("CAR_TYPE") or ""
-        power = g("POWER_KW") or g("ENGINE_POWER")
-        color = g("COLOR") or ""
-        city  = g("LOCATION") or g("DISTRICT") or ""
+        body      = g("CAR_TYPE") or ""
+        power     = g("POWER_KW") or g("ENGINE_POWER")
+        color     = g("COLOR") or ""
+        city      = g("LOCATION") or g("DISTRICT") or ""
         description = ad.get("description", "") or ""
 
         year = None
@@ -146,7 +143,7 @@ def _parse_ad(ad: dict) -> dict | None:
             "url":             f"https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagen/{ad_id}",
         }
     except Exception as e:
-        logger.warning(f"[Willhaben] Parse greška: {e}")
+        print(f"[Willhaben] Parse greška: {e}")
         return None
 
 
@@ -180,26 +177,30 @@ class WillhabenScraper:
                 if filters.get("max_km"):
                     params["MILEAGE_TO"] = filters["max_km"]
 
-                logger.info(f"[Willhaben] Stranica {page_num + 1}, offset={offset}")
+                print(f"[Willhaben] Stranica {page_num + 1}, offset={offset}")
 
                 try:
-                    async with session.get(BASE_URL, params=params) as resp:
-                        logger.info(f"[Willhaben] Status: {resp.status}")
+                    async with session.get(BASE_URL, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                        print(f"[Willhaben] Status: {resp.status} | Content-Type: {resp.content_type}")
+
                         if resp.status != 200:
+                            print(f"[Willhaben] Nije 200 — prekidam")
                             break
 
                         text = await resp.text()
-                        logger.info(f"[Willhaben] Preview: {text[:300]}")
+                        print(f"[Willhaben] Preview: {text[:500]}")
 
                         try:
                             data = json.loads(text)
                         except Exception as je:
-                            logger.error(f"[Willhaben] JSON greška: {je}")
+                            print(f"[Willhaben] JSON greška: {je}")
                             break
 
                         adverts = data.get("advertSummaryList", {}).get("advertSummary", [])
+                        print(f"[Willhaben] Oglasi u odgovoru: {len(adverts)}")
+
                         if not adverts:
-                            logger.info(f"[Willhaben] Nema oglasa — kraj")
+                            print(f"[Willhaben] Nema oglasa — kraj")
                             break
 
                         for ad in adverts:
@@ -208,12 +209,12 @@ class WillhabenScraper:
                                 seen_ids.add(parsed["external_id"])
                                 all_listings.append(parsed)
 
-                        logger.info(f"[Willhaben] +{len(adverts)} | Ukupno: {len(all_listings)}")
+                        print(f"[Willhaben] +{len(adverts)} | Ukupno: {len(all_listings)}")
                         await asyncio.sleep(1.2)
 
                 except Exception as e:
-                    logger.error(f"[Willhaben] Greška str {page_num + 1}: {e}")
+                    print(f"[Willhaben] Greška str {page_num + 1}: {e}")
                     break
 
-        logger.info(f"[Willhaben] Završeno — {len(all_listings)} oglasa")
+        print(f"[Willhaben] Završeno — {len(all_listings)} oglasa")
         return all_listings
