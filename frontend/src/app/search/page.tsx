@@ -150,6 +150,7 @@ export default function SearchPage() {
     finally { setSaving(false) }
   }
 
+  const visibleMakes = MAKES
   const activeCount = [
     filters.make, filters.model, filters.min_price, filters.max_price,
     filters.min_year, filters.max_year, filters.max_km, filters.fuel_type, filters.price_rating,
