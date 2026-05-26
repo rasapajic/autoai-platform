@@ -5,21 +5,25 @@ import { searchListings, parseQuery } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
 
 const FUEL_LABELS: Record<string, string> = {
-  diesel: 'Dizel', petrol: 'Benzin', gasoline: 'Benzin', electric: 'Električni',
-  hybrid: 'Hibrid', lpg: 'Plin',
+  diesel: 'Dizel', petrol: 'Benzin', gasoline: 'Benzin',
+  electric: 'Električni', hybrid: 'Hibrid', lpg: 'Plin',
 }
 const AI_BADGES: Record<string, { label: string; color: string; bg: string }> = {
-  great:      { label: '🟢 DOBRA KUPOVINA',  color: '#22C55E', bg: 'rgba(34,197,94,.13)'   },
-  good:       { label: '🟡 FER CENA',         color: '#EAB308', bg: 'rgba(234,179,8,.13)'   },
-  fair:       { label: '⚪ PROSEČNA CENA',    color: '#9CA3AF', bg: 'rgba(156,163,175,.10)' },
-  high:       { label: '🟠 VISOKA CENA',      color: '#F97316', bg: 'rgba(249,115,22,.13)'  },
-  overpriced: { label: '🔴 PREVISOKA CENA',   color: '#EF4444', bg: 'rgba(239,68,68,.13)'   },
+  great:      { label: '🟢 DOBRA KUPOVINA', color: '#22C55E', bg: 'rgba(34,197,94,.13)'   },
+  good:       { label: '🟡 FER CENA',        color: '#EAB308', bg: 'rgba(234,179,8,.13)'   },
+  fair:       { label: '⚪ PROSEČNA CENA',   color: '#9CA3AF', bg: 'rgba(156,163,175,.10)' },
+  high:       { label: '🟠 VISOKA CENA',     color: '#F97316', bg: 'rgba(249,115,22,.13)'  },
+  overpriced: { label: '🔴 PREVISOKA CENA',  color: '#EF4444', bg: 'rgba(239,68,68,.13)'   },
 }
 const ELIGIBILITY_COLORS: Record<string, string> = {
   eligible: '#22C55E', needs_check: '#F97316',
   not_recommended: '#EF4444', oldtimer: '#A855F7',
 }
-const MAKES = ['VW','BMW','Mercedes','Audi','Toyota','Ford','Opel','Skoda','Renault','Peugeot','Hyundai','Kia','Volvo','Seat','Mazda']
+const MAKES = [
+  'VW','BMW','Mercedes','Audi','Toyota','Ford','Opel','Skoda',
+  'Renault','Peugeot','Hyundai','Kia','Volvo','Seat','Mazda',
+  'Honda','Nissan','Fiat','Citroën','Porshe','Land Rover','Jeep',
+]
 
 function calcBreakdown(price: number, carinaPct: number) {
   const carina = Math.round(price * (carinaPct / 100))
@@ -59,29 +63,29 @@ function getSerbiaEligibility(listing: any) {
   const year = listing.year ? Number(listing.year) : null
   const fuel = listing.fuel_type || null
   const age  = year ? (2026 - year) : null
-  if (fuel === 'electric') return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Električna vozila su oslobođena carine.', warnings:[], carinaPct:0 }
-  if (age !== null && age >= 30) return { status:'oldtimer', emoji:'🟣', label:'Oldtimer izuzetak', tooltip:'Poseban režim uvoza.', warnings:[], carinaPct:5 }
+  if (fuel === 'electric') return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Električna vozila su oslobođena carine.', carinaPct:0 }
+  if (age !== null && age >= 30) return { status:'oldtimer', emoji:'🟣', label:'Oldtimer izuzetak', tooltip:'Poseban režim uvoza.', carinaPct:5 }
   if (!year) return null
-  if (year >= 2015) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 6 — bez ograničenja za uvoz.', warnings:[], carinaPct:5 }
-  if (year >= 2011) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 5 — može se uvesti bez ograničenja.', warnings:[], carinaPct:5 }
-  if (year >= 2006) return { status:'eligible', emoji:'🟢', label: fuel==='diesel' ? 'Može uvoz — proveri Euro 4' : 'Može uvoz u Srbiju', tooltip:'Euro 4 je minimalni standard.', warnings:[], carinaPct:5 }
-  if (year >= 2001) return { status:'needs_check', emoji:'🟠', label:'Potrebna provera Euro norme', tooltip:'Moguće uz dodatnu dokumentaciju.', warnings:[], carinaPct:5 }
-  return { status:'not_recommended', emoji:'🔴', label:'Uvoz nije preporučljiv', tooltip:'Stara emisiona norma.', warnings:[], carinaPct:5 }
+  if (year >= 2015) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 6 — bez ograničenja za uvoz.', carinaPct:5 }
+  if (year >= 2011) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 5 — može se uvesti bez ograničenja.', carinaPct:5 }
+  if (year >= 2006) return { status:'eligible', emoji:'🟢', label: fuel==='diesel' ? 'Može uvoz — proveri Euro 4' : 'Može uvoz u Srbiju', tooltip:'Euro 4 je minimalni standard.', carinaPct:5 }
+  if (year >= 2001) return { status:'needs_check', emoji:'🟠', label:'Potrebna provera Euro norme', tooltip:'Moguće uz dodatnu dokumentaciju.', carinaPct:5 }
+  return { status:'not_recommended', emoji:'🔴', label:'Uvoz nije preporučljiv', tooltip:'Stara emisiona norma.', carinaPct:5 }
 }
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
-  const [results,       setResults]       = useState<any>(null)
-  const [loading,       setLoading]       = useState(true)
-  const [aiQuery,       setAiQuery]       = useState(searchParams.get('q') || '')
-  const [aiLoading,     setAiLoading]     = useState(false)
-  const [sidebarOpen,   setSidebarOpen]   = useState(false)
-  const [contactListing,setContactListing]= useState<any>(null)
-  const [showSaveModal, setShowSaveModal] = useState(false)
-  const [saveName,      setSaveName]      = useState('')
-  const [saving,        setSaving]        = useState(false)
-  const [saveSuccess,   setSaveSuccess]   = useState(false)
-  const [showAllMakes,  setShowAllMakes]  = useState(false)
+  const [results,        setResults]        = useState<any>(null)
+  const [loading,        setLoading]        = useState(true)
+  const [aiQuery,        setAiQuery]        = useState(searchParams.get('q') || '')
+  const [aiLoading,      setAiLoading]      = useState(false)
+  const [sidebarOpen,    setSidebarOpen]    = useState(false)
+  const [contactListing, setContactListing] = useState<any>(null)
+  const [showSaveModal,  setShowSaveModal]  = useState(false)
+  const [showMakeModal,  setShowMakeModal]  = useState(false)
+  const [saveName,       setSaveName]       = useState('')
+  const [saving,         setSaving]         = useState(false)
+  const [saveSuccess,    setSaveSuccess]    = useState(false)
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '', model: searchParams.get('model') || '',
@@ -139,31 +143,37 @@ export default function SearchPage() {
     filters.min_year, filters.max_year, filters.max_km, filters.fuel_type, filters.price_rating,
   ].filter(Boolean).length
 
-  const visibleMakes = showAllMakes ? MAKES : MAKES.slice(0, 10)
-
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
       <style>{`
-       @media(max-width:768px){
-          .sg{grid-template-columns:1fr!important;display:block!important}
+        @media(max-width:768px){
+          .sg{display:block!important;width:100%!important}
           .rg{grid-template-columns:1fr!important}
           .sd{display:none!important}
           .hero{display:none!important}
-          .ht{font-size:16px!important}
-          .container{padding-left:12px!important;padding-right:12px!important}
+          .ai-form-inner{flex-direction:column!important}
+          .ai-btn{width:100%!important;margin-top:6px!important}
         }
-        @media(min-width:769px){.mfb{display:none!important}.sm{display:none!important}}
+        @media(min-width:769px){
+          .mfb{display:none!important}
+          .sm{display:none!important}
+          .ai-form-inner{flex-direction:row!important;align-items:center!important}
+          .ai-btn{width:auto!important}
+        }
         .ch{transition:all .22s ease!important}
         .ch:hover{border-color:var(--accent)!important;transform:translateY(-3px)!important;box-shadow:0 14px 44px rgba(0,0,0,.45)!important}
         .cb:hover{opacity:.82!important}
-        .makebtn{padding:6px 13px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:all .15s}
       `}</style>
 
+      {/* Modali */}
       {contactListing && <ContactModal listing={contactListing} onClose={() => setContactListing(null)} />}
 
+      {/* Save pretraga modal */}
       {showSaveModal && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }} onClick={() => setShowSaveModal(false)}>
-          <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:28, width:380, maxWidth:'90vw' }} onClick={e => e.stopPropagation()}>
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}
+          onClick={() => setShowSaveModal(false)}>
+          <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:28, width:380, maxWidth:'90vw' }}
+            onClick={e => e.stopPropagation()}>
             <h3 style={{ margin:'0 0 8px', fontSize:17 }}>🔔 Sačuvaj pretragu</h3>
             <p style={{ fontSize:13, color:'var(--text3)', margin:'0 0 12px' }}>Dobijaš email čim se pojavi novi oglas koji odgovara ovim filterima.</p>
             <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', marginBottom:14 }}>
@@ -176,7 +186,7 @@ export default function SearchPage() {
                 filters.min_year  && `od ${filters.min_year}.`,
                 filters.max_year  && `do ${filters.max_year}.`,
                 filters.max_km    && `max ${Number(filters.max_km).toLocaleString()} km`,
-                filters.fuel_type && `⛽ ${filters.fuel_type}`,
+                filters.fuel_type && `⛽ ${FUEL_LABELS[filters.fuel_type] || filters.fuel_type}`,
               ].filter(Boolean).length > 0 ? (
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                   {[
@@ -187,13 +197,13 @@ export default function SearchPage() {
                     filters.min_year  && `od ${filters.min_year}.`,
                     filters.max_year  && `do ${filters.max_year}.`,
                     filters.max_km    && `max ${Number(filters.max_km).toLocaleString()} km`,
-                    filters.fuel_type && `⛽ ${filters.fuel_type}`,
+                    filters.fuel_type && `⛽ ${FUEL_LABELS[filters.fuel_type] || filters.fuel_type}`,
                   ].filter(Boolean).map((tag, i) => (
                     <span key={i} style={{ background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.25)', color:'var(--accent)', borderRadius:20, padding:'3px 10px', fontSize:12 }}>{tag as string}</span>
                   ))}
                 </div>
               ) : (
-                <p style={{ fontSize:12, color:'#F97316', margin:0 }}>⚠️ Nema filtera — alert će se okidati za sve nove oglase.</p>
+                <p style={{ fontSize:12, color:'#F97316', margin:0 }}>⚠️ Nema filtera — alert za sve nove oglase.</p>
               )}
             </div>
             <input placeholder="Naziv pretrage (npr. BMW 3 do 10k)" value={saveName} onChange={e => setSaveName(e.target.value)}
@@ -201,6 +211,30 @@ export default function SearchPage() {
             <button onClick={handleSaveSearch} disabled={saving} style={{ width:'100%', padding:'12px', borderRadius:10, background:'var(--accent)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer' }}>
               {saving ? 'Čuvam...' : '✅ Sačuvaj i aktiviraj alert'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Make picker modal — bottom sheet */}
+      {showMakeModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:1000, display:'flex', alignItems:'flex-end' }}
+          onClick={() => setShowMakeModal(false)}>
+          <div style={{ background:'var(--bg2)', borderRadius:'20px 20px 0 0', padding:'20px 16px 40px', width:'100%', border:'1px solid var(--border)', maxHeight:'80vh', overflowY:'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+              <h3 style={{ fontSize:16, margin:0 }}>Izaberi marku</h3>
+              <button onClick={() => setShowMakeModal(false)} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:20, cursor:'pointer' }}>✕</button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+              {MAKES.map(make => (
+                <button key={make} onClick={() => { setFilter('make', filters.make === make ? '' : make); setShowMakeModal(false) }} style={{
+                  padding:'10px 8px', borderRadius:10, fontSize:14, fontWeight:500, cursor:'pointer',
+                  background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg3)',
+                  border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
+                  color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
+                }}>{make}</button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -215,7 +249,7 @@ export default function SearchPage() {
           display:'flex', gap:16, alignItems:'center', flexWrap:'wrap',
         }}>
           <div style={{ flex:1, minWidth:180 }}>
-            <p className="ht" style={{ fontSize:21, fontWeight:700, margin:0, fontFamily:'Syne,sans-serif', lineHeight:1.3 }}>
+            <p style={{ fontSize:21, fontWeight:700, margin:0, fontFamily:'Syne,sans-serif', lineHeight:1.3 }}>
               AI pomoćnik za uvoz automobila iz EU u Srbiju
             </p>
             <p style={{ fontSize:13, color:'var(--text2)', margin:'5px 0 0' }}>
@@ -231,41 +265,39 @@ export default function SearchPage() {
 
         {/* AI Search */}
         <form onSubmit={handleAiSearch} style={{ marginBottom:12 }}>
-          <div style={{ display:'flex', gap:8, background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:14, padding:6, boxShadow:'0 4px 20px rgba(0,0,0,.2)' }}>
+          <div className="ai-form-inner" style={{ display:'flex', background:'var(--bg3)', border:'1px solid var(--border2)', borderRadius:14, padding:6, boxShadow:'0 4px 20px rgba(0,0,0,.2)', gap:6 }}>
             <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, padding:'4px 14px' }}>
               <span style={{ fontSize:17 }}>🤖</span>
               <input value={aiQuery} onChange={e => setAiQuery(e.target.value)}
                 placeholder='npr. "Golf dizel do 15000€, max 100000km"'
                 style={{ flex:1, background:'none', border:'none', outline:'none', color:'var(--text)', fontSize:15 }} />
             </div>
-            <button type="submit" disabled={aiLoading} style={{
-              background: aiLoading ? 'var(--bg2)' : 'var(--accent)', color: aiLoading ? 'var(--text3)' : '#fff',
+            <button className="ai-btn" type="submit" disabled={aiLoading} style={{
+              background: aiLoading ? 'var(--bg2)' : 'var(--accent)',
+              color: aiLoading ? 'var(--text3)' : '#fff',
               border:'none', borderRadius:10, padding:'12px 18px', fontSize:14, fontWeight:700,
               cursor: aiLoading ? 'default' : 'pointer', whiteSpace:'nowrap',
-            }}>{aiLoading ? '⏳...' : '🔍 AI Pretraga'}</button>
+            }}>{aiLoading ? '⏳ Analiziram...' : '🔍 AI Pretraga'}</button>
           </div>
         </form>
 
-        {/* Brzi izbor marke */}
+        {/* Marka dugme */}
         <div style={{ marginBottom:12 }}>
-          <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.08em', marginBottom:8 }}>BRZI IZBOR MARKE</div>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-            {visibleMakes.map(make => (
-              <button key={make} className="makebtn" onClick={() => setFilter('make', filters.make === make ? '' : make)} style={{
-                background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
-                border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
-                color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
-              }}>{make}</button>
-            ))}
-            <button className="makebtn" onClick={() => setShowAllMakes(!showAllMakes)} style={{
-              background:'transparent', border:'1px dashed var(--border)', color:'var(--text3)',
-            }}>{showAllMakes ? '▲ Manje' : '+ Ostale marke'}</button>
-          </div>
+          <button onClick={() => setShowMakeModal(true)} style={{
+            width:'100%', padding:'12px 16px', borderRadius:12,
+            background: filters.make ? 'rgba(255,107,0,.1)' : 'var(--bg2)',
+            border: `1px solid ${filters.make ? 'var(--accent)' : 'var(--border)'}`,
+            color: filters.make ? 'var(--accent)' : 'var(--text2)',
+            fontSize:14, fontWeight:600, cursor:'pointer',
+            display:'flex', justifyContent:'space-between', alignItems:'center',
+          }}>
+            <span>🚗 {filters.make || 'Izaberi marku automobila'}</span>
+            <span style={{ fontSize:12, opacity:.6 }}>▼</span>
+          </button>
           {filters.make && (
-            <div style={{ marginTop:8, fontSize:12, color:'var(--text3)' }}>
-              Prikazujem: <strong style={{ color:'var(--accent)' }}>{filters.make}</strong>
-              <button onClick={() => setFilter('make', '')} style={{ marginLeft:8, background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:12 }}>✕ Ukloni</button>
-            </div>
+            <button onClick={() => setFilter('make', '')} style={{ marginTop:6, background:'none', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer' }}>
+              ✕ Ukloni {filters.make}
+            </button>
           )}
         </div>
 
@@ -391,7 +423,7 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
       )}
 
       <a href={`/listing/${listing.id}`} style={{ display:'block', textDecoration:'none' }}>
-        <div style={{ height:220, background:'var(--bg3)', position:'relative', overflow:'hidden' }}>
+        <div style={{ height:200, background:'var(--bg3)', position:'relative', overflow:'hidden' }}>
           {img
             ? <img src={fullImg(img)} alt={`${listing.make} ${listing.model}`}
                 style={{ width:'100%', height:'100%', objectFit:'cover' }}
@@ -506,7 +538,7 @@ function Sidebar({ filters, setFilter, onReset }: any) {
       </FS>
       <FS label="Gorivo">
         <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
-          {Object.entries(FUEL_LABELS).filter(([k]) => !['gasoline'].includes(k)).map(([v,l]) => (
+          {[['diesel','Dizel'],['petrol','Benzin'],['electric','Električni'],['hybrid','Hibrid'],['lpg','Plin']].map(([v,l]) => (
             <FC key={v} label={l} active={filters.fuel_type===v} onClick={() => setFilter('fuel_type', filters.fuel_type===v?'':v)} />
           ))}
         </div>
