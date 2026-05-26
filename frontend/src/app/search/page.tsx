@@ -86,6 +86,7 @@ export default function SearchPage() {
   const [saveName,       setSaveName]       = useState('')
   const [saving,         setSaving]         = useState(false)
   const [saveSuccess,    setSaveSuccess]    = useState(false)
+  const [searchHistory, setSearchHistory] = useState<string[]>([])
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '', model: searchParams.get('model') || '',
@@ -105,6 +106,10 @@ export default function SearchPage() {
   }, [filters])
 
   useEffect(() => { doSearch() }, [])
+  useEffect(() => {
+  const h = localStorage.getItem('autoai_search_history')
+  if (h) setSearchHistory(JSON.parse(h))
+}, [])
 
   const setFilter = (key: string, val: any) => {
     const next = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
@@ -119,6 +124,12 @@ export default function SearchPage() {
       const { filters: parsed } = await parseQuery(aiQuery)
       const next = { ...filters, ...parsed, page: 1 }
       setFilters(next); doSearch(next)
+      // Sačuvaj u istoriju
+      if (aiQuery.trim()) {
+        const newHistory = [aiQuery, ...searchHistory.filter(h => h !== aiQuery)].slice(0, 5)
+        setSearchHistory(newHistory)
+        localStorage.setItem('autoai_search_history', JSON.stringify(newHistory))
+      }
     } finally { setAiLoading(false) }
   }
 
@@ -282,6 +293,34 @@ export default function SearchPage() {
             }}>{aiLoading ? '⏳ Analiziram...' : '🔍 AI Pretraga'}</button>
           </div>
         </form>
+        {/* Istorija pretrage */}
+        {searchHistory.length > 0 && !aiQuery && (
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
+              NEDAVNE PRETRAGE
+            </div>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {searchHistory.map((h, i) => (
+                <button key={i} onClick={() => {
+                  setAiQuery(h)
+                  handleAiSearch({ preventDefault: () => {} } as any)
+                }} style={{
+                  padding:'6px 12px', borderRadius:20, fontSize:12,
+                  background:'var(--bg2)', border:'1px solid var(--border)',
+                  color:'var(--text3)', cursor:'pointer',
+                }}>🕐 {h}</button>
+              ))}
+              <button onClick={() => {
+                setSearchHistory([])
+                localStorage.removeItem('autoai_search_history')
+              }} style={{
+                padding:'6px 12px', borderRadius:20, fontSize:12,
+                background:'transparent', border:'none',
+                color:'var(--text3)', cursor:'pointer', opacity:.6,
+              }}>✕ Obriši</button>
+            </div>
+          </div>
+        )}
 
         {/* Marka dugme */}
         <div style={{ marginBottom:12 }}>
