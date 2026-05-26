@@ -7,8 +7,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Tajni ključ za zaštitu — postavi isti u Railway Environment Variables
-# kao ADMIN_SECRET=neka_tajna_vrednost
 ADMIN_SECRET = "autoai-admin-2024"
 
 
@@ -19,14 +17,21 @@ def check_secret(secret: Optional[str]):
 
 @router.post("/scrape/{portal}")
 async def trigger_scrape(portal: str, secret: Optional[str] = Header(None, alias="x-admin-secret")):
-    """
-    Ručno pokretanje scrapera za određeni portal.
-    Pozovi sa headerom: x-admin-secret: autoai-admin-2024
+    check_secret(secret)
+    return await _run_scraper(portal)
 
-    Portali: willhaben, mobile_de
+
+@router.get("/scrape/{portal}/run")
+async def trigger_scrape_get(portal: str, secret: str):
+    """
+    GET verzija — otvori direktno u browseru:
+    /api/v1/admin/scrape/willhaben/run?secret=autoai-admin-2024
     """
     check_secret(secret)
+    return await _run_scraper(portal)
 
+
+async def _run_scraper(portal: str):
     allowed = ["willhaben", "mobile_de"]
     if portal not in allowed:
         raise HTTPException(status_code=400, detail=f"Portal mora biti jedan od: {allowed}")
@@ -40,11 +45,8 @@ async def trigger_scrape(portal: str, secret: Optional[str] = Header(None, alias
             scraper = MobileDeScraper()
 
         logger.info(f"🕷️ Ručno pokretanje scrapera: {portal}")
-
-        # Pokreni scraper (max 3 stranice za brzi test)
         listings = await scraper.scrape_listings({}, max_pages=3)
 
-        # Sačuvaj u bazu
         from app.core.db import SessionLocal
         from app.core.celery_tasks import save_listings
         db = SessionLocal()
@@ -54,7 +56,6 @@ async def trigger_scrape(portal: str, secret: Optional[str] = Header(None, alias
             db.close()
 
         logger.info(f"✅ {portal}: {new_count} novih, {updated_count} ažuriranih")
-
         return {
             "status": "ok",
             "portal": portal,
@@ -69,8 +70,7 @@ async def trigger_scrape(portal: str, secret: Optional[str] = Header(None, alias
 
 
 @router.get("/scrape/status")
-async def scrape_status(secret: Optional[str] = Header(None, alias="x-admin-secret")):
-    """Statistika — koliko oglasa ima po portalu."""
+async def scrape_status(secret: str):
     check_secret(secret)
 
     from app.core.db import SessionLocal
@@ -92,11 +92,3 @@ async def scrape_status(secret: Optional[str] = Header(None, alias="x-admin-secr
         }
     finally:
         db.close()
-        @router.get("/scrape/{portal}/run")
-async def trigger_scrape_get(portal: str, secret: str):
-    """
-    GET verzija — otvori direktno u browseru:
-    /api/v1/admin/scrape/willhaben/run?secret=autoai-admin-2024
-    """
-    return await trigger_scrape(portal, secret)
-
