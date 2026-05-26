@@ -153,6 +153,8 @@ export default function SearchPage() {
           .hero{display:none!important}
           .ai-form-inner{flex-direction:column!important}
           .ai-btn{width:100%!important;margin-top:6px!important}
+          .pagination-desktop{display:none!important}
+          .pagination-mobile{display:flex!important}
         }
         @media(min-width:769px){
           .mfb{display:none!important}
