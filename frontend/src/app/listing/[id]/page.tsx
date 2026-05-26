@@ -214,7 +214,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
     { label: 'Snaga',       value: listing.engine_power_kw ? `${listing.engine_power_kw} kW` : null },
     { label: 'Karoserija',  value: listing.body_type },
     { label: 'Zemlja',      value: listing.country },
-    { label: 'Grad',        value: listing.city },
+    { label: 'Grad', value: listing.city ? listing.city.split(' - ')[0] : null },
   ].filter(s => s.value)
 
   return (
