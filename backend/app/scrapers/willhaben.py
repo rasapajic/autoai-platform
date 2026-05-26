@@ -44,7 +44,10 @@ def _extract_listings_from_next_data(data: dict) -> list:
             if c:
                 print(f"[Willhaben] Pronađena lista sa {len(c)} oglasa")
                 # ✅ Loguj strukturu prvog oglasa
-                print(f"[Willhaben] Primer oglasa: {json.dumps(c[0])[:800]}")
+                attrs = c[0].get("attributes", {}).get("attribute", [])
+attr_names = [a.get("name") for a in attrs]
+print(f"[Willhaben] Svi atributi: {attr_names}")
+print(f"[Willhaben] Opis: {c[0].get('description')}")
                 return c
 
         print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:15]}")
