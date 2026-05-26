@@ -32,6 +32,7 @@ function Navbar() {
     { href: '/search',            label: 'Pretraga' },
     { href: '/analyze',           label: 'Proveri oglas' },
     { href: '/import-calculator', label: 'Uvoz kalkulator' },
+    { href: '/profile', label: '👤 Profil' },
     { href: '/favorites',         label: '❤️ Sačuvani' },
   ]
 
