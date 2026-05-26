@@ -3,15 +3,66 @@ import json
 import re
 import aiohttp
 
-BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenmarkt"
+# Kategorije automobila na willhaben
+CATEGORIES = [
+    "limousine",
+    "kombi",
+    "suv",
+    "kleinwagen",
+    "coupe",
+    "cabrio",
+    "van",
+    "pickup",
+]
+
+BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "application/json",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
-    "Referer": "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenmarkt",
-    "x-wh-client": "api=v1.24.0",
+    "Accept-Encoding": "gzip, deflate, br",
 }
+
+
+def _extract_next_data(html: str) -> dict | None:
+    match = re.search(
+        r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+        html, re.DOTALL
+    )
+    if not match:
+        return None
+    try:
+        return json.loads(match.group(1))
+    except Exception as e:
+        print(f"[Willhaben] JSON parse greška: {e}")
+        return None
+
+
+def _extract_listings_from_next_data(data: dict) -> list:
+    try:
+        page_props = data.get("props", {}).get("pageProps", {})
+
+        # Pokušaj različite putanje do oglasa
+        candidates = [
+            page_props.get("searchResult", {}).get("advertSummaryList", {}).get("advertSummary", []),
+            page_props.get("advertSummaryList", {}).get("advertSummary", []),
+            page_props.get("listings", []),
+            page_props.get("results", []),
+        ]
+
+        for c in candidates:
+            if c:
+                print(f"[Willhaben] Pronađena lista sa {len(c)} oglasa")
+                return c
+
+        # Loguj top-level ključeve za debug
+        print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:10]}")
+        return []
+
+    except Exception as e:
+        print(f"[Willhaben] Greška ekstrakcije: {e}")
+        return []
 
 
 def _parse_price(val):
@@ -60,24 +111,6 @@ def _normalize_transmission(val):
     return val
 
 
-def _normalize_body(val):
-    if not val:
-        return None
-    val = val.lower().strip()
-    mapping = {
-        "limousine": "sedan", "sedan": "sedan",
-        "suv": "suv", "geländewagen": "suv",
-        "hatchback": "hatchback", "schrägheck": "hatchback",
-        "kombi": "kombi", "estate": "kombi",
-        "coupe": "coupe", "coupé": "coupe",
-        "cabrio": "cabrio", "van": "van",
-    }
-    for key, norm in mapping.items():
-        if key in val:
-            return norm
-    return val
-
-
 def _get_attr(attributes, name):
     for attr in attributes:
         if attr.get("name") == name:
@@ -86,7 +119,7 @@ def _get_attr(attributes, name):
     return None
 
 
-def _parse_ad(ad):
+def _parse_ad(ad: dict) -> dict | None:
     try:
         attrs = ad.get("attributes", {}).get("attribute", [])
         def g(name):
@@ -119,6 +152,13 @@ def _parse_ad(ad):
             if ref:
                 images.append(f"https://cache.willhaben.at/mmo/{ref}?rule=online-_x800")
 
+        # Pokušaj i direktne slike
+        if not images:
+            for img in (ad.get("images", []) or []):
+                url = img.get("url") or img.get("src")
+                if url:
+                    images.append(url)
+
         if not ad_id or not make:
             return None
 
@@ -133,14 +173,14 @@ def _parse_ad(ad):
             "mileage":         _parse_int(mileage_str),
             "fuel_type":       _normalize_fuel(fuel),
             "transmission":    _normalize_transmission(transmission),
-            "body_type":       _normalize_body(body),
+            "body_type":       body or None,
             "engine_power_kw": _parse_int(power),
             "color":           color.strip() or None,
             "country":         "AT",
             "city":            city.strip() or None,
             "description":     description.strip() or None,
             "images":          images[:6],
-            "url":             f"https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagen/{ad_id}",
+            "url":             f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}",
         }
     except Exception as e:
         print(f"[Willhaben] Parse greška: {e}")
@@ -148,73 +188,70 @@ def _parse_ad(ad):
 
 
 class WillhabenScraper:
-    async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list:
+    async def scrape_listings(self, filters: dict, max_pages: int = 5) -> list:
         all_listings = []
         seen_ids = set()
-        rows = 25
 
         async with aiohttp.ClientSession(headers=HEADERS) as session:
-            for page_num in range(max_pages):
-                offset = page_num * rows
-                params = {
-                    "sfId": "",
-                    "rows": rows,
-                    "isNavigation": "false",
-                    "pagingOffset": offset,
-                    "sort": 1,
-                }
+            for category in CATEGORIES[:4]:  # prvih 4 kategorije
+                url = f"{BASE_URL}/{category}"
+                print(f"[Willhaben] Kategorija: {category}")
 
-                if filters.get("make"):
-                    params["MAKE"] = filters["make"].upper()
-                if filters.get("min_price"):
-                    params["PRICE_FROM"] = filters["min_price"]
-                if filters.get("max_price"):
-                    params["PRICE_TO"] = filters["max_price"]
-                if filters.get("min_year"):
-                    params["YEAR_FROM"] = filters["min_year"]
-                if filters.get("max_year"):
-                    params["YEAR_TO"] = filters["max_year"]
-                if filters.get("max_km"):
-                    params["MILEAGE_TO"] = filters["max_km"]
+                for page in range(1, max_pages + 1):
+                    params = {}
+                    if page > 1:
+                        params["page"] = page
 
-                print(f"[Willhaben] Stranica {page_num + 1}, offset={offset}")
+                    # Dodaj filtere
+                    if filters.get("min_price"):
+                        params["PRICE_FROM"] = filters["min_price"]
+                    if filters.get("max_price"):
+                        params["PRICE_TO"] = filters["max_price"]
+                    if filters.get("min_year"):
+                        params["YEAR_FROM"] = filters["min_year"]
+                    if filters.get("max_year"):
+                        params["YEAR_TO"] = filters["max_year"]
+                    if filters.get("max_km"):
+                        params["MILEAGE_TO"] = filters["max_km"]
 
-                try:
-                    async with session.get(BASE_URL, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                        print(f"[Willhaben] Status: {resp.status} | Content-Type: {resp.content_type}")
+                    try:
+                        async with session.get(url, params=params,
+                                               timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                            print(f"[Willhaben] {category} str.{page} → status {resp.status}")
+                            if resp.status != 200:
+                                break
 
-                        if resp.status != 200:
-                            print(f"[Willhaben] Nije 200 — prekidam")
-                            break
+                            html = await resp.text()
+                            next_data = _extract_next_data(html)
 
-                        text = await resp.text()
-                        print(f"[Willhaben] Preview: {text[:500]}")
+                            if not next_data:
+                                print(f"[Willhaben] Nema __NEXT_DATA__ na {category} str.{page}")
+                                break
 
-                        try:
-                            data = json.loads(text)
-                        except Exception as je:
-                            print(f"[Willhaben] JSON greška: {je}")
-                            break
+                            adverts = _extract_listings_from_next_data(next_data)
 
-                        adverts = data.get("advertSummaryList", {}).get("advertSummary", [])
-                        print(f"[Willhaben] Oglasi u odgovoru: {len(adverts)}")
+                            if not adverts:
+                                print(f"[Willhaben] Nema oglasa — prelazim na sledeću kategoriju")
+                                break
 
-                        if not adverts:
-                            print(f"[Willhaben] Nema oglasa — kraj")
-                            break
+                            before = len(all_listings)
+                            for ad in adverts:
+                                parsed = _parse_ad(ad)
+                                if parsed and parsed["external_id"] not in seen_ids:
+                                    seen_ids.add(parsed["external_id"])
+                                    all_listings.append(parsed)
 
-                        for ad in adverts:
-                            parsed = _parse_ad(ad)
-                            if parsed and parsed["external_id"] not in seen_ids:
-                                seen_ids.add(parsed["external_id"])
-                                all_listings.append(parsed)
+                            added = len(all_listings) - before
+                            print(f"[Willhaben] {category} str.{page}: +{added} | Ukupno: {len(all_listings)}")
 
-                        print(f"[Willhaben] +{len(adverts)} | Ukupno: {len(all_listings)}")
-                        await asyncio.sleep(1.2)
+                            if len(adverts) < 10:
+                                break
 
-                except Exception as e:
-                    print(f"[Willhaben] Greška str {page_num + 1}: {e}")
-                    break
+                            await asyncio.sleep(1.5)
+
+                    except Exception as e:
+                        print(f"[Willhaben] Greška {category} str.{page}: {e}")
+                        break
 
         print(f"[Willhaben] Završeno — {len(all_listings)} oglasa")
         return all_listings
