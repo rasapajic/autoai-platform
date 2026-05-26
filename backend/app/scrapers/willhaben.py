@@ -54,7 +54,9 @@ def _extract_listings_from_next_data(data: dict) -> list:
         for c in candidates:
             if c:
                 print(f"[Willhaben] Pronađena lista sa {len(c)} oglasa")
-                return c
+if c:
+    print(f"[Willhaben] Primer oglasa: {json.dumps(c[0])[:800]}")
+return c
 
         # Loguj top-level ključeve za debug
         print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:10]}")
