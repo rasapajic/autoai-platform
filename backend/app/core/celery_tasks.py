@@ -6,9 +6,12 @@ import logging
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Listing, ScraperRun
-from app.scrapers.autoscout24 import AutoScout24Scraper
-from app.scrapers.polovni import PolvoniScraper
+
+# ✅ AutoScout24 i Polovni privremeno isključeni
+# from app.scrapers.autoscout24 import AutoScout24Scraper
+# from app.scrapers.polovni import PolvoniScraper
 from app.scrapers.mobile_de import MobileDeScraper
+from app.scrapers.willhaben import WillhabenScraper
 
 logger = logging.getLogger(__name__)
 
@@ -31,24 +34,33 @@ celery_app.conf.update(
 
 # ─── Automatski raspored scrapinga ────────────────────────────
 celery_app.conf.beat_schedule = {
-    # AutoScout24 — svakih 6 sati
-    "scrape-autoscout24": {
+    # ✅ Willhaben (Austrija) — svakih 6 sati
+    "scrape-willhaben": {
         "task": "app.core.celery_tasks.scrape_portal",
         "schedule": crontab(minute=0, hour="*/6"),
-        "args": ("autoscout24", {}),
+        "args": ("willhaben", {}),
     },
-    # Polovniautomobili — svakih 4 sata
-    "scrape-polovni": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=30, hour="*/4"),
-        "args": ("polovni", {}),
-    },
-    # Mobile.de — svakih 6 sati
+    # ✅ Mobile.de (Nemačka) — svakih 6 sati (offset 3h)
     "scrape-mobile-de": {
         "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=0, hour="1,7,13,19"),
+        "schedule": crontab(minute=0, hour="3,9,15,21"),
         "args": ("mobile_de", {}),
     },
+
+    # 🚫 AutoScout24 — privremeno isključen
+    # "scrape-autoscout24": {
+    #     "task": "app.core.celery_tasks.scrape_portal",
+    #     "schedule": crontab(minute=0, hour="*/6"),
+    #     "args": ("autoscout24", {}),
+    # },
+
+    # 🚫 Polovni automobili — privremeno isključen
+    # "scrape-polovni": {
+    #     "task": "app.core.celery_tasks.scrape_portal",
+    #     "schedule": crontab(minute=30, hour="*/4"),
+    #     "args": ("polovni", {}),
+    # },
+
     # Cleanup starih oglasa — svaki dan u ponoć
     "cleanup-old-listings": {
         "task": "app.core.celery_tasks.cleanup_old_listings",
@@ -72,11 +84,11 @@ def scrape_portal(self, portal: str, filters: dict):
     try:
         logger.info(f"🕷️ Počinjem scraping: {portal}")
 
-        # Izaberi pravi scraper
         scrapers = {
-            "autoscout24": AutoScout24Scraper(),
-            "polovni":     PolvoniScraper(),
-            "mobile_de":   MobileDeScraper(),
+            "willhaben": WillhabenScraper(),
+            "mobile_de": MobileDeScraper(),
+            # "autoscout24": AutoScout24Scraper(),  # 🚫 isključen
+            # "polovni":     PolvoniScraper(),       # 🚫 isključen
         }
 
         if portal not in scrapers:
@@ -84,12 +96,10 @@ def scrape_portal(self, portal: str, filters: dict):
 
         scraper = scrapers[portal]
 
-        # Scraping
         import asyncio
         listings = asyncio.run(scraper.scrape_listings(filters, max_pages=10))
         run.listings_found = len(listings)
 
-        # Čuvanje u bazu
         new_count, updated_count = save_listings(db, listings)
         run.listings_new = new_count
         run.listings_updated = updated_count
@@ -99,7 +109,6 @@ def scrape_portal(self, portal: str, filters: dict):
 
         logger.info(f"✅ {portal}: {new_count} novih, {updated_count} ažuriranih od {len(listings)}")
 
-        # Pokreni procenu cene za nove oglase
         if new_count > 0:
             estimate_prices.delay(portal)
 
@@ -137,7 +146,6 @@ def save_listings(db, listings: list[dict]) -> tuple[int, int]:
         ).first()
 
         if existing:
-            # Ažuriraj cenu i last_seen
             old_price = existing.price
             new_price = data.get("price")
 
@@ -145,11 +153,10 @@ def save_listings(db, listings: list[dict]) -> tuple[int, int]:
             existing.is_active = True
 
             if new_price and old_price != float(new_price):
-                existing.price = new_price  # trigger čuva price_history
+                existing.price = new_price
 
             updated_count += 1
         else:
-            # Novi oglas
             listing = Listing(**{
                 k: v for k, v in data.items()
                 if hasattr(Listing, k) and v is not None
@@ -164,10 +171,7 @@ def save_listings(db, listings: list[dict]) -> tuple[int, int]:
 # ─── Procena cene task ────────────────────────────────────────
 @celery_app.task
 def estimate_prices(portal: str = None):
-    """
-    Pokretanje ML modela za procenu cene svih oglasa
-    koji još nemaju procenu.
-    """
+    """Pokretanje ML modela za procenu cene oglasa bez procene."""
     db = SessionLocal()
     try:
         query = db.query(Listing).filter(
@@ -182,7 +186,6 @@ def estimate_prices(portal: str = None):
         if not listings:
             return {"estimated": 0}
 
-        # Uvezi model (lazy import da ne usporava ostale taskove)
         from app.ai.price_estimator import PriceEstimator
         estimator = PriceEstimator.load()
 
