@@ -181,7 +181,13 @@ export default function SearchPage() {
           .hbadges{display:none!important}
           .mkgrid{grid-template-columns:repeat(3,1fr)!important}
         }
-        @media(min-width:769px){.mfb{display:none!important}.sm{display:none!important}}
+        @media(min-width:769px){
+          .mfb{display:none!important}
+          .sm{display:none!important}
+          .ai-form-inner{display:flex!important;flex-direction:row!important;align-items:center!important}
+          .ai-input-wrap{padding-bottom:4px!important}
+          .ai-btn{width:auto!important;border-radius:10px!important}
+        }
         .ch{transition:all .22s ease!important}
         .ch:hover{border-color:var(--accent)!important;transform:translateY(-3px)!important;box-shadow:0 14px 44px rgba(0,0,0,.45)!important}
         .cb:hover{opacity:.82!important}
