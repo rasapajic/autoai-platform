@@ -87,6 +87,7 @@ export default function SearchPage() {
   const [saving,         setSaving]         = useState(false)
   const [saveSuccess,    setSaveSuccess]    = useState(false)
   const [searchHistory, setSearchHistory] = useState<string[]>([])
+  const [compareList, setCompareList] = useState<any[]>([])
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '', model: searchParams.get('model') || '',
@@ -404,7 +405,17 @@ export default function SearchPage() {
               <>
                 <div className="rg" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:20 }}>
                   {results.results.map((l: any) => (
-                    <ListingCard key={l.id} listing={l} onContact={() => setContactListing(l)} />
+                    <ListingCard key={l.id} listing={l}
+                      onContact={() => setContactListing(l)}
+                      onCompare={() => {
+                        setCompareList(prev =>
+                          prev.find(c => c.id === l.id)
+                            ? prev.filter(c => c.id !== l.id)
+                            : prev.length < 3 ? [...prev, l] : prev
+                        )
+                      }}
+                      inCompare={!!compareList.find(c => c.id === l.id)}
+                    />
                   ))}
                 </div>
                 {results.pages > 1 && (
@@ -449,10 +460,58 @@ export default function SearchPage() {
         </div>
       </div>
     </div>
+    </div>
+
+        {/* Sticky compare traka */}
+        {compareList.length > 0 && (
+          <div style={{
+            position:'fixed', bottom:0, left:0, right:0, zIndex:200,
+            background:'rgba(17,17,20,.97)', borderTop:'1px solid rgba(99,102,241,.4)',
+            backdropFilter:'blur(12px)', padding:'12px 16px',
+          }}>
+            <div className="container" style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+              <span style={{ fontSize:13, color:'var(--text3)', fontWeight:600 }}>
+                ⚖️ Poređenje ({compareList.length}/3):
+              </span>
+              <div style={{ display:'flex', gap:8, flex:1, flexWrap:'wrap' }}>
+                {compareList.map(c => (
+                  <div key={c.id} style={{
+                    background:'var(--bg3)', border:'1px solid rgba(99,102,241,.3)',
+                    borderRadius:8, padding:'5px 10px', fontSize:12,
+                    display:'flex', alignItems:'center', gap:6,
+                  }}>
+                    <span style={{ color:'var(--text2)' }}>{c.year} {c.make} {c.model}</span>
+                    <button onClick={() => setCompareList(prev => prev.filter(x => x.id !== c.id))}
+                      style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:14, lineHeight:1 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => setCompareList([])} style={{
+                  padding:'8px 14px', borderRadius:8, fontSize:13,
+                  background:'transparent', border:'1px solid var(--border)',
+                  color:'var(--text3)', cursor:'pointer',
+                }}>Otkaži</button>
+                {compareList.length >= 2 && (
+                  <button onClick={() => {
+                    const ids = compareList.map(c => c.id).join(',')
+                    window.location.href = `/compare?ids=${ids}`
+                  }} style={{
+                    padding:'8px 20px', borderRadius:8, fontSize:13, fontWeight:700,
+                    background:'var(--accent)', color:'#fff', border:'none', cursor:'pointer',
+                  }}>Uporedi →</button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+      )
+    }
   )
 }
 
-function ListingCard({ listing, onContact }: { listing: any; onContact: () => void }) {
+function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: any; onContact: () => void; onCompare: () => void; inCompare: boolean }) {
   const badge       = AI_BADGES[listing.price_rating]
   const insight     = getInsight(listing)
   const img         = listing.images?.[0]
@@ -569,6 +628,16 @@ function ListingCard({ listing, onContact }: { listing: any; onContact: () => vo
         </p>
 
         <button onClick={onContact} className="cb" style={{ width:'100%', padding:'11px', background:'rgba(99,102,241,.1)', border:'1px solid rgba(99,102,241,.3)', color:'#818CF8', borderRadius:10, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+          {/* Uporedi dugme */}
+        <button onClick={onCompare} style={{
+          width:'100%', padding:'9px', marginBottom:8,
+          background: inCompare ? 'rgba(99,102,241,.15)' : 'transparent',
+          border: `1px solid ${inCompare ? 'rgba(99,102,241,.5)' : 'var(--border)'}`,
+          color: inCompare ? '#818CF8' : 'var(--text3)',
+          borderRadius:10, fontSize:13, cursor:'pointer', fontWeight:500,
+        }}>
+          {inCompare ? '✓ Dodato za poređenje' : '⚖️ Uporedi'}
+        </button>
           🤖 Kontaktiraj prodavca
         </button>
       </div>
