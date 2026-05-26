@@ -10,6 +10,7 @@ const QUICK_QUESTIONS = [
   'Koliko ima vlasnika?',
   'Da li postoje skrivene mane?',
   'Da li je moguća test vožnja?',
+  'Da li je moguće ukloniti MwSt (PDV) za izvoz van EU?',
 ]
 
 const COUNTRY_LANG: Record<string, { name: string; code: string }> = {
