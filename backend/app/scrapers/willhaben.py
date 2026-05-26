@@ -3,7 +3,7 @@ import json
 import re
 import aiohttp
 
-CATEGORIES = ["limousine"]  # samo limousine dok ne fixujemo parser
+CATEGORIES = ["limousine"]
 
 BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
 
@@ -16,10 +16,7 @@ HEADERS = {
 
 
 def _extract_next_data(html: str) -> dict | None:
-    match = re.search(
-        r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
-        html, re.DOTALL
-    )
+    match = re.search(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', html, re.DOTALL)
     if not match:
         return None
     try:
@@ -32,27 +29,22 @@ def _extract_next_data(html: str) -> dict | None:
 def _extract_listings_from_next_data(data: dict) -> list:
     try:
         page_props = data.get("props", {}).get("pageProps", {})
-
         candidates = [
             page_props.get("searchResult", {}).get("advertSummaryList", {}).get("advertSummary", []),
             page_props.get("advertSummaryList", {}).get("advertSummary", []),
             page_props.get("listings", []),
             page_props.get("results", []),
         ]
-
         for c in candidates:
             if c:
                 print(f"[Willhaben] Pronađena lista sa {len(c)} oglasa")
-                # ✅ Loguj strukturu prvog oglasa
                 attrs = c[0].get("attributes", {}).get("attribute", [])
-attr_names = [a.get("name") for a in attrs]
-print(f"[Willhaben] Svi atributi: {attr_names}")
-print(f"[Willhaben] Opis: {c[0].get('description')}")
+                attr_names = [a.get("name") for a in attrs]
+                print(f"[Willhaben] Svi atributi: {attr_names}")
+                print(f"[Willhaben] Opis: {c[0].get('description')}")
                 return c
-
         print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:15]}")
         return []
-
     except Exception as e:
         print(f"[Willhaben] Greška ekstrakcije: {e}")
         return []
@@ -144,7 +136,6 @@ def _parse_ad(ad: dict) -> dict | None:
             ref = img.get("reference")
             if ref:
                 images.append(f"https://cache.willhaben.at/mmo/{ref}?rule=online-_x800")
-
         if not images:
             for img in (ad.get("images", []) or []):
                 url = img.get("url") or img.get("src")
@@ -193,7 +184,6 @@ class WillhabenScraper:
                     params = {}
                     if page > 1:
                         params["page"] = page
-
                     if filters.get("min_price"):
                         params["PRICE_FROM"] = filters["min_price"]
                     if filters.get("max_price"):
@@ -206,21 +196,18 @@ class WillhabenScraper:
                         params["MILEAGE_TO"] = filters["max_km"]
 
                     try:
-                        async with session.get(url, params=params,
-                                               timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
                             print(f"[Willhaben] {category} str.{page} → status {resp.status}")
                             if resp.status != 200:
                                 break
 
                             html = await resp.text()
                             next_data = _extract_next_data(html)
-
                             if not next_data:
                                 print(f"[Willhaben] Nema __NEXT_DATA__")
                                 break
 
                             adverts = _extract_listings_from_next_data(next_data)
-
                             if not adverts:
                                 break
 
