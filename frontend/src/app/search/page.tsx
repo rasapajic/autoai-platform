@@ -367,15 +367,33 @@ export default function SearchPage() {
                   ))}
                 </div>
                 {results.pages > 1 && (
-                  <div style={{ display:'flex', justifyContent:'center', gap:8, marginTop:40, flexWrap:'wrap' }}>
-                    {[...Array(Math.min(results.pages, 8))].map((_,i) => (
-                      <button key={i} onClick={() => setFilter('page', i+1)} style={{
-                        width:42, height:42, borderRadius:10, border:'1px solid var(--border)',
-                        background: filters.page === i+1 ? 'var(--accent)' : 'var(--bg2)',
-                        color: filters.page === i+1 ? '#fff' : 'var(--text2)',
-                        fontSize:14, cursor:'pointer', fontWeight:600,
-                      }}>{i+1}</button>
-                    ))}
+                  <div style={{ marginTop:32 }}>
+                    {/* Desktop — brojevi stranica */}
+                    <div className="pagination-desktop" style={{ display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap' }}>
+                      {[...Array(Math.min(results.pages, 8))].map((_,i) => (
+                        <button key={i} onClick={() => setFilter('page', i+1)} style={{
+                          width:42, height:42, borderRadius:10, border:'1px solid var(--border)',
+                          background: filters.page === i+1 ? 'var(--accent)' : 'var(--bg2)',
+                          color: filters.page === i+1 ? '#fff' : 'var(--text2)',
+                          fontSize:14, cursor:'pointer', fontWeight:600,
+                        }}>{i+1}</button>
+                      ))}
+                    </div>
+                    {/* Mobilni — Učitaj još */}
+                    <div className="pagination-mobile" style={{ display:'none', flexDirection:'column', alignItems:'center', gap:12 }}>
+                      {filters.page < results.pages && (
+                        <button onClick={() => setFilter('page', filters.page + 1)} style={{
+                          width:'100%', padding:'14px', borderRadius:12,
+                          background:'var(--bg2)', border:'1px solid var(--border)',
+                          color:'var(--text2)', fontSize:15, fontWeight:600, cursor:'pointer',
+                        }}>
+                          ⬇️ Učitaj još oglasa
+                        </button>
+                      )}
+                      <span style={{ fontSize:12, color:'var(--text3)' }}>
+                        Strana {filters.page} od {results.pages}
+                      </span>
+                    </div>
                   </div>
                 )}
               </>
