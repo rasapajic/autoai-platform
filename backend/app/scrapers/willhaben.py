@@ -3,17 +3,7 @@ import json
 import re
 import aiohttp
 
-# Kategorije automobila na willhaben
-CATEGORIES = [
-    "limousine",
-    "kombi",
-    "suv",
-    "kleinwagen",
-    "coupe",
-    "cabrio",
-    "van",
-    "pickup",
-]
+CATEGORIES = ["limousine"]  # samo limousine dok ne fixujemo parser
 
 BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
 
@@ -43,7 +33,6 @@ def _extract_listings_from_next_data(data: dict) -> list:
     try:
         page_props = data.get("props", {}).get("pageProps", {})
 
-        # Pokušaj različite putanje do oglasa
         candidates = [
             page_props.get("searchResult", {}).get("advertSummaryList", {}).get("advertSummary", []),
             page_props.get("advertSummaryList", {}).get("advertSummary", []),
@@ -54,12 +43,11 @@ def _extract_listings_from_next_data(data: dict) -> list:
         for c in candidates:
             if c:
                 print(f"[Willhaben] Pronađena lista sa {len(c)} oglasa")
-if c:
-    print(f"[Willhaben] Primer oglasa: {json.dumps(c[0])[:800]}")
-return c
+                # ✅ Loguj strukturu prvog oglasa
+                print(f"[Willhaben] Primer oglasa: {json.dumps(c[0])[:800]}")
+                return c
 
-        # Loguj top-level ključeve za debug
-        print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:10]}")
+        print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:15]}")
         return []
 
     except Exception as e:
@@ -127,18 +115,18 @@ def _parse_ad(ad: dict) -> dict | None:
         def g(name):
             return _get_attr(attrs, name)
 
-        ad_id     = str(ad.get("id", ""))
-        make      = g("MAKE")
-        model     = g("MODEL")
-        year_str  = g("YEAR")
-        price_str = g("PRICE_FOR_DISPLAY") or g("PRICE")
+        ad_id       = str(ad.get("id", ""))
+        make        = g("MAKE")
+        model       = g("MODEL")
+        year_str    = g("YEAR")
+        price_str   = g("PRICE_FOR_DISPLAY") or g("PRICE")
         mileage_str = g("MILEAGE")
-        fuel      = g("FUEL_TYPE") or ""
+        fuel        = g("FUEL_TYPE") or ""
         transmission = g("TRANSMISSION_TYPE") or ""
-        body      = g("CAR_TYPE") or ""
-        power     = g("POWER_KW") or g("ENGINE_POWER")
-        color     = g("COLOR") or ""
-        city      = g("LOCATION") or g("DISTRICT") or ""
+        body        = g("CAR_TYPE") or ""
+        power       = g("POWER_KW") or g("ENGINE_POWER")
+        color       = g("COLOR") or ""
+        city        = g("LOCATION") or g("DISTRICT") or ""
         description = ad.get("description", "") or ""
 
         year = None
@@ -154,7 +142,6 @@ def _parse_ad(ad: dict) -> dict | None:
             if ref:
                 images.append(f"https://cache.willhaben.at/mmo/{ref}?rule=online-_x800")
 
-        # Pokušaj i direktne slike
         if not images:
             for img in (ad.get("images", []) or []):
                 url = img.get("url") or img.get("src")
@@ -195,7 +182,7 @@ class WillhabenScraper:
         seen_ids = set()
 
         async with aiohttp.ClientSession(headers=HEADERS) as session:
-            for category in CATEGORIES[:4]:  # prvih 4 kategorije
+            for category in CATEGORIES:
                 url = f"{BASE_URL}/{category}"
                 print(f"[Willhaben] Kategorija: {category}")
 
@@ -204,7 +191,6 @@ class WillhabenScraper:
                     if page > 1:
                         params["page"] = page
 
-                    # Dodaj filtere
                     if filters.get("min_price"):
                         params["PRICE_FROM"] = filters["min_price"]
                     if filters.get("max_price"):
@@ -227,13 +213,12 @@ class WillhabenScraper:
                             next_data = _extract_next_data(html)
 
                             if not next_data:
-                                print(f"[Willhaben] Nema __NEXT_DATA__ na {category} str.{page}")
+                                print(f"[Willhaben] Nema __NEXT_DATA__")
                                 break
 
                             adverts = _extract_listings_from_next_data(next_data)
 
                             if not adverts:
-                                print(f"[Willhaben] Nema oglasa — prelazim na sledeću kategoriju")
                                 break
 
                             before = len(all_listings)
