@@ -92,4 +92,11 @@ async def scrape_status(secret: Optional[str] = Header(None, alias="x-admin-secr
         }
     finally:
         db.close()
+        @router.get("/scrape/{portal}/run")
+async def trigger_scrape_get(portal: str, secret: str):
+    """
+    GET verzija — otvori direktno u browseru:
+    /api/v1/admin/scrape/willhaben/run?secret=autoai-admin-2024
+    """
+    return await trigger_scrape(portal, secret)
 
