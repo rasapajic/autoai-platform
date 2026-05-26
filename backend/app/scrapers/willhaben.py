@@ -3,7 +3,7 @@ import json
 import re
 import aiohttp
 
-CATEGORIES = ["limousine"]
+CATEGORIES = ["limousine", "kombi", "suv", "kleinwagen", "coupe", "cabrio", "van"]
 
 BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
 
@@ -37,11 +37,6 @@ def _extract_listings_from_next_data(data: dict) -> list:
         ]
         for c in candidates:
             if c:
-                print(f"[Willhaben] Pronađena lista sa {len(c)} oglasa")
-                attrs = c[0].get("attributes", {}).get("attribute", [])
-                attr_names = [a.get("name") for a in attrs]
-                print(f"[Willhaben] Svi atributi: {attr_names}")
-                print(f"[Willhaben] Opis: {c[0].get('description')}")
                 return c
         print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:15]}")
         return []
@@ -111,17 +106,20 @@ def _parse_ad(ad: dict) -> dict | None:
             return _get_attr(attrs, name)
 
         ad_id       = str(ad.get("id", ""))
-        make        = g("MAKE")
-        model       = g("MODEL")
+        make        = g("CAR_MODEL/MAKE")
+        model       = g("CAR_MODEL/MODEL")
+        variant     = g("CAR_MODEL/MODEL_SPECIFICATION")
         year_str    = g("YEAR")
-        price_str   = g("PRICE_FOR_DISPLAY") or g("PRICE")
+        price_str   = g("PRICE_FOR_DISPLAY") or g("PRICE") or g("PRICE/AMOUNT")
         mileage_str = g("MILEAGE")
-        fuel        = g("FUEL_TYPE") or ""
-        transmission = g("TRANSMISSION_TYPE") or ""
+        fuel        = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
+        transmission = g("TRANSMISSION_RESOLVED") or g("TRANSMISSION") or ""
         body        = g("CAR_TYPE") or ""
-        power       = g("POWER_KW") or g("ENGINE_POWER")
-        color       = g("COLOR") or ""
+        power       = g("ENGINE/EFFECT") or ""
+        color       = g("EXTERIORCOLOURMAIN") or ""
         city        = g("LOCATION") or g("DISTRICT") or ""
+        country     = g("COUNTRY") or "AT"
+        seo_url     = g("SEO_URL") or ""
         description = ad.get("description", "") or ""
 
         year = None
@@ -131,16 +129,28 @@ def _parse_ad(ad: dict) -> dict | None:
             except Exception:
                 pass
 
+        # Slike iz ALL_IMAGE_URLS
         images = []
-        for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
-            ref = img.get("reference")
-            if ref:
-                images.append(f"https://cache.willhaben.at/mmo/{ref}?rule=online-_x800")
+        all_imgs = g("ALL_IMAGE_URLS")
+        if all_imgs:
+            try:
+                img_list = json.loads(all_imgs) if all_imgs.startswith("[") else all_imgs.split(",")
+                images = [i.strip() for i in img_list if i.strip()][:6]
+            except Exception:
+                images = [all_imgs] if all_imgs else []
+
+        # Fallback na advertImageList
         if not images:
-            for img in (ad.get("images", []) or []):
-                url = img.get("url") or img.get("src")
-                if url:
-                    images.append(url)
+            for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
+                ref = img.get("reference")
+                if ref:
+                    images.append(f"https://cache.willhaben.at/mmo/{ref}?rule=online-_x800")
+
+        # URL
+        if seo_url:
+            url = f"https://www.willhaben.at{seo_url}" if seo_url.startswith("/") else f"https://www.willhaben.at/{seo_url}"
+        else:
+            url = f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}"
 
         if not ad_id or not make:
             return None
@@ -150,6 +160,7 @@ def _parse_ad(ad: dict) -> dict | None:
             "source":          "willhaben",
             "make":            make,
             "model":           model,
+            "variant":         variant,
             "year":            year,
             "price":           _parse_price(price_str),
             "currency":        "EUR",
@@ -159,11 +170,11 @@ def _parse_ad(ad: dict) -> dict | None:
             "body_type":       body or None,
             "engine_power_kw": _parse_int(power),
             "color":           color.strip() or None,
-            "country":         "AT",
+            "country":         country,
             "city":            city.strip() or None,
             "description":     description.strip() or None,
-            "images":          images[:6],
-            "url":             f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}",
+            "images":          images,
+            "url":             url,
         }
     except Exception as e:
         print(f"[Willhaben] Parse greška: {e}")
@@ -197,7 +208,7 @@ class WillhabenScraper:
 
                     try:
                         async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                            print(f"[Willhaben] {category} str.{page} → status {resp.status}")
+                            print(f"[Willhaben] {category} str.{page} → {resp.status}")
                             if resp.status != 200:
                                 break
 
