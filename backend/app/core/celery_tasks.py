@@ -7,15 +7,10 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Listing, ScraperRun
 
-# ✅ AutoScout24 i Polovni privremeno isključeni
-# from app.scrapers.autoscout24 import AutoScout24Scraper
-# from app.scrapers.polovni import PolvoniScraper
-from app.scrapers.mobile_de import MobileDeScraper
-from app.scrapers.willhaben import WillhabenScraper
+# ✅ Nema top-level scraper importa — sve je lazy unutar funkcija
 
 logger = logging.getLogger(__name__)
 
-# ─── Celery setup ─────────────────────────────────────────────
 celery_app = Celery(
     "autoai",
     broker=settings.REDIS_URL,
@@ -32,36 +27,17 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-# ─── Automatski raspored scrapinga ────────────────────────────
 celery_app.conf.beat_schedule = {
-    # ✅ Willhaben (Austrija) — svakih 6 sati
     "scrape-willhaben": {
         "task": "app.core.celery_tasks.scrape_portal",
         "schedule": crontab(minute=0, hour="*/6"),
         "args": ("willhaben", {}),
     },
-    # ✅ Mobile.de (Nemačka) — svakih 6 sati (offset 3h)
     "scrape-mobile-de": {
         "task": "app.core.celery_tasks.scrape_portal",
         "schedule": crontab(minute=0, hour="3,9,15,21"),
         "args": ("mobile_de", {}),
     },
-
-    # 🚫 AutoScout24 — privremeno isključen
-    # "scrape-autoscout24": {
-    #     "task": "app.core.celery_tasks.scrape_portal",
-    #     "schedule": crontab(minute=0, hour="*/6"),
-    #     "args": ("autoscout24", {}),
-    # },
-
-    # 🚫 Polovni automobili — privremeno isključen
-    # "scrape-polovni": {
-    #     "task": "app.core.celery_tasks.scrape_portal",
-    #     "schedule": crontab(minute=30, hour="*/4"),
-    #     "args": ("polovni", {}),
-    # },
-
-    # Cleanup starih oglasa — svaki dan u ponoć
     "cleanup-old-listings": {
         "task": "app.core.celery_tasks.cleanup_old_listings",
         "schedule": crontab(minute=0, hour=0),
@@ -69,13 +45,8 @@ celery_app.conf.beat_schedule = {
 }
 
 
-# ─── Scraping task ────────────────────────────────────────────
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=120)
 def scrape_portal(self, portal: str, filters: dict):
-    """
-    Glavni task za scraping jednog portala.
-    Automatski se ponovi do 3 puta ako dođe do greške.
-    """
     db = SessionLocal()
     run = ScraperRun(portal=portal, status="running")
     db.add(run)
@@ -84,17 +55,15 @@ def scrape_portal(self, portal: str, filters: dict):
     try:
         logger.info(f"🕷️ Počinjem scraping: {portal}")
 
-        scrapers = {
-            "willhaben": WillhabenScraper(),
-            "mobile_de": MobileDeScraper(),
-            # "autoscout24": AutoScout24Scraper(),  # 🚫 isključen
-            # "polovni":     PolvoniScraper(),       # 🚫 isključen
-        }
-
-        if portal not in scrapers:
+        # ✅ Lazy import — ovde, ne na vrhu fajla
+        if portal == "willhaben":
+            from app.scrapers.willhaben import WillhabenScraper
+            scraper = WillhabenScraper()
+        elif portal == "mobile_de":
+            from app.scrapers.mobile_de import MobileDeScraper
+            scraper = MobileDeScraper()
+        else:
             raise ValueError(f"Nepoznat portal: {portal}")
-
-        scraper = scrapers[portal]
 
         import asyncio
         listings = asyncio.run(scraper.scrape_listings(filters, max_pages=10))
@@ -107,17 +76,12 @@ def scrape_portal(self, portal: str, filters: dict):
         run.finished_at = datetime.utcnow()
         db.commit()
 
-        logger.info(f"✅ {portal}: {new_count} novih, {updated_count} ažuriranih od {len(listings)}")
+        logger.info(f"✅ {portal}: {new_count} novih, {updated_count} ažuriranih")
 
         if new_count > 0:
             estimate_prices.delay(portal)
 
-        return {
-            "portal": portal,
-            "found": len(listings),
-            "new": new_count,
-            "updated": updated_count,
-        }
+        return {"portal": portal, "found": len(listings), "new": new_count, "updated": updated_count}
 
     except Exception as exc:
         run.status = "failed"
@@ -131,58 +95,37 @@ def scrape_portal(self, portal: str, filters: dict):
         db.close()
 
 
-def save_listings(db, listings: list[dict]) -> tuple[int, int]:
-    """Čuva oglase u bazu — insertuje nove, ažurira postojeće."""
+def save_listings(db, listings: list) -> tuple:
     new_count = 0
     updated_count = 0
-
     for data in listings:
         external_id = data.get("external_id")
         if not external_id:
             continue
-
-        existing = db.query(Listing).filter(
-            Listing.external_id == external_id
-        ).first()
-
+        existing = db.query(Listing).filter(Listing.external_id == external_id).first()
         if existing:
-            old_price = existing.price
-            new_price = data.get("price")
-
             existing.last_seen_at = datetime.utcnow()
             existing.is_active = True
-
-            if new_price and old_price != float(new_price):
+            new_price = data.get("price")
+            if new_price and existing.price != float(new_price):
                 existing.price = new_price
-
             updated_count += 1
         else:
-            listing = Listing(**{
-                k: v for k, v in data.items()
-                if hasattr(Listing, k) and v is not None
-            })
+            listing = Listing(**{k: v for k, v in data.items() if hasattr(Listing, k) and v is not None})
             db.add(listing)
             new_count += 1
-
     db.commit()
     return new_count, updated_count
 
 
-# ─── Procena cene task ────────────────────────────────────────
 @celery_app.task
 def estimate_prices(portal: str = None):
-    """Pokretanje ML modela za procenu cene oglasa bez procene."""
     db = SessionLocal()
     try:
-        query = db.query(Listing).filter(
-            Listing.price_estimated == None,
-            Listing.is_active == True,
-        )
+        query = db.query(Listing).filter(Listing.price_estimated == None, Listing.is_active == True)
         if portal:
             query = query.filter(Listing.source == portal)
-
         listings = query.limit(500).all()
-
         if not listings:
             return {"estimated": 0}
 
@@ -193,33 +136,20 @@ def estimate_prices(portal: str = None):
         for listing in listings:
             try:
                 result = estimator.predict({
-                    "make":         listing.make or "",
-                    "model":        listing.model or "",
-                    "year":         listing.year or 0,
-                    "mileage":      listing.mileage or 0,
-                    "fuel_type":    listing.fuel_type or "",
-                    "transmission": listing.transmission or "",
-                    "country":      listing.country or "",
-                    "engine_cc":    listing.engine_cc or 0,
+                    "make": listing.make or "", "model": listing.model or "",
+                    "year": listing.year or 0, "mileage": listing.mileage or 0,
+                    "fuel_type": listing.fuel_type or "", "transmission": listing.transmission or "",
+                    "country": listing.country or "", "engine_cc": listing.engine_cc or 0,
                 })
-
                 listing.price_estimated = result["estimated_price"]
                 if listing.price and result["estimated_price"]:
-                    delta = ((float(listing.price) - result["estimated_price"])
-                             / result["estimated_price"]) * 100
+                    delta = ((float(listing.price) - result["estimated_price"]) / result["estimated_price"]) * 100
                     listing.price_delta_pct = round(delta, 2)
-
-                    if delta < -15:
-                        listing.price_rating = "great"
-                    elif delta < -5:
-                        listing.price_rating = "good"
-                    elif delta < 5:
-                        listing.price_rating = "fair"
-                    elif delta < 15:
-                        listing.price_rating = "high"
-                    else:
-                        listing.price_rating = "overpriced"
-
+                    if delta < -15: listing.price_rating = "great"
+                    elif delta < -5: listing.price_rating = "good"
+                    elif delta < 5: listing.price_rating = "fair"
+                    elif delta < 15: listing.price_rating = "high"
+                    else: listing.price_rating = "overpriced"
                 count += 1
             except Exception as e:
                 logger.warning(f"Procena nije uspela za {listing.id}: {e}")
@@ -227,22 +157,18 @@ def estimate_prices(portal: str = None):
         db.commit()
         logger.info(f"💰 Procenio cene za {count} oglasa")
         return {"estimated": count}
-
     finally:
         db.close()
 
 
-# ─── Cleanup task ─────────────────────────────────────────────
 @celery_app.task
 def cleanup_old_listings():
-    """Deaktivira oglase koje nismo vidjeli >7 dana."""
     from datetime import timedelta
     db = SessionLocal()
     try:
         cutoff = datetime.utcnow() - timedelta(days=7)
         count = db.query(Listing).filter(
-            Listing.last_seen_at < cutoff,
-            Listing.is_active == True,
+            Listing.last_seen_at < cutoff, Listing.is_active == True
         ).update({"is_active": False})
         db.commit()
         logger.info(f"🧹 Deaktivirao {count} starih oglasa")
