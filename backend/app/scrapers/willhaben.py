@@ -3,7 +3,7 @@ import json
 import re
 import aiohttp
 
-CATEGORIES = ["limousine", "kombi", "suv", "kleinwagen", "coupe", "cabrio", "van"]
+CATEGORIES = ["limousine"]
 
 BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
 
@@ -37,6 +37,11 @@ def _extract_listings_from_next_data(data: dict) -> list:
         ]
         for c in candidates:
             if c:
+                # Debug vrednosti prvog oglasa
+                attrs = c[0].get("attributes", {}).get("attribute", [])
+                for a in attrs:
+                    if a.get("name") in ["PRICE_FOR_DISPLAY", "PRICE", "PRICE/AMOUNT", "ALL_IMAGE_URLS"]:
+                        print(f"[Willhaben] {a['name']}: {str(a.get('values', ''))[:150]}")
                 return c
         print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:15]}")
         return []
@@ -105,22 +110,22 @@ def _parse_ad(ad: dict) -> dict | None:
         def g(name):
             return _get_attr(attrs, name)
 
-        ad_id       = str(ad.get("id", ""))
-        make        = g("CAR_MODEL/MAKE")
-        model       = g("CAR_MODEL/MODEL")
-        variant     = g("CAR_MODEL/MODEL_SPECIFICATION")
-        year_str    = g("YEAR")
-        price_str   = g("PRICE_FOR_DISPLAY") or g("PRICE") or g("PRICE/AMOUNT")
-        mileage_str = g("MILEAGE")
-        fuel        = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
+        ad_id        = str(ad.get("id", ""))
+        make         = g("CAR_MODEL/MAKE")
+        model        = g("CAR_MODEL/MODEL")
+        variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
+        year_str     = g("YEAR")
+        price_str    = g("PRICE_FOR_DISPLAY") or g("PRICE") or g("PRICE/AMOUNT")
+        mileage_str  = g("MILEAGE")
+        fuel         = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
         transmission = g("TRANSMISSION_RESOLVED") or g("TRANSMISSION") or ""
-        body        = g("CAR_TYPE") or ""
-        power       = g("ENGINE/EFFECT") or ""
-        color       = g("EXTERIORCOLOURMAIN") or ""
-        city        = g("LOCATION") or g("DISTRICT") or ""
-        country     = g("COUNTRY") or "AT"
-        seo_url     = g("SEO_URL") or ""
-        description = ad.get("description", "") or ""
+        body         = g("CAR_TYPE") or ""
+        power        = g("ENGINE/EFFECT") or ""
+        color        = g("EXTERIORCOLOURMAIN") or ""
+        city         = g("LOCATION") or g("DISTRICT") or ""
+        country      = g("COUNTRY") or "AT"
+        seo_url      = g("SEO_URL") or ""
+        description  = ad.get("description", "") or ""
 
         year = None
         if year_str:
@@ -129,7 +134,7 @@ def _parse_ad(ad: dict) -> dict | None:
             except Exception:
                 pass
 
-        # Slike iz ALL_IMAGE_URLS
+        # Slike
         images = []
         all_imgs = g("ALL_IMAGE_URLS")
         if all_imgs:
@@ -139,7 +144,6 @@ def _parse_ad(ad: dict) -> dict | None:
             except Exception:
                 images = [all_imgs] if all_imgs else []
 
-        # Fallback na advertImageList
         if not images:
             for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
                 ref = img.get("reference")
