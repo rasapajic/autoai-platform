@@ -87,3 +87,18 @@ async def scrape_status(secret: str):
         return {"status": "ok", "sources": {s: c for s, c in rows}, "total": sum(c for _, c in rows)}
     finally:
         db.close()
+@router.get("/cleanup/willhaben-bad-prices")
+async def cleanup_bad_prices(secret: str):
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    db = SessionLocal()
+    try:
+        count = db.query(Listing).filter(
+            Listing.source == "willhaben",
+            Listing.price < 500
+        ).delete()
+        db.commit()
+        return {"deleted": count}
+    finally:
+        db.close()
