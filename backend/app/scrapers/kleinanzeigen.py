@@ -77,7 +77,7 @@ def _extract_make_model(title: str) -> tuple:
     return (words[0][:100] if words else None), (" ".join(words[1:3])[:100] if len(words) > 1 else None)
 
 
-def _parse_listings_from_html(html: str) -> list:
+def _parse_listings_from_html(html: str, debug: bool = False) -> list:
     listings = []
 
     article_pattern = re.compile(
@@ -85,22 +85,31 @@ def _parse_listings_from_html(html: str) -> list:
         re.DOTALL
     )
 
-    for match in article_pattern.finditer(html):
+    matches = list(article_pattern.finditer(html))
+    print(f"[Kleinanzeigen] Article matches: {len(matches)}")
+
+    for idx, match in enumerate(matches):
         ad_id   = match.group(1)
         ad_href = match.group(2)
         content = match.group(3)
 
-        # Samo auto kategorija
         if "-216-" not in ad_href:
             continue
 
+        # DEBUG prvog oglasa
+        if idx == 0:
+            print(f"[Kleinanzeigen] CONTENT[0] preview: {content[200:800]}")
+            # Prikaži sve što sadrži € ili "price"
+            price_area = re.findall(r'.{0,30}[€\d\.]+\s*€.{0,30}|.{0,30}price.{0,50}', content, re.IGNORECASE)
+            print(f"[Kleinanzeigen] Price area: {price_area[:5]}")
+
         ad_url = f"https://www.kleinanzeigen.de{ad_href}"
 
-        # ✅ Parsiramo application/ld+json unutar article-a
+        # LD+JSON
         title = ""
         price = None
-        description = ""
         img_url = ""
+        description = ""
 
         ld_match = re.search(
             r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
@@ -111,29 +120,28 @@ def _parse_listings_from_html(html: str) -> list:
                 ld = json.loads(ld_match.group(1))
                 title       = ld.get("title") or ld.get("name") or ""
                 description = ld.get("description") or ""
-
-                # Cena iz offers
-                offers = ld.get("offers") or ld.get("offer") or {}
+                offers      = ld.get("offers") or {}
                 if isinstance(offers, list):
                     offers = offers[0] if offers else {}
-                price_raw = offers.get("price") or offers.get("lowPrice") or ld.get("price")
+                price_raw = offers.get("price") or ld.get("price")
                 price = _parse_price(price_raw)
 
-                # Slika
-                images_ld = ld.get("image") or []
-                if isinstance(images_ld, str):
-                    img_url = images_ld
-                elif isinstance(images_ld, list) and images_ld:
-                    img_url = images_ld[0]
+                imgs = ld.get("image") or []
+                if isinstance(imgs, str):
+                    img_url = imgs
+                elif isinstance(imgs, list) and imgs:
+                    img_url = imgs[0]
 
+                if idx == 0:
+                    print(f"[Kleinanzeigen] LD keys: {list(ld.keys())}")
+                    print(f"[Kleinanzeigen] LD offers: {offers}")
             except Exception as e:
                 print(f"[Kleinanzeigen] LD+JSON greška: {e}")
 
-        # Fallback naslov iz HTML-a
+        # Fallback naslov
         if not title:
             for pat in [
                 r'class="[^"]*text-module-begin[^"]*"[^>]*>(.*?)</a>',
-                r'class="[^"]*ellipsis[^"]*"[^>]*>(.*?)</a>',
                 r'<h[23][^>]*>(.*?)</h[23]>',
             ]:
                 m = re.search(pat, content, re.DOTALL)
@@ -141,23 +149,17 @@ def _parse_listings_from_html(html: str) -> list:
                     title = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 200)
                     break
 
-        # Fallback cena iz HTML-a
+        # Fallback cena — traži sve € u sadržaju
         if not price:
-            for pat in [
-                r'class="[^"]*aditem-main--middle--price[^"]*"[^>]*>(.*?)</p>',
-                r'class="[^"]*price[^"]*"[^>]*>(.*?)</',
-            ]:
-                m = re.search(pat, content, re.DOTALL)
-                if m:
-                    price_text = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50)
-                    price = _parse_price(price_text)
-                    if price:
-                        break
+            # Traži pattern: broj + €
+            all_prices = re.findall(r'([\d.,]+)\s*€', content)
+            for p_str in all_prices:
+                p = _parse_price(p_str + " €")
+                if p:
+                    price = p
+                    break
 
-        if not price:
-            continue
-
-        # Fallback slika iz HTML-a
+        # Fallback slika
         if not img_url:
             m = re.search(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', content)
             if m:
@@ -168,6 +170,7 @@ def _parse_listings_from_html(html: str) -> list:
         for pat in [
             r'class="[^"]*aditem-main--top--left[^"]*"[^>]*>(.*?)</p>',
             r'class="[^"]*locality[^"]*"[^>]*>(.*?)</',
+            r'(\d{5}\s+[\w\-]+)',
         ]:
             m = re.search(pat, content, re.DOTALL)
             if m:
@@ -176,7 +179,12 @@ def _parse_listings_from_html(html: str) -> list:
                 city = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', city).strip()[:100]
                 break
 
-        # Godište i km iz naslova
+        # Ako nema cene — preskoči
+        if not price:
+            if idx == 0:
+                print(f"[Kleinanzeigen] Nema cene za oglas {ad_id}")
+            continue
+
         year_m = re.search(r'\b(20[0-2]\d|199\d)\b', title)
         km_m   = re.search(r'([\d.]+)\s*km', title, re.IGNORECASE)
 
