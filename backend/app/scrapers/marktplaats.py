@@ -43,7 +43,7 @@ def _normalize_fuel(val) -> str | None:
     val = val.lower().strip()
     mapping = {
         "diesel": "diesel", "benzine": "petrol", "petrol": "petrol",
-        "electric": "electric", "elektrisch": "electric", "elektr": "electric",
+        "electric": "electric", "elektrisch": "electric",
         "hybrid": "hybrid", "lpg": "lpg", "cng": "cng",
     }
     for key, norm in mapping.items():
@@ -63,35 +63,68 @@ def _normalize_transmission(val) -> str | None:
     return val
 
 
-def _get_attribute(attributes: list, name: str) -> str | None:
+def _get_attr(attributes: list, *keys) -> str | None:
+    """Traži atribut po jednom od više ključeva"""
     for attr in attributes:
         key = attr.get("key", "").lower()
-        if name.lower() in key:
-            val = attr.get("value")
-            if not val and attr.get("values"):
-                val = attr["values"][0] if attr["values"] else None
-            if val:
-                return str(val)
+        for k in keys:
+            if k.lower() in key:
+                val = attr.get("value")
+                if not val and attr.get("values"):
+                    val = attr["values"][0] if attr["values"] else None
+                if val:
+                    return str(val)
     return None
 
 
-def _parse_listing(item: dict) -> dict | None:
+def _extract_price(item: dict) -> float | None:
+    """Pokušava sve moguće lokacije cene u Marktplaats JSON-u"""
+    # 1. price.priceInfo.priceCents
+    price_obj = item.get("price")
+    if isinstance(price_obj, dict):
+        info = price_obj.get("priceInfo", {}) or {}
+        cents = info.get("priceCents")
+        if cents:
+            return float(cents) / 100
+        text = info.get("priceText") or ""
+        p = _parse_price(text)
+        if p:
+            return p
+
+    # 2. priceInfo direktno na item nivou
+    info2 = item.get("priceInfo", {}) or {}
+    cents2 = info2.get("priceCents")
+    if cents2:
+        return float(cents2) / 100
+
+    # 3. price kao broj
+    if isinstance(price_obj, (int, float)):
+        p = float(price_obj)
+        return p if p >= 500 else None
+
+    # 4. price kao string
+    if isinstance(price_obj, str):
+        return _parse_price(price_obj)
+
+    # 5. askingPrice
+    asking = item.get("askingPrice") or item.get("asking_price")
+    if asking:
+        return _parse_price(str(asking))
+
+    return None
+
+
+def _parse_listing(item: dict, debug: bool = False) -> dict | None:
     try:
+        if debug:
+            print(f"[Marktplaats] FULL: {json.dumps(item)[:700]}")
+
         item_id = str(item.get("itemId", "") or item.get("id", ""))
         if not item_id:
             return None
 
         title = item.get("title", "") or ""
-
-        # Cena
-        price_obj = item.get("price", {}) or {}
-        price_info = price_obj.get("priceInfo", {}) or {}
-        price_cents = price_info.get("priceCents")
-        if price_cents:
-            price = float(price_cents) / 100
-        else:
-            price_text = price_info.get("priceText") or ""
-            price = _parse_price(price_text)
+        price = _extract_price(item)
 
         if not price or price < 500:
             return None
@@ -100,27 +133,26 @@ def _parse_listing(item: dict) -> dict | None:
         location = item.get("location", {}) or {}
         city = location.get("cityName") or location.get("city") or ""
 
-        # Atributi
+        # Atributi — koristi ENGLESKE nazive koje API stvarno vraća
         attributes = item.get("attributes", []) or []
-        extended = item.get("extendedAttributes", []) or []
-        all_attrs = attributes + extended
+        extended   = item.get("extendedAttributes", []) or []
+        all_attrs  = attributes + extended
 
-        make         = _get_attribute(all_attrs, "merk") or _get_attribute(all_attrs, "make") or _get_attribute(all_attrs, "brand")
-        model        = _get_attribute(all_attrs, "model")
-        year_str     = _get_attribute(all_attrs, "bouwjaar") or _get_attribute(all_attrs, "year") or _get_attribute(all_attrs, "constructiejaar")
-        km_str       = _get_attribute(all_attrs, "kilometerstand") or _get_attribute(all_attrs, "mileage") or _get_attribute(all_attrs, "km")
-        fuel_str     = _get_attribute(all_attrs, "brandstof") or _get_attribute(all_attrs, "fuel")
-        trans_str    = _get_attribute(all_attrs, "transmissie") or _get_attribute(all_attrs, "versnellingsbak")
-        body_str     = _get_attribute(all_attrs, "carrosserie") or _get_attribute(all_attrs, "body")
-        power_str    = _get_attribute(all_attrs, "vermogen") or _get_attribute(all_attrs, "power")
-        color_str    = _get_attribute(all_attrs, "kleur") or _get_attribute(all_attrs, "color")
+        make      = _get_attr(all_attrs, "merk", "make", "brand", "car_make")
+        model     = _get_attr(all_attrs, "model", "car_model")
+        year_str  = _get_attr(all_attrs, "constructionyear", "bouwjaar", "year", "constructiejaar")
+        km_str    = _get_attr(all_attrs, "mileage", "kilometerstand", "km")
+        fuel_str  = _get_attr(all_attrs, "fuel", "brandstof", "fueltype")
+        trans_str = _get_attr(all_attrs, "transmission", "transmissie", "versnellingsbak")
+        body_str  = _get_attr(all_attrs, "body", "carrosserie", "bodytype")
+        power_str = _get_attr(all_attrs, "power", "vermogen", "enginepower")
+        color_str = _get_attr(all_attrs, "color", "kleur", "colour")
 
-        # Ako nema make iz atributa, pokušaj iz naslova
+        # Izvuci make/model iz naslova ako nema iz atributa
         if not make and title:
             parts = title.split()
-            if parts:
-                make = parts[0]
-                model = model or (parts[1] if len(parts) > 1 else None)
+            make  = parts[0] if parts else None
+            model = model or (parts[1] if len(parts) > 1 else None)
 
         year = _parse_int(year_str)
         if year and year < 2000:
@@ -136,7 +168,7 @@ def _parse_listing(item: dict) -> dict | None:
                     url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_79.jpg"
             else:
                 url = str(img)
-            if url:
+            if url and url.startswith("http"):
                 images.append(url)
 
         # URL
@@ -176,15 +208,14 @@ class MarktplaatsScraper:
         all_listings = []
         seen_ids = set()
         limit = 30
+        first_run = True
 
         async with aiohttp.ClientSession(headers=HEADERS) as session:
             for page_num in range(max_pages):
                 offset = page_num * limit
+                # ✅ Bez l2CategoryId — samo l1=91 za sve automobile
                 params = {
                     "l1CategoryId": 91,
-                    "l2CategoryId": 91,
-                    "searchInTitleAndDescription": "true",
-                    "viewOptions": "list-view",
                     "sortBy": "SORT_INDEX",
                     "sortOrder": "DECREASING",
                     "limit": limit,
@@ -208,16 +239,19 @@ class MarktplaatsScraper:
                         text = await resp.text()
                         data = json.loads(text)
 
-                        # ✅ Čitamo iz OBA - listings + topBlock
-                        regular  = data.get("listings") or []
-                        top      = data.get("topBlock") or []
+                        regular   = data.get("listings") or []
+                        top       = data.get("topBlock") or []
                         all_items = regular + top
 
-                        print(f"[Marktplaats] listings={len(regular)}, topBlock={len(top)}, ukupno={len(all_items)}")
+                        print(f"[Marktplaats] listings={len(regular)}, topBlock={len(top)}, total={data.get('totalResultCount',0)}")
 
                         if not all_items:
-                            print(f"[Marktplaats] Nema oglasa — kraj")
                             break
+
+                        # Debug prvog oglasa
+                        if first_run and all_items:
+                            first_run = False
+                            print(f"[Marktplaats] FULL ITEM: {json.dumps(all_items[0])[:800]}")
 
                         before = len(all_listings)
                         for item in all_items:
@@ -228,13 +262,6 @@ class MarktplaatsScraper:
 
                         added = len(all_listings) - before
                         print(f"[Marktplaats] Str.{page_num+1}: +{added} | Ukupno: {len(all_listings)}")
-
-                        # Log prvog oglasa za debug
-                        if page_num == 0 and all_items:
-                            first = all_items[0]
-                            print(f"[Marktplaats] Primer: id={first.get('itemId')} | title={first.get('title')} | price={first.get('price')}")
-                            attrs = first.get("attributes", [])
-                            print(f"[Marktplaats] Atributi: {[a.get('key') for a in attrs[:10]]}")
 
                         total = data.get("totalResultCount", 0)
                         if offset + limit >= total or len(all_items) < limit:
