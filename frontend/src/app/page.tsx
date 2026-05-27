@@ -58,7 +58,10 @@ function fullImg(url: string): string {
   return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
 }
 
-function Pagination({ pages, current, onPage }: { pages: number; current: number; onPage: (p: number) => void }) {
+// ✅ Dodat opcionalni style prop
+function Pagination({ pages, current, onPage, style: extraStyle }: {
+  pages: number; current: number; onPage: (p: number) => void; style?: React.CSSProperties
+}) {
   const items: (number | string)[] = []
   if (pages <= 10) {
     for (let i = 1; i <= pages; i++) items.push(i)
@@ -70,7 +73,7 @@ function Pagination({ pages, current, onPage }: { pages: number; current: number
     items.push(pages)
   }
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 40, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap', alignItems: 'center', ...extraStyle }}>
       <button onClick={() => current > 1 && onPage(current - 1)} disabled={current === 1} style={{
         width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)',
         background: 'var(--bg2)', color: current === 1 ? 'var(--text3)' : 'var(--text2)',
@@ -207,15 +210,11 @@ export default function SearchPage() {
           <div style={{ flex: 1, minWidth: 180 }}>
             <p className="ht" style={{
               fontSize: 24, fontWeight: 700, margin: 0,
-              fontFamily: 'Syne,sans-serif', lineHeight: 1.25,
-              letterSpacing: '-.01em',
+              fontFamily: 'Syne,sans-serif', lineHeight: 1.25, letterSpacing: '-.01em',
             }}>
               AI pomoćnik za kupovinu auta iz EU
             </p>
-            <p className="hsub" style={{
-              fontSize: 13, color: 'var(--text3)',
-              margin: '8px 0 0', lineHeight: 1.6,
-            }}>
+            <p className="hsub" style={{ fontSize: 13, color: 'var(--text3)', margin: '8px 0 0', lineHeight: 1.6 }}>
               AI analiza cijene · Trošak uvoza za Srbiju · Provjera oglasa
             </p>
           </div>
@@ -272,93 +271,40 @@ export default function SearchPage() {
                 {make === 'Mercedes-Benz' ? 'Mercedes' : make === 'Volkswagen' ? 'VW' : make}
               </button>
             ))}
-
-            {/* Ostale marke dugme */}
             {!customMake && !isCustomMakeActive && (
-              <button
-                className="mkbtn cb"
-                onClick={() => setCustomMake(true)}
-                style={{
-                  padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-                  background: 'var(--bg2)', border: '1px dashed var(--border)',
-                  color: 'var(--text3)', cursor: 'pointer', textAlign: 'center',
-                  gridColumn: 'span 2',
-                }}
-              >
-                + Ostale marke
-              </button>
+              <button className="mkbtn cb" onClick={() => setCustomMake(true)} style={{
+                padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
+                background: 'var(--bg2)', border: '1px dashed var(--border)',
+                color: 'var(--text3)', cursor: 'pointer', textAlign: 'center', gridColumn: 'span 2',
+              }}>+ Ostale marke</button>
             )}
-
-            {/* Aktivna custom marka */}
             {isCustomMakeActive && !customMake && (
-              <button
-                className="mkbtn cb"
-                onClick={() => setFilter('make', '')}
-                style={{
-                  padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
-                  background: 'rgba(255,107,0,.12)', border: '1px solid var(--accent)',
-                  color: 'var(--accent)', cursor: 'pointer', textAlign: 'center',
-                  gridColumn: 'span 2',
-                }}
-              >
-                {filters.make} ✕
-              </button>
+              <button className="mkbtn cb" onClick={() => setFilter('make', '')} style={{
+                padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                background: 'rgba(255,107,0,.12)', border: '1px solid var(--accent)',
+                color: 'var(--accent)', cursor: 'pointer', textAlign: 'center', gridColumn: 'span 2',
+              }}>{filters.make} ✕</button>
             )}
-
-            {/* Input za unos marke */}
             {customMake && (
               <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, marginTop: 2 }}>
-                <input
-                  autoFocus
-                  placeholder="Upiši marku npr. Porsche, Jeep, Ferrari..."
+                <input autoFocus placeholder="Upiši marku npr. Porsche, Jeep, Ferrari..."
                   defaultValue={isCustomMakeActive ? filters.make : ''}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      const val = (e.target as HTMLInputElement).value.trim()
-                      if (val) setFilter('make', val)
-                      setCustomMake(false)
-                    }
+                    if (e.key === 'Enter') { const val = (e.target as HTMLInputElement).value.trim(); if (val) setFilter('make', val); setCustomMake(false) }
                     if (e.key === 'Escape') setCustomMake(false)
                   }}
-                  style={{
-                    flex: 1, background: 'var(--bg3)',
-                    border: '1px solid var(--accent)',
-                    borderRadius: 10, padding: '9px 14px',
-                    color: 'var(--text)', fontSize: 13, outline: 'none',
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    const input = document.querySelector('input[placeholder*="Upiši marku"]') as HTMLInputElement
-                    const val   = input?.value.trim()
-                    if (val) setFilter('make', val)
-                    setCustomMake(false)
-                  }}
-                  style={{
-                    padding: '9px 16px', borderRadius: 10,
-                    background: 'var(--accent)', border: 'none',
-                    color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  }}
-                >Traži</button>
-                <button
-                  onClick={() => setCustomMake(false)}
-                  style={{
-                    padding: '9px 14px', borderRadius: 10,
-                    background: 'transparent', border: '1px solid var(--border)',
-                    color: 'var(--text3)', fontSize: 12, cursor: 'pointer',
-                  }}
-                >✕</button>
+                  style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 10, padding: '9px 14px', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
+                <button onClick={() => { const input = document.querySelector('input[placeholder*="Upiši marku"]') as HTMLInputElement; const val = input?.value.trim(); if (val) setFilter('make', val); setCustomMake(false) }}
+                  style={{ padding: '9px 16px', borderRadius: 10, background: 'var(--accent)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Traži</button>
+                <button onClick={() => setCustomMake(false)}
+                  style={{ padding: '9px 14px', borderRadius: 10, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text3)', fontSize: 12, cursor: 'pointer' }}>✕</button>
               </div>
             )}
           </div>
-
           {filters.make && !customMake && (
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
               Prikazujem: <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{filters.make}</span>
-              <button onClick={() => setFilter('make', '')} style={{
-                marginLeft: 8, background: 'none', border: 'none',
-                color: 'var(--text3)', cursor: 'pointer', fontSize: 12,
-              }}>✕ Ukloni</button>
+              <button onClick={() => setFilter('make', '')} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12 }}>✕ Ukloni</button>
             </div>
           )}
         </div>
@@ -375,23 +321,15 @@ export default function SearchPage() {
 
         <div className="sg" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 24, alignItems: 'start' }}>
 
-          {/* Sidebar desktop */}
-          <aside className="sd" style={{
-            background: 'var(--bg2)', border: '1px solid var(--border)',
-            borderRadius: 16, padding: 20, position: 'sticky', top: 80,
-          }}>
+          <aside className="sd" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, position: 'sticky', top: 80 }}>
             <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
               const r = { make:'',model:'',min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
               setFilters(r); doSearch(r)
             }} />
           </aside>
 
-          {/* Mobile sidebar */}
           {sidebarOpen && (
-            <div className="sm" style={{
-              background: 'var(--bg2)', border: '1px solid var(--border)',
-              borderRadius: 16, padding: 20, marginBottom: 16, gridColumn: '1/-1',
-            }}>
+            <div className="sm" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16, gridColumn: '1/-1' }}>
               <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
                 const r = { make:'',model:'',min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
                 setFilters(r); doSearch(r)
@@ -399,9 +337,8 @@ export default function SearchPage() {
             </div>
           )}
 
-          {/* Results */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
               <div>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>
                   {loading ? '...' : `${results?.total?.toLocaleString() || 0} vozila`}
@@ -426,11 +363,28 @@ export default function SearchPage() {
               </div>
             ) : results?.results?.length ? (
               <>
+                {/* ✅ Paginacija gore */}
+                {results.pages > 1 && (
+                  <Pagination
+                    pages={results.pages}
+                    current={filters.page}
+                    onPage={p => setFilter('page', p)}
+                    style={{ marginBottom: 20 }}
+                  />
+                )}
+
                 <div className="rg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 20 }}>
                   {results.results.map((l: any) => <ListingCard key={l.id} listing={l} />)}
                 </div>
+
+                {/* ✅ Paginacija dole */}
                 {results.pages > 1 && (
-                  <Pagination pages={results.pages} current={filters.page} onPage={p => setFilter('page', p)} />
+                  <Pagination
+                    pages={results.pages}
+                    current={filters.page}
+                    onPage={p => { setFilter('page', p); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                    style={{ marginTop: 40 }}
+                  />
                 )}
               </>
             ) : (
