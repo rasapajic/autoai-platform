@@ -7,8 +7,6 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Listing, ScraperRun
 
-# ✅ Nema top-level scraper importa — sve je lazy unutar funkcija
-
 logger = logging.getLogger(__name__)
 
 celery_app = Celery(
@@ -28,16 +26,20 @@ celery_app.conf.update(
 )
 
 celery_app.conf.beat_schedule = {
+    # ✅ Willhaben (Austrija) — svakih 6 sati
     "scrape-willhaben": {
         "task": "app.core.celery_tasks.scrape_portal",
         "schedule": crontab(minute=0, hour="*/6"),
         "args": ("willhaben", {}),
     },
-    "scrape-mobile-de": {
+    # ✅ AutoScout24 — svakih 6 sati (offset 3h)
+    "scrape-autoscout24": {
         "task": "app.core.celery_tasks.scrape_portal",
         "schedule": crontab(minute=0, hour="3,9,15,21"),
-        "args": ("mobile_de", {}),
+        "args": ("autoscout24", {}),
     },
+    # 🚫 Mobile.de — blokira server-side zahteve (403)
+    # "scrape-mobile-de": { ... },
     "cleanup-old-listings": {
         "task": "app.core.celery_tasks.cleanup_old_listings",
         "schedule": crontab(minute=0, hour=0),
@@ -55,10 +57,12 @@ def scrape_portal(self, portal: str, filters: dict):
     try:
         logger.info(f"🕷️ Počinjem scraping: {portal}")
 
-        # ✅ Lazy import — ovde, ne na vrhu fajla
         if portal == "willhaben":
             from app.scrapers.willhaben import WillhabenScraper
             scraper = WillhabenScraper()
+        elif portal == "autoscout24":
+            from app.scrapers.autoscout24 import AutoScout24Scraper
+            scraper = AutoScout24Scraper()
         elif portal == "mobile_de":
             from app.scrapers.mobile_de import MobileDeScraper
             scraper = MobileDeScraper()
