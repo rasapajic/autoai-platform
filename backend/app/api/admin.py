@@ -145,3 +145,15 @@ async def fix_willhaben_urls(secret: str):
         return {"status": "ok", "fixed": count}
     finally:
         db.close()
+@router.get("/cleanup/kleinanzeigen")
+async def cleanup_kleinanzeigen(secret: str):
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    db = SessionLocal()
+    try:
+        count = db.query(Listing).filter(Listing.source == "kleinanzeigen").delete()
+        db.commit()
+        return {"deleted": count}
+    finally:
+        db.close()
