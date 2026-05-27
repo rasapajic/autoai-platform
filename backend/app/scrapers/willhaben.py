@@ -3,9 +3,10 @@ import json
 import re
 import aiohttp
 
-CATEGORIES = ["limousine"]
+CATEGORIES = ["limousine", "suv-gelaendewagen", "kombi", "kleinwagen", "coupe", "cabrio-roadster", "van-minibus"]
 
 BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
+IMG_BASE = "https://cache.willhaben.at/mmo/"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
@@ -37,11 +38,6 @@ def _extract_listings_from_next_data(data: dict) -> list:
         ]
         for c in candidates:
             if c:
-                # Debug vrednosti prvog oglasa
-                attrs = c[0].get("attributes", {}).get("attribute", [])
-                for a in attrs:
-                    if a.get("name") in ["PRICE_FOR_DISPLAY", "PRICE", "PRICE/AMOUNT", "ALL_IMAGE_URLS"]:
-                        print(f"[Willhaben] {a['name']}: {str(a.get('values', ''))[:150]}")
                 return c
         print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:15]}")
         return []
@@ -51,11 +47,24 @@ def _extract_listings_from_next_data(data: dict) -> list:
 
 
 def _parse_price(val):
+    """Parsira cenu — podržava i nemački format (6.990) i decimalni (6990.0)"""
     if val is None:
         return None
     try:
-        cleaned = re.sub(r"[^\d.]", "", str(val).replace(",", ".").replace(" ", ""))
-        return float(cleaned) if cleaned else None
+        s = str(val).strip()
+        # Ukloni simbol valute i razmake
+        s = re.sub(r"[€EUR\s]", "", s)
+        # Nemački format: 6.990 ili 16.090 — tačka je separator hiljada
+        # Ako nema zareza, a ima tačke + tačka nije decimalna (3+ cifre posle)
+        if "," not in s and "." in s:
+            parts = s.split(".")
+            if len(parts[-1]) == 3:  # 6.990 → hiljada separator
+                s = s.replace(".", "")
+            # inače je decimala (6990.0)
+        else:
+            s = s.replace(".", "").replace(",", ".")
+        s = re.sub(r"[^\d.]", "", s)
+        return float(s) if s else None
     except Exception:
         return None
 
@@ -115,7 +124,8 @@ def _parse_ad(ad: dict) -> dict | None:
         model        = g("CAR_MODEL/MODEL")
         variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
         year_str     = g("YEAR")
-        price_str    = g("PRICE_FOR_DISPLAY") or g("PRICE") or g("PRICE/AMOUNT")
+        # ✅ Koristimo PRICE/AMOUNT koji vraća čist broj (6990.0)
+        price_str    = g("PRICE/AMOUNT") or g("PRICE") or g("PRICE_FOR_DISPLAY")
         mileage_str  = g("MILEAGE")
         fuel         = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
         transmission = g("TRANSMISSION_RESOLVED") or g("TRANSMISSION") or ""
@@ -134,21 +144,22 @@ def _parse_ad(ad: dict) -> dict | None:
             except Exception:
                 pass
 
-        # Slike
+        # ✅ Slike — semicolon-separated relativne putanje
         images = []
         all_imgs = g("ALL_IMAGE_URLS")
         if all_imgs:
-            try:
-                img_list = json.loads(all_imgs) if all_imgs.startswith("[") else all_imgs.split(",")
-                images = [i.strip() for i in img_list if i.strip()][:6]
-            except Exception:
-                images = [all_imgs] if all_imgs else []
+            paths = all_imgs.split(";")
+            images = [
+                f"{IMG_BASE}{p.strip()}?rule=online-_x800"
+                for p in paths if p.strip()
+            ][:6]
 
+        # Fallback
         if not images:
             for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
                 ref = img.get("reference")
                 if ref:
-                    images.append(f"https://cache.willhaben.at/mmo/{ref}?rule=online-_x800")
+                    images.append(f"{IMG_BASE}{ref}?rule=online-_x800")
 
         # URL
         if seo_url:
