@@ -22,16 +22,12 @@ KNOWN_MAKES = [
 
 
 def _clean_text(text: str, max_len: int = 100) -> str:
-    """Čisti HTML entitete, whitespace i ograničava dužinu"""
     if not text:
         return ""
-    # Ukloni HTML entitete
     text = re.sub(r'&#\d+;', '', text)
     text = re.sub(r'&#x[0-9a-fA-F]+;', '', text)
     text = re.sub(r'&\w+;', ' ', text)
-    # Uzmi samo prvi red
     text = text.split("\n")[0].strip()
-    # Ukloni višestruke razmake
     text = re.sub(r'\s+', ' ', text).strip()
     return text[:max_len]
 
@@ -68,18 +64,6 @@ def _parse_int(val) -> int | None:
         return None
 
 
-def _normalize_fuel(val) -> str | None:
-    if not val:
-        return None
-    val = val.lower()
-    if "diesel" in val: return "diesel"
-    if "benzin" in val or "petrol" in val: return "petrol"
-    if "elektro" in val or "electric" in val: return "electric"
-    if "hybrid" in val: return "hybrid"
-    if "lpg" in val or "autogas" in val: return "lpg"
-    return None
-
-
 def _extract_make_model(title: str) -> tuple:
     if not title:
         return None, None
@@ -96,19 +80,59 @@ def _extract_make_model(title: str) -> tuple:
 def _parse_listings_from_html(html: str) -> list:
     listings = []
 
-    # article[data-adid] HTML parsing
-    article_pattern = re.compile(
+    # DEBUG — prikaži deo HTML-a oko article tagova
+    article_pos = html.find('<article')
+    if article_pos >= 0:
+        print(f"[Kleinanzeigen] Article tag preview: {html[article_pos:article_pos+500]}")
+    else:
+        print(f"[Kleinanzeigen] Nema <article> tagova!")
+        # Potraži alternativne strukture
+        for tag in ['data-adid', 'aditem', 'adlist', 'l-container']:
+            if tag in html:
+                pos = html.find(tag)
+                print(f"[Kleinanzeigen] Pronađeno '{tag}' na poz {pos}: {html[max(0,pos-50):pos+200]}")
+                break
+        print(f"[Kleinanzeigen] HTML preview (5000-6000): {html[5000:6000]}")
+        return []
+
+    # Pokušaj 1: data-adid + data-href
+    pattern1 = re.compile(
         r'<article[^>]+data-adid="(\d+)"[^>]*data-href="([^"]*)"[^>]*>(.*?)</article>',
         re.DOTALL
     )
+    matches1 = list(pattern1.finditer(html))
+    print(f"[Kleinanzeigen] Pattern1 (data-adid+data-href): {len(matches1)} matches")
 
-    for match in article_pattern.finditer(html):
-        ad_id   = match.group(1)
-        ad_href = match.group(2)
-        content = match.group(3)
+    # Pokušaj 2: samo data-adid
+    pattern2 = re.compile(
+        r'<article[^>]+data-adid="(\d+)"[^>]*>(.*?)</article>',
+        re.DOTALL
+    )
+    matches2 = list(pattern2.finditer(html))
+    print(f"[Kleinanzeigen] Pattern2 (samo data-adid): {len(matches2)} matches")
 
+    # Pokušaj 3: article sa klasom
+    pattern3 = re.compile(
+        r'<article[^>]+class="[^"]*aditem[^"]*"[^>]*>(.*?)</article>',
+        re.DOTALL
+    )
+    matches3 = list(pattern3.finditer(html))
+    print(f"[Kleinanzeigen] Pattern3 (class=aditem): {len(matches3)} matches")
+
+    # Koristi koji god radi
+    if matches1:
+        active_matches = [(m.group(1), m.group(2), m.group(3)) for m in matches1]
+    elif matches2:
+        active_matches = [(m.group(1), "", m.group(2)) for m in matches2]
+    elif matches3:
+        active_matches = [("", "", m.group(1)) for m in matches3]
+    else:
+        print(f"[Kleinanzeigen] Nijedan pattern ne odgovara")
+        return []
+
+    for ad_id, ad_href, content in active_matches:
         # Samo auto kategorija
-        if "-216-" not in ad_href:
+        if ad_href and "-216-" not in ad_href:
             continue
 
         # Naslov
@@ -116,6 +140,7 @@ def _parse_listings_from_html(html: str) -> list:
         for pat in [
             r'class="[^"]*text-module-begin[^"]*"[^>]*>(.*?)</a>',
             r'class="[^"]*ellipsis[^"]*"[^>]*>(.*?)</a>',
+            r'<a[^>]+href="[^"]*-216-[^"]*"[^>]*>(.*?)</a>',
         ]:
             m = re.search(pat, content, re.DOTALL)
             if m:
@@ -126,30 +151,36 @@ def _parse_listings_from_html(html: str) -> list:
             if m:
                 title = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 200)
 
+        # ID iz href ako nije u data-adid
+        if not ad_id:
+            m = re.search(r'/(\d+)-216-', ad_href or content)
+            if m:
+                ad_id = m.group(1)
+
         # Cena
         price_text = ""
         for pat in [
             r'class="[^"]*aditem-main--middle--price[^"]*"[^>]*>(.*?)</p>',
             r'class="[^"]*price[^"]*"[^>]*>(.*?)</',
+            r'€\s*([\d.,]+)',
         ]:
             m = re.search(pat, content, re.DOTALL)
             if m:
-                price_text = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50)
+                price_text = _clean_text(re.sub(r'<[^>]+>', '', m.group(1) if '(' in pat else m.group(0)), 50)
                 break
 
-        # Lokacija — samo postal code + naziv grada, max 1 red
+        # Lokacija
         city = ""
         for pat in [
             r'class="[^"]*aditem-main--top--left[^"]*"[^>]*>(.*?)</p>',
             r'class="[^"]*locality[^"]*"[^>]*>(.*?)</',
+            r'<span[^>]*>\s*(\d{5}\s+\w+)',
         ]:
             m = re.search(pat, content, re.DOTALL)
             if m:
                 raw = re.sub(r'<[^>]+>', ' ', m.group(1))
                 city = _clean_text(raw, 100)
-                # Ukloni datum
-                city = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', city).strip()
-                city = city[:100]
+                city = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', city).strip()[:100]
                 break
 
         # Slika
@@ -158,20 +189,23 @@ def _parse_listings_from_html(html: str) -> list:
         if m:
             img_url = m.group(1)
 
-        # Godište iz naslova
-        year_m = re.search(r'\b(20[0-2]\d|199\d)\b', title)
+        # URL
+        if ad_href:
+            ad_url = f"https://www.kleinanzeigen.de{ad_href}" if ad_href.startswith("/") else ad_href
+        elif ad_id:
+            ad_url = f"https://www.kleinanzeigen.de/s-anzeige/{ad_id}"
+        else:
+            continue
 
-        # Km iz naslova
-        km_m = re.search(r'([\d.]+)\s*km', title, re.IGNORECASE)
-        km_val = None
-        if km_m:
-            km_val = _parse_int(km_m.group(1).replace(".", ""))
+        # Godište i km iz naslova
+        year_m = re.search(r'\b(20[0-2]\d|199\d)\b', title)
+        km_m   = re.search(r'([\d.]+)\s*km', title, re.IGNORECASE)
 
         price = _parse_price(price_text)
         if not price:
             continue
-
-        ad_url = f"https://www.kleinanzeigen.de{ad_href}" if ad_href.startswith("/") else ad_href
+        if not ad_id:
+            continue
 
         listings.append({
             "id":      ad_id,
@@ -181,10 +215,10 @@ def _parse_listings_from_html(html: str) -> list:
             "image":   img_url,
             "url":     ad_url,
             "year":    _parse_int(year_m.group(1)) if year_m else None,
-            "mileage": km_val,
+            "mileage": _parse_int(km_m.group(1).replace(".", "")) if km_m else None,
         })
 
-    print(f"[Kleinanzeigen] HTML parsing: {len(listings)} auto oglasa")
+    print(f"[Kleinanzeigen] Ukupno parsiranih: {len(listings)}")
     return listings
 
 
@@ -204,9 +238,7 @@ def _parse_listing(item: dict) -> dict | None:
         if year and year < 2000:
             return None
 
-        city = item.get("city") or ""
-        # Finalni cleanup grada
-        city = _clean_text(city, 100)
+        city = _clean_text(item.get("city") or "", 100)
 
         images = []
         img = item.get("image", "")
@@ -247,11 +279,12 @@ class KleinanzeigenScraper:
 
                 try:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=25)) as resp:
-                        print(f"[Kleinanzeigen] Status: {resp.status}")
+                        print(f"[Kleinanzeigen] Status: {resp.status} | Dužina: {resp.content_length}")
                         if resp.status != 200:
                             break
 
                         html = await resp.text()
+                        print(f"[Kleinanzeigen] HTML dužina: {len(html)}")
                         items = _parse_listings_from_html(html)
 
                         if not items:
