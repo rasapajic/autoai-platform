@@ -44,6 +44,10 @@ async def _run_scraper(portal: str):
                     new_price = data.get("price")
                     if new_price and existing.price != float(new_price):
                         existing.price = new_price
+                    # ✅ Ažuriraj URL ako se promenio
+                    new_url = data.get("url")
+                    if new_url:
+                        existing.url = new_url
                     updated_count += 1
                 else:
                     listing = Listing(**{k: v for k, v in data.items() if hasattr(Listing, k) and v is not None})
@@ -93,7 +97,11 @@ async def cleanup_bad_prices(secret: str):
         ).delete()
         db.commit()
         return {"status": "ok", "deleted": count}
-        @router.get("/fix/willhaben-urls")
+    finally:
+        db.close()
+
+
+@router.get("/fix/willhaben-urls")
 async def fix_willhaben_urls(secret: str):
     """Popravlja willhaben URL-ove koji nemaju /iad/ prefix"""
     check_secret(secret)
@@ -113,9 +121,6 @@ async def fix_willhaben_urls(secret: str):
             )
             count += 1
         db.commit()
-        return {"fixed": count}
-    finally:
-        db.close()
-        
+        return {"status": "ok", "fixed": count}
     finally:
         db.close()
