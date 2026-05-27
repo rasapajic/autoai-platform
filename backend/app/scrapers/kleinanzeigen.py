@@ -21,14 +21,27 @@ KNOWN_MAKES = [
 ]
 
 
+def _clean_text(text: str, max_len: int = 100) -> str:
+    """Čisti HTML entitete, whitespace i ograničava dužinu"""
+    if not text:
+        return ""
+    # Ukloni HTML entitete
+    text = re.sub(r'&#\d+;', '', text)
+    text = re.sub(r'&#x[0-9a-fA-F]+;', '', text)
+    text = re.sub(r'&\w+;', ' ', text)
+    # Uzmi samo prvi red
+    text = text.split("\n")[0].strip()
+    # Ukloni višestruke razmake
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text[:max_len]
+
+
 def _parse_price(val) -> float | None:
-    """Parsira nemački format cene: 9.350 € = 9350 EUR"""
     if val is None:
         return None
     try:
         s = str(val).strip()
         s = re.sub(r"[€EUR\s]", "", s)
-        # Nemački format: tačka = separator hiljada, zarez = decimala
         if "," in s:
             parts = s.split(",")
             s = parts[0].replace(".", "") + "." + parts[1]
@@ -38,7 +51,6 @@ def _parse_price(val) -> float | None:
         if not s:
             return None
         price = float(s)
-        # Realne granice cene automobila
         if price < 500 or price > 500000:
             return None
         return price
@@ -68,15 +80,6 @@ def _normalize_fuel(val) -> str | None:
     return None
 
 
-def _normalize_transmission(val) -> str | None:
-    if not val:
-        return None
-    val = val.lower()
-    if any(w in val for w in ["automatik", "automatic", "dsg"]): return "automatic"
-    if any(w in val for w in ["schaltgetriebe", "manual"]): return "manual"
-    return None
-
-
 def _extract_make_model(title: str) -> tuple:
     if not title:
         return None, None
@@ -84,27 +87,16 @@ def _extract_make_model(title: str) -> tuple:
         if make.lower() in title.lower():
             rest  = re.sub(re.escape(make), "", title, flags=re.IGNORECASE).strip()
             words = rest.split()
-            return make, (" ".join(words[:2]) if words else None)
+            model = " ".join(words[:2]) if words else None
+            return make, model[:100] if model else None
     words = title.split()
-    return (words[0] if words else None), (" ".join(words[1:3]) if len(words) > 1 else None)
+    return (words[0][:100] if words else None), (" ".join(words[1:3])[:100] if len(words) > 1 else None)
 
 
 def _parse_listings_from_html(html: str) -> list:
     listings = []
 
-    # Metoda 1: JSON u script tagovima
-    for script in re.findall(r'<script[^>]*type="application/json"[^>]*>(.*?)</script>', html, re.DOTALL):
-        try:
-            data = json.loads(script)
-            for key in ["ads", "listings", "items", "results"]:
-                val = data.get(key) if isinstance(data, dict) else None
-                if isinstance(val, list) and val:
-                    print(f"[Kleinanzeigen] JSON script: {len(val)} pod '{key}'")
-                    return val
-        except Exception:
-            pass
-
-    # Metoda 2: article[data-adid] HTML parsing
+    # article[data-adid] HTML parsing
     article_pattern = re.compile(
         r'<article[^>]+data-adid="(\d+)"[^>]*data-href="([^"]*)"[^>]*>(.*?)</article>',
         re.DOTALL
@@ -115,7 +107,7 @@ def _parse_listings_from_html(html: str) -> list:
         ad_href = match.group(2)
         content = match.group(3)
 
-        # ✅ Filter — samo auto kategorija (URL sadrži -216-)
+        # Samo auto kategorija
         if "-216-" not in ad_href:
             continue
 
@@ -124,31 +116,28 @@ def _parse_listings_from_html(html: str) -> list:
         for pat in [
             r'class="[^"]*text-module-begin[^"]*"[^>]*>(.*?)</a>',
             r'class="[^"]*ellipsis[^"]*"[^>]*>(.*?)</a>',
-            r'<a[^>]+class="[^"]*aditem[^"]*"[^>]*>(.*?)</a>',
         ]:
             m = re.search(pat, content, re.DOTALL)
             if m:
-                title = re.sub(r'<[^>]+>', '', m.group(1)).strip()
+                title = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 200)
                 break
-
         if not title:
             m = re.search(r'<h[23][^>]*>(.*?)</h[23]>', content, re.DOTALL)
             if m:
-                title = re.sub(r'<[^>]+>', '', m.group(1)).strip()
+                title = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 200)
 
-        # Cena — traži specifično price element
+        # Cena
         price_text = ""
         for pat in [
             r'class="[^"]*aditem-main--middle--price[^"]*"[^>]*>(.*?)</p>',
             r'class="[^"]*price[^"]*"[^>]*>(.*?)</',
-            r'data-testid="[^"]*price[^"]*"[^>]*>(.*?)</',
         ]:
             m = re.search(pat, content, re.DOTALL)
             if m:
-                price_text = re.sub(r'<[^>]+>', '', m.group(1)).strip()
+                price_text = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50)
                 break
 
-        # Lokacija
+        # Lokacija — samo postal code + naziv grada, max 1 red
         city = ""
         for pat in [
             r'class="[^"]*aditem-main--top--left[^"]*"[^>]*>(.*?)</p>',
@@ -156,9 +145,11 @@ def _parse_listings_from_html(html: str) -> list:
         ]:
             m = re.search(pat, content, re.DOTALL)
             if m:
-                city = re.sub(r'<[^>]+>', '', m.group(1)).strip()
-                # Ukloni datum (danas, juče...)
-                city = re.sub(r'\b(Heute|Gestern|\d+\.\d+\.)\b.*', '', city).strip()
+                raw = re.sub(r'<[^>]+>', ' ', m.group(1))
+                city = _clean_text(raw, 100)
+                # Ukloni datum
+                city = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', city).strip()
+                city = city[:100]
                 break
 
         # Slika
@@ -167,16 +158,14 @@ def _parse_listings_from_html(html: str) -> list:
         if m:
             img_url = m.group(1)
 
-        # Opis u podnaslovu
-        desc = ""
-        m = re.search(r'class="[^"]*aditem-main--middle--description[^"]*"[^>]*>(.*?)</p>', content, re.DOTALL)
-        if m:
-            desc = re.sub(r'<[^>]+>', ' ', m.group(1)).strip()
+        # Godište iz naslova
+        year_m = re.search(r'\b(20[0-2]\d|199\d)\b', title)
 
-        # Godište iz opisa
-        year_m = re.search(r'\b(20[0-2]\d|199\d)\b', desc + " " + title)
-        # Km iz opisa
-        km_m = re.search(r'([\d.,]+)\s*km', desc + " " + title, re.IGNORECASE)
+        # Km iz naslova
+        km_m = re.search(r'([\d.]+)\s*km', title, re.IGNORECASE)
+        km_val = None
+        if km_m:
+            km_val = _parse_int(km_m.group(1).replace(".", ""))
 
         price = _parse_price(price_text)
         if not price:
@@ -185,15 +174,14 @@ def _parse_listings_from_html(html: str) -> list:
         ad_url = f"https://www.kleinanzeigen.de{ad_href}" if ad_href.startswith("/") else ad_href
 
         listings.append({
-            "id":       ad_id,
-            "title":    title,
-            "price":    price,
-            "city":     city,
-            "image":    img_url,
-            "url":      ad_url,
-            "year":     _parse_int(year_m.group(1)) if year_m else None,
-            "mileage":  _parse_int(km_m.group(1).replace(".", "").replace(",", "")) if km_m else None,
-            "desc":     desc,
+            "id":      ad_id,
+            "title":   title,
+            "price":   price,
+            "city":    city,
+            "image":   img_url,
+            "url":     ad_url,
+            "year":    _parse_int(year_m.group(1)) if year_m else None,
+            "mileage": km_val,
         })
 
     print(f"[Kleinanzeigen] HTML parsing: {len(listings)} auto oglasa")
@@ -216,6 +204,10 @@ def _parse_listing(item: dict) -> dict | None:
         if year and year < 2000:
             return None
 
+        city = item.get("city") or ""
+        # Finalni cleanup grada
+        city = _clean_text(city, 100)
+
         images = []
         img = item.get("image", "")
         if img and img.startswith("http"):
@@ -233,8 +225,8 @@ def _parse_listing(item: dict) -> dict | None:
             "fuel_type":    None,
             "transmission": None,
             "country":      "DE",
-            "city":         item.get("city") or None,
-            "description":  title or None,
+            "city":         city or None,
+            "description":  title[:500] if title else None,
             "images":       images,
             "url":          item.get("url") or f"https://www.kleinanzeigen.de/s-anzeige/{item_id}",
         }
@@ -255,14 +247,13 @@ class KleinanzeigenScraper:
 
                 try:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=25)) as resp:
-                        print(f"[Kleinanzeigen] Status: {resp.status} | Dužina: ", end="")
+                        print(f"[Kleinanzeigen] Status: {resp.status}")
                         if resp.status != 200:
                             break
 
                         html = await resp.text()
-                        print(len(html))
-
                         items = _parse_listings_from_html(html)
+
                         if not items:
                             break
 
