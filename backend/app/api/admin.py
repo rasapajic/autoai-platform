@@ -4,39 +4,13 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
-
 ADMIN_SECRET = "autoai-admin-2024"
 
 
 def check_secret(secret: Optional[str]):
     if secret != ADMIN_SECRET:
         raise HTTPException(status_code=403, detail="Zabranjen pristup")
-
-
-def _save_listings(db, listings: list) -> tuple:
-    from app.models import Listing
-    new_count = 0
-    updated_count = 0
-    for data in listings:
-        external_id = data.get("external_id")
-        if not external_id:
-            continue
-        existing = db.query(Listing).filter(Listing.external_id == external_id).first()
-        if existing:
-            existing.last_seen_at = datetime.utcnow()
-            existing.is_active = True
-            new_price = data.get("price")
-            if new_price and existing.price != float(new_price):
-                existing.price = new_price
-            updated_count += 1
-        else:
-            listing = Listing(**{k: v for k, v in data.items() if hasattr(Listing, k) and v is not None})
-            db.add(listing)
-            new_count += 1
-    db.commit()
-    return new_count, updated_count
 
 
 async def _run_scraper(portal: str):
@@ -51,19 +25,35 @@ async def _run_scraper(portal: str):
             from app.scrapers.mobile_de import MobileDeScraper
             scraper = MobileDeScraper()
 
-        logger.info(f"🕷️ Pokrenuto: {portal}")
         listings = await scraper.scrape_listings({}, max_pages=3)
 
         from app.core.db import SessionLocal
+        from app.models import Listing
         db = SessionLocal()
         try:
-            new_count, updated_count = _save_listings(db, listings)
+            new_count = 0
+            updated_count = 0
+            for data in listings:
+                external_id = data.get("external_id")
+                if not external_id:
+                    continue
+                existing = db.query(Listing).filter(Listing.external_id == external_id).first()
+                if existing:
+                    existing.last_seen_at = datetime.utcnow()
+                    existing.is_active = True
+                    new_price = data.get("price")
+                    if new_price and existing.price != float(new_price):
+                        existing.price = new_price
+                    updated_count += 1
+                else:
+                    listing = Listing(**{k: v for k, v in data.items() if hasattr(Listing, k) and v is not None})
+                    db.add(listing)
+                    new_count += 1
+            db.commit()
         finally:
             db.close()
 
-        logger.info(f"✅ {portal}: {new_count} novih, {updated_count} ažuriranih")
         return {"status": "ok", "portal": portal, "found": len(listings), "new": new_count, "updated": updated_count}
-
     except Exception as e:
         logger.error(f"❌ {portal}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -87,8 +77,11 @@ async def scrape_status(secret: str):
         return {"status": "ok", "sources": {s: c for s, c in rows}, "total": sum(c for _, c in rows)}
     finally:
         db.close()
-@router.get("/cleanup/willhaben-bad-prices")
+
+
+@router.get("/cleanup/bad-prices")
 async def cleanup_bad_prices(secret: str):
+    """Briše willhaben oglase sa cenom ispod 500€ (lizing mesečne rate)"""
     check_secret(secret)
     from app.core.db import SessionLocal
     from app.models import Listing
@@ -99,6 +92,6 @@ async def cleanup_bad_prices(secret: str):
             Listing.price < 500
         ).delete()
         db.commit()
-        return {"deleted": count}
+        return {"status": "ok", "deleted": count}
     finally:
         db.close()
