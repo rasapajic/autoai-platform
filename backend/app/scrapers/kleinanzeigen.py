@@ -32,12 +32,20 @@ def _clean_text(text: str, max_len: int = 100) -> str:
     return text[:max_len]
 
 
+def _hq_image(url: str) -> str:
+    """Zameni thumbnail rule sa high-quality verzijom"""
+    if not url:
+        return url
+    for rule in ["$_59.AUTO", "$_2.AUTO", "$_57.AUTO", "$_4.AUTO"]:
+        url = url.replace(rule, "$_14.AUTO")
+    return url
+
+
 def _parse_price(val) -> float | None:
     if val is None:
         return None
     try:
         s = str(val).strip()
-        # Ukloni "VB", "VHB", "€" i slično
         s = re.sub(r'\b(VB|VHB|EUR|€)\b', '', s, flags=re.IGNORECASE)
         s = re.sub(r"[€\s]", "", s)
         if "," in s:
@@ -97,7 +105,7 @@ def _parse_listings_from_html(html: str) -> list:
 
         ad_url = f"https://www.kleinanzeigen.de{ad_href}"
 
-        # ✅ LD+JSON — title, description, image (contentUrl)
+        # LD+JSON — title, description, image
         title = ""
         description = ""
         img_url = ""
@@ -111,7 +119,8 @@ def _parse_listings_from_html(html: str) -> list:
                 ld = json.loads(ld_match.group(1))
                 title       = ld.get("title") or ld.get("name") or ""
                 description = ld.get("description") or ""
-                img_url     = ld.get("contentUrl") or ""
+                # ✅ HQ slika
+                img_url = _hq_image(ld.get("contentUrl") or "")
             except Exception:
                 pass
 
@@ -126,7 +135,7 @@ def _parse_listings_from_html(html: str) -> list:
                     title = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 200)
                     break
 
-        # ✅ Cena iz ispravne CSS klase
+        # Cena iz ispravne CSS klase
         price = None
         m = re.search(
             r'class="aditem-main--middle--price-shipping--price"[^>]*>(.*?)</',
@@ -136,7 +145,7 @@ def _parse_listings_from_html(html: str) -> list:
             price_text = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50)
             price = _parse_price(price_text)
 
-        # Fallback — traži sve € u sadržaju
+        # Fallback cena
         if not price:
             all_prices = re.findall(r'([\d.,]+)\s*€', content)
             for p_str in all_prices:
@@ -148,18 +157,15 @@ def _parse_listings_from_html(html: str) -> list:
         if not price:
             continue
 
-        # Fallback slika
+        # Fallback slika — ✅ HQ
         if not img_url:
             m = re.search(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', content)
             if m:
-                img_url = m.group(1)
+                img_url = _hq_image(m.group(1))
 
         # Lokacija
         city = ""
-        m = re.search(
-            r'class="aditem-main--top--left"[^>]*>(.*?)</p>',
-            content, re.DOTALL
-        )
+        m = re.search(r'class="aditem-main--top--left"[^>]*>(.*?)</p>', content, re.DOTALL)
         if m:
             raw = re.sub(r'<[^>]+>', ' ', m.group(1))
             city = _clean_text(raw, 100)
