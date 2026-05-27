@@ -171,7 +171,13 @@ def _parse_ad(ad: dict) -> dict | None:
 
         # URL
         if seo_url:
-            url = f"https://www.willhaben.at{seo_url}" if seo_url.startswith("/") else f"https://www.willhaben.at/{seo_url}"
+            # Fix: SEO_URL pocinje sa /gebrauchtwagen, treba /iad/gebrauchtwagen
+        if seo_url.startswith("/iad"):
+            url = f"https://www.willhaben.at{seo_url}"
+        elif seo_url.startswith("/"):
+            url = f"https://www.willhaben.at/iad{seo_url}"
+        else:
+            url = f"https://www.willhaben.at/iad/{seo_url}"
         else:
             url = f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}"
 
