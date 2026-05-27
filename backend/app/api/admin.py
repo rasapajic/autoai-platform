@@ -14,13 +14,16 @@ def check_secret(secret: Optional[str]):
 
 
 async def _run_scraper(portal: str):
-    allowed = ["willhaben", "mobile_de"]
+    allowed = ["willhaben", "autoscout24", "mobile_de"]
     if portal not in allowed:
         raise HTTPException(status_code=400, detail=f"Portal mora biti jedan od: {allowed}")
     try:
         if portal == "willhaben":
             from app.scrapers.willhaben import WillhabenScraper
             scraper = WillhabenScraper()
+        elif portal == "autoscout24":
+            from app.scrapers.autoscout24 import AutoScout24Scraper
+            scraper = AutoScout24Scraper()
         else:
             from app.scrapers.mobile_de import MobileDeScraper
             scraper = MobileDeScraper()
@@ -44,7 +47,6 @@ async def _run_scraper(portal: str):
                     new_price = data.get("price")
                     if new_price and existing.price != float(new_price):
                         existing.price = new_price
-                    # ✅ Ažuriraj URL ako se promenio
                     new_url = data.get("url")
                     if new_url:
                         existing.url = new_url
@@ -85,7 +87,6 @@ async def scrape_status(secret: str):
 
 @router.get("/cleanup/bad-prices")
 async def cleanup_bad_prices(secret: str):
-    """Briše willhaben oglase sa cenom ispod 500€ (lizing mesečne rate)"""
     check_secret(secret)
     from app.core.db import SessionLocal
     from app.models import Listing
@@ -103,7 +104,6 @@ async def cleanup_bad_prices(secret: str):
 
 @router.get("/fix/willhaben-urls")
 async def fix_willhaben_urls(secret: str):
-    """Popravlja willhaben URL-ove koji nemaju /iad/ prefix"""
     check_secret(secret)
     from app.core.db import SessionLocal
     from app.models import Listing
