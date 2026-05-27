@@ -93,5 +93,29 @@ async def cleanup_bad_prices(secret: str):
         ).delete()
         db.commit()
         return {"status": "ok", "deleted": count}
+        @router.get("/fix/willhaben-urls")
+async def fix_willhaben_urls(secret: str):
+    """Popravlja willhaben URL-ove koji nemaju /iad/ prefix"""
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    db = SessionLocal()
+    try:
+        listings = db.query(Listing).filter(
+            Listing.source == "willhaben",
+            Listing.url.like("https://www.willhaben.at/gebrauchtwagen/%")
+        ).all()
+        count = 0
+        for l in listings:
+            l.url = l.url.replace(
+                "https://www.willhaben.at/gebrauchtwagen/",
+                "https://www.willhaben.at/iad/gebrauchtwagen/"
+            )
+            count += 1
+        db.commit()
+        return {"fixed": count}
+    finally:
+        db.close()
+        
     finally:
         db.close()
