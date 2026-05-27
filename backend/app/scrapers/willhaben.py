@@ -125,7 +125,7 @@ def _parse_ad(ad: dict) -> dict | None:
         variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
         year_str     = g("YEAR")
         # ✅ Koristimo PRICE/AMOUNT koji vraća čist broj (6990.0)
-        price_str    = g("PRICE/AMOUNT") or g("PRICE") or g("PRICE_FOR_DISPLAY")
+        price_str    = g("PRICE") or g("PRICE_FOR_DISPLAY")
         mileage_str  = g("MILEAGE")
         fuel         = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
         transmission = g("TRANSMISSION_RESOLVED") or g("TRANSMISSION") or ""
