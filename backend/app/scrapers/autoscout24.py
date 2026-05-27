@@ -1,10 +1,17 @@
 import asyncio
 import logging
+import random
 import re
 from urllib.parse import urlencode
-from app.scrapers.base import BaseScraper
+from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+]
 
 FUEL_MAP = {
     "diesel": "diesel", "dizel": "diesel",
@@ -43,26 +50,66 @@ KNOWN_MAKES = [
 ]
 
 
-class AutoScout24Scraper(BaseScraper):
+class AutoScout24Scraper:
     SOURCE_NAME = "autoscout24"
     BASE_URL    = "https://www.autoscout24.com"
 
+    def __init__(self):
+        self._playwright = None
+        self.browser = None
+        self.context = None
+
+    async def __aenter__(self):
+        self._playwright = await async_playwright().start()
+        self.browser = await self._playwright.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage"]
+        )
+        self.context = await self.browser.new_context(
+            user_agent=random.choice(USER_AGENTS),
+            viewport={"width": 1920, "height": 1080},
+            locale="de-DE",
+            timezone_id="Europe/Berlin",
+            extra_http_headers={
+                "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            }
+        )
+        await self.context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+            window.chrome = { runtime: {} };
+        """)
+        return self
+
+    async def __aexit__(self, *args):
+        if self.browser:
+            await self.browser.close()
+        if self._playwright:
+            await self._playwright.stop()
+
+    async def get_page(self, url: str, wait_for: str = None):
+        page = await self.context.new_page()
+        await asyncio.sleep(random.uniform(1.5, 3.5))
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            if wait_for:
+                await page.wait_for_selector(wait_for, timeout=10000)
+        except Exception as e:
+            logger.warning(f"Greška pri otvaranju {url}: {e}")
+            await page.close()
+            return None
+        return page
+
     def _build_url(self, filters: dict, page: int = 1) -> str:
-        params = {
-            "atype":     "C",
-            "page":      page,
-            "sort":      "age",
-            "desc":      0,
-            "fregfrom":  2008,
-            "pricefrom": 3000,
-        }
+        params = {"atype": "C", "page": page, "sort": "age", "desc": 0, "fregfrom": 2008, "pricefrom": 3000}
         mapping = {
             "make": "mmvmk0", "model": "mmvmd0",
             "min_price": "pricefrom", "max_price": "priceto",
             "min_year": "fregfrom", "max_year": "fregto",
             "max_km": "kmto",
         }
-        fuel_map = {"petrol":"B","diesel":"D","electric":"E","hybrid":"M","lpg":"L","cng":"C"}
+        fuel_map = {"petrol": "B", "diesel": "D", "electric": "E", "hybrid": "M", "lpg": "L", "cng": "C"}
         for key, param in mapping.items():
             if filters.get(key):
                 params[param] = filters[key]
@@ -74,10 +121,10 @@ class AutoScout24Scraper(BaseScraper):
             params["cy"] = filters["country"].upper()
         return f"{self.BASE_URL}/lst?{urlencode(params)}"
 
-    async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list[dict]:
+    async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list:
         all_listings = []
-        seen_ids     = set()
-        filter_fuel  = filters.get("fuel_type")
+        seen_ids = set()
+        filter_fuel = filters.get("fuel_type")
 
         async with self:
             for page_num in range(1, max_pages + 1):
@@ -116,15 +163,6 @@ class AutoScout24Scraper(BaseScraper):
                     await page.close()
                     continue
 
-                if raw_items:
-                    first = raw_items[0]
-                    logger.info(
-                        f"[AutoScout24] DEBUG prvi oglas: "
-                        f"title={first.get('title')} | "
-                        f"details={first.get('details')} | "
-                        f"text_preview={repr(first.get('debug_text','')[:300])}"
-                    )
-
                 if not raw_items:
                     await page.close()
                     break
@@ -146,39 +184,7 @@ class AutoScout24Scraper(BaseScraper):
         return all_listings
 
     async def scrape_detail(self, url: str) -> dict:
-        async with self:
-            page = await self.get_page(url, wait_for=None)
-            if not page:
-                return {}
-            try:
-                data = await page.evaluate("""
-                    () => {
-                        const getText = sel => document.querySelector(sel)?.textContent?.trim() || null;
-                        const getAll  = sel => Array.from(document.querySelectorAll(sel)).map(e=>e.textContent.trim()).filter(Boolean);
-                        const bodyText = document.body.innerText || '';
-                        const regMatch = bodyText.match(/First registration[:\\s]+([0-1]\\d[\\/\\.](20[0-3]\\d|19[5-9]\\d))/i)
-                                      || bodyText.match(/Erstzulassung[:\\s]+([0-1]\\d[\\/\\.](20[0-3]\\d|19[5-9]\\d))/i);
-                        const firstReg = regMatch ? regMatch[1] : null;
-                        const yearMatch = firstReg ? firstReg.match(/(20[0-3]\\d|19[5-9]\\d)$/) : null;
-                        const year = yearMatch ? parseInt(yearMatch[0]) : null;
-                        const images = Array.from(document.querySelectorAll(
-                            '.image-gallery-image img,[class*="gallery"] img,[class*="photo"] img'
-                        )).map(i=>i.src||i.getAttribute('data-src')).filter(Boolean);
-                        return {
-                            year,
-                            first_registration: firstReg,
-                            description: getText('[class*="description"]'),
-                            features:    getAll('[class*="equipment"] li,[class*="features"] li'),
-                            images:      images.slice(0,20),
-                        };
-                    }
-                """)
-                return data or {}
-            except Exception as e:
-                logger.error(f"[AutoScout24] Detail greška: {e}")
-                return {}
-            finally:
-                await page.close()
+        return {}
 
     def _listing_js(self) -> str:
         return r"""
@@ -192,92 +198,36 @@ class AutoScout24Scraper(BaseScraper):
                 text = text.replace(/\s+\d\s*$/,'').trim();
                 return text;
             };
-
             const containers = [
                 ...document.querySelectorAll('article.cldt-summary-full-item'),
                 ...document.querySelectorAll('article[data-guid]'),
                 ...document.querySelectorAll('[data-testid="regular-list-item"]'),
                 ...document.querySelectorAll('[data-testid="result-list-item"]'),
             ];
-            const seen  = new Set();
+            const seen = new Set();
             const items = containers.filter(el => {
                 const id = el.getAttribute('data-guid') || el.id;
                 if (!id || seen.has(id)) return false;
                 seen.add(id); return true;
             });
-
             return items.map((item, idx) => {
-                const id        = item.getAttribute('data-guid') || item.getAttribute('id') || '';
-                const titleEl   = item.querySelector('h2,h3,[class*="title"]');
-                const title     = titleEl?.textContent?.trim() || '';
+                const id = item.getAttribute('data-guid') || item.getAttribute('id') || '';
+                const titleEl = item.querySelector('h2,h3,[class*="title"]');
+                const title = titleEl?.textContent?.trim() || '';
                 const offerLink = item.querySelector('a[href*="/offers/"]');
-                const url       = offerLink?.href || (id ? 'https://www.autoscout24.com/offers/'+id : '');
-                const priceEl   = item.querySelector('.cldt-price,[data-type="price_block"] .cldt-price,[class*="price"]');
+                const url = offerLink?.href || (id ? 'https://www.autoscout24.com/offers/'+id : '');
+                const priceEl = item.querySelector('.cldt-price,[data-type="price_block"] .cldt-price,[class*="price"]');
                 const price_raw = getCleanPrice(priceEl);
-                const fullText  = item.textContent || '';
+                const fullText = item.textContent || '';
                 const innerText = item.innerText || '';
-
                 let year_text = '';
-
                 const regMatch1 = fullText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/)
                                || innerText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
                 if (regMatch1) year_text = regMatch1[2];
-
-                if (!year_text) {
-                    const dataYear = item.getAttribute('data-first-registration')
-                        || item.getAttribute('data-year')
-                        || item.getAttribute('data-model-year')
-                        || item.getAttribute('data-registration-date');
-                    if (dataYear) {
-                        const m = dataYear.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
-                        if (m) year_text = m[1];
-                    }
-                }
-
-                if (!year_text) {
-                    const regEl = item.querySelector(
-                        '[data-item-key="fr"],[data-item-key="Erstzulassung"],' +
-                        '[data-item-key="first-registration"],[class*="first-reg"],' +
-                        '[class*="registration"],[data-testid="first-registration"]'
-                    );
-                    if (regEl) {
-                        const t = regEl.textContent;
-                        const m = t.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
-                        if (m) year_text = m[2];
-                        else {
-                            const m2 = t.match(/\b(19[5-9]\d|20[0-3]\d)\b/);
-                            if (m2) year_text = m2[1];
-                        }
-                    }
-                }
-
-                if (!year_text) {
-                    const specEls = Array.from(item.querySelectorAll(
-                        'li, span, p, [class*="item"], [class*="detail"], [class*="spec"], [class*="key"]'
-                    ));
-                    for (const el of specEls) {
-                        const t = el.textContent.trim();
-                        const m = t.match(/^(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)$/)
-                               || t.match(/^(19[5-9]\d|20[0-3]\d)$/);
-                        if (m) { year_text = m[m.length - 1]; break; }
-                    }
-                }
-
-                if (!year_text) {
-                    const segments = innerText.split(/[\n\r|·•,\t]/);
-                    for (const seg of segments) {
-                        const t = seg.trim();
-                        const m = t.match(/^(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)$/)
-                               || t.match(/^(19[5-9]\d|20[0-3]\d)$/);
-                        if (m) { year_text = m[m.length - 1]; break; }
-                    }
-                }
-
                 if (!year_text) {
                     const m = fullText.match(/\b(20[0-2]\d|19[5-9]\d)\b/);
                     if (m) year_text = m[1];
                 }
-
                 let km_text = '';
                 const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
                 for (const m of kmMatches) {
@@ -286,64 +236,44 @@ class AutoScout24Scraper(BaseScraper):
                     const val = parseInt(raw.replace(/\./g,'').replace(/,/g,''));
                     if (val >= 1 && val <= 999999) { km_text = raw+' km'; break; }
                 }
-
                 const fuelPairs = [
-                    ['Electric','electric'],['Elektro','electric'],['Elektrisch','electric'],
-                    ['Hybrid','hybrid'],['Plug-in','hybrid'],
-                    ['Diesel','diesel'],['Dizel','diesel'],
-                    ['Ethanol','petrol'],['Flexifuel','petrol'],
-                    ['Benzin','petrol'],['Petrol','petrol'],['Gasoline','petrol'],['Super','petrol'],
-                    ['LPG','lpg'],['Autogas','lpg'],['CNG','cng'],['Erdgas','cng'],
+                    ['Electric','electric'],['Elektro','electric'],['Hybrid','hybrid'],
+                    ['Diesel','diesel'],['Benzin','petrol'],['Petrol','petrol'],
+                    ['LPG','lpg'],['CNG','cng'],
                 ];
                 let fuel_text = '';
                 for (const [kw,norm] of fuelPairs) {
                     if (fullText.includes(kw)) { fuel_text=norm; break; }
                 }
-
                 const transKws = ['Automatik','Automatic','Schaltgetriebe','Manual','DSG'];
                 let trans_text = '';
                 for (const kw of transKws) { if (fullText.includes(kw)) { trans_text=kw; break; } }
-
                 const powerMatch = fullText.match(/(\d+)\s*kW/);
                 const power_text = powerMatch ? powerMatch[1]+' kW' : '';
-
-                const bodyKws = ['Limousine','SUV','Geländewagen','Kombi','Hatchback',
-                                 'Schrägheck','Coupe','Coupé','Cabrio','Kabriolet',
-                                 'Roadster','Van','Kleinbus','Pickup'];
+                const bodyKws = ['Limousine','SUV','Kombi','Hatchback','Coupe','Coupé','Cabrio','Van','Pickup'];
                 let body_text = '';
                 for (const kw of bodyKws) { if (fullText.includes(kw)) { body_text=kw; break; } }
-
                 const details = [year_text,km_text,fuel_text,trans_text,power_text,body_text].filter(Boolean);
-                const images  = Array.from(item.querySelectorAll('img'))
+                const images = Array.from(item.querySelectorAll('img'))
                     .map(img=>img.src||img.getAttribute('data-src'))
                     .filter(s=>s&&s.startsWith('http')&&!s.includes('logo'));
-                const locEl = item.querySelector(
-                    '.cldt-summary-seller-contact-country,[class*="country"],[class*="location"]'
-                );
-
-                const debug_text = idx === 0 ? innerText.slice(0, 300) : '';
-
-                return {
-                    id, title, url, price_raw, details,
-                    images: images.slice(0,10),
-                    location_raw: locEl?.textContent?.trim()||'',
-                    debug_text,
-                };
+                const locEl = item.querySelector('.cldt-summary-seller-contact-country,[class*="country"],[class*="location"]');
+                return { id, title, url, price_raw, details, images: images.slice(0,10), location_raw: locEl?.textContent?.trim()||'' };
             });
         }
         """
 
-    def _parse_listing(self, raw: dict, filter_fuel: str | None = None) -> dict | None:
-        ext_id = raw.get("id","").strip()
-        url    = raw.get("url","").strip()
+    def _parse_listing(self, raw: dict, filter_fuel=None) -> dict | None:
+        ext_id = raw.get("id", "").strip()
+        url = raw.get("url", "").strip()
         if "?" in url: url = url.split("?")[0]
         if not ext_id or not url: return None
 
-        title       = raw.get("title","").strip()
+        title = raw.get("title", "").strip()
         make, model = self._parse_title(title)
-        details     = raw.get("details",[])
-        price_raw   = raw.get("price_raw","")
-        price_eur   = self._parse_price_eur(price_raw)
+        details = raw.get("details", [])
+        price_raw = raw.get("price_raw", "")
+        price_eur = self._parse_price_eur(price_raw)
 
         if price_eur and price_eur < 3000:
             return None
@@ -353,7 +283,7 @@ class AutoScout24Scraper(BaseScraper):
         for d in details:
             if not d: continue
             dl = d.lower()
-            if dl in ("diesel","petrol","electric","hybrid","lpg","cng"):
+            if dl in ("diesel", "petrol", "electric", "hybrid", "lpg", "cng"):
                 fuel_type = fuel_type or d
             elif "km" in dl and any(c.isdigit() for c in d):
                 mileage_raw = mileage_raw or d
@@ -368,12 +298,10 @@ class AutoScout24Scraper(BaseScraper):
 
         if year and year < 2005:
             return None
-
         if not fuel_type and filter_fuel:
             fuel_type = filter_fuel
 
-        country, city = self._parse_location(raw.get("location_raw",""))
-        mileage_km    = self._parse_mileage_km(mileage_raw)
+        country, city = self._parse_location(raw.get("location_raw", ""))
 
         return {
             "external_id":     f"as24_{ext_id}",
@@ -382,18 +310,16 @@ class AutoScout24Scraper(BaseScraper):
             "make":            make,
             "model":           model,
             "year":            year,
-            "price_raw":       price_raw or None,
             "price":           price_eur,
             "currency":        "EUR",
-            "mileage_raw":     mileage_raw if mileage_km else None,
-            "mileage":         mileage_km,
+            "mileage":         self._parse_mileage_km(mileage_raw),
             "fuel_type":       fuel_type,
             "transmission":    transmission,
             "engine_power_kw": self._parse_power_kw(power_str),
             "body_type":       body_type,
             "country":         country,
             "city":            city,
-            "images":          raw.get("images",[]),
+            "images":          raw.get("images", []),
             "url":             url,
         }
 
@@ -401,29 +327,29 @@ class AutoScout24Scraper(BaseScraper):
         if not title: return None, None
         for make in sorted(KNOWN_MAKES, key=len, reverse=True):
             if make.lower() in title.lower():
-                rest  = re.sub(re.escape(make),"",title,flags=re.IGNORECASE).strip()
+                rest = re.sub(re.escape(make), "", title, flags=re.IGNORECASE).strip()
                 words = rest.split()
                 return make, (" ".join(words[:2]) if words else None)
         words = title.split()
-        return (words[0] if words else None), (" ".join(words[1:3]) if len(words)>1 else None)
+        return (words[0] if words else None), (" ".join(words[1:3]) if len(words) > 1 else None)
 
     def _parse_price_eur(self, raw: str) -> int | None:
         if not raw: return None
         m = re.search(r'\d[\d.,]+\d', raw)
         if m:
-            num = m.group(0).replace('.','').replace(',','')
+            num = m.group(0).replace('.', '').replace(',', '')
             try:
                 val = int(num)
                 return val if val <= 2_000_000 else None
             except ValueError: pass
-        digits = re.sub(r'[^\d]','',raw)
+        digits = re.sub(r'[^\d]', '', raw)
         return int(digits[:6]) if digits else None
 
     def _parse_mileage_km(self, raw: str) -> int | None:
         if not raw: return None
         m = re.search(r'\d[\d.,]+\d|\d+', raw)
         if m:
-            num = m.group(0).replace('.','').replace(',','')
+            num = m.group(0).replace('.', '').replace(',', '')
             try:
                 val = int(num)
                 return val if 1 <= val <= 999_999 else None
@@ -458,25 +384,15 @@ class AutoScout24Scraper(BaseScraper):
 
     def _parse_location(self, raw: str) -> tuple:
         if not raw: return None, None
-
-        # Ukloni "Show more vehicles" i slične dodatke
         raw = raw.split('\n')[0].strip()
-
-        # Format: "IT-20841 Carate Brianza" ili "DE-80331 München"
         m = re.match(r'^([A-Z]{2})-\d+\s+(.+)', raw)
         if m:
-            country = m.group(1)
-            city    = m.group(2).split(' - ')[0].strip()
-            return country, city
-
-        # Format: "Torino - To, IT" ili "München, DE" ili "City, Country"
+            return m.group(1), m.group(2).split(' - ')[0].strip()
         parts = [p.strip() for p in raw.split(",")]
         if len(parts) >= 2:
             country = parts[-1].strip()
-            city    = parts[0].split(' - ')[0].strip()
-            # Ako je country duži od 2 slova, vjerovatno nije country code
+            city = parts[0].split(' - ')[0].strip()
             if len(country) <= 3:
                 return country, city
             return None, parts[0]
-
         return None, raw
