@@ -46,25 +46,31 @@ def _extract_listings_from_next_data(data: dict) -> list:
         return []
 
 
-def _parse_price(val):
-    """Parsira cenu — podržava i nemački format (6.990) i decimalni (6990.0)"""
+def _parse_price(val) -> float | None:
+    """Parsira cenu — podržava nemački format (6.990 = 6990) i decimalni (6990.0)"""
     if val is None:
         return None
     try:
         s = str(val).strip()
-        # Ukloni simbol valute i razmake
-        s = re.sub(r"[€EUR\s]", "", s)
-        # Nemački format: 6.990 ili 16.090 — tačka je separator hiljada
-        # Ako nema zareza, a ima tačke + tačka nije decimalna (3+ cifre posle)
+        s = re.sub(r"[€EUR\s/Monat]", "", s).strip()
+        if not s:
+            return None
+        # Nemački format: 6.990 ili 29.990 — tačka je separator hiljada
         if "," not in s and "." in s:
             parts = s.split(".")
-            if len(parts[-1]) == 3:  # 6.990 → hiljada separator
-                s = s.replace(".", "")
-            # inače je decimala (6990.0)
+            if len(parts[-1]) == 3:
+                s = s.replace(".", "")  # 6.990 → 6990
+            # 6990.0 → ostaje kao decimala
         else:
             s = s.replace(".", "").replace(",", ".")
         s = re.sub(r"[^\d.]", "", s)
-        return float(s) if s else None
+        if not s:
+            return None
+        price = float(s)
+        # ✅ Filter: lizing mesečne rate su ispod 500€ — preskoči
+        if price < 500:
+            return None
+        return price
     except Exception:
         return None
 
@@ -124,7 +130,7 @@ def _parse_ad(ad: dict) -> dict | None:
         model        = g("CAR_MODEL/MODEL")
         variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
         year_str     = g("YEAR")
-        # ✅ Koristimo PRICE/AMOUNT koji vraća čist broj (6990.0)
+        # ✅ PRICE je cisti broj bez formatiranja (npr. 6990)
         price_str    = g("PRICE") or g("PRICE_FOR_DISPLAY")
         mileage_str  = g("MILEAGE")
         fuel         = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
@@ -144,22 +150,24 @@ def _parse_ad(ad: dict) -> dict | None:
             except Exception:
                 pass
 
+        price = _parse_price(price_str)
+
+        # ✅ Preskoči lizing oglase bez kupovne cene
+        if price is None:
+            return None
+
         # ✅ Slike — semicolon-separated relativne putanje
         images = []
         all_imgs = g("ALL_IMAGE_URLS")
         if all_imgs:
             paths = all_imgs.split(";")
-            images = [
-                f"{IMG_BASE}{p.strip()}?rule=online-_x800"
-                for p in paths if p.strip()
-            ][:6]
+            images = [f"{IMG_BASE}{p.strip()}" for p in paths if p.strip()][:6]
 
-        # Fallback
         if not images:
             for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
                 ref = img.get("reference")
                 if ref:
-                    images.append(f"{IMG_BASE}{ref}?rule=online-_x800")
+                    images.append(f"{IMG_BASE}{ref}")
 
         # URL
         if seo_url:
@@ -177,7 +185,7 @@ def _parse_ad(ad: dict) -> dict | None:
             "model":           model,
             "variant":         variant,
             "year":            year,
-            "price":           _parse_price(price_str),
+            "price":           price,
             "currency":        "EUR",
             "mileage":         _parse_int(mileage_str),
             "fuel_type":       _normalize_fuel(fuel),
