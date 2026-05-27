@@ -32,14 +32,21 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute=0, hour="*/6"),
         "args": ("willhaben", {}),
     },
-    # ✅ AutoScout24 — svakih 6 sati (offset 3h)
+    # ✅ AutoScout24 (EU) — svakih 6 sati offset 3h
     "scrape-autoscout24": {
         "task": "app.core.celery_tasks.scrape_portal",
         "schedule": crontab(minute=0, hour="3,9,15,21"),
         "args": ("autoscout24", {}),
     },
+    # ✅ Marktplaats (Holandija) — svakih 8 sati
+    "scrape-marktplaats": {
+        "task": "app.core.celery_tasks.scrape_portal",
+        "schedule": crontab(minute=30, hour="1,9,17"),
+        "args": ("marktplaats", {}),
+    },
     # 🚫 Mobile.de — blokira server-side zahteve (403)
     # "scrape-mobile-de": { ... },
+    # Cleanup starih oglasa — svaki dan u ponoć
     "cleanup-old-listings": {
         "task": "app.core.celery_tasks.cleanup_old_listings",
         "schedule": crontab(minute=0, hour=0),
@@ -63,6 +70,9 @@ def scrape_portal(self, portal: str, filters: dict):
         elif portal == "autoscout24":
             from app.scrapers.autoscout24 import AutoScout24Scraper
             scraper = AutoScout24Scraper()
+        elif portal == "marktplaats":
+            from app.scrapers.marktplaats import MarktplaatsScraper
+            scraper = MarktplaatsScraper()
         elif portal == "mobile_de":
             from app.scrapers.mobile_de import MobileDeScraper
             scraper = MobileDeScraper()
