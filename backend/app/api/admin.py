@@ -106,6 +106,69 @@ async def scrape_status(secret: str):
         db.close()
 
 
+@router.get("/stats/price-ratings")
+async def price_rating_stats(secret: str):
+    """Statistika price_rating distribucije"""
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    from sqlalchemy import func
+    db = SessionLocal()
+    try:
+        total  = db.query(func.count(Listing.id)).filter(Listing.is_active == True).scalar()
+        rated  = db.query(func.count(Listing.id)).filter(Listing.is_active == True, Listing.price_rating != None).scalar()
+        ratings = dict(
+            db.query(Listing.price_rating, func.count(Listing.id))
+            .filter(Listing.is_active == True, Listing.price_rating != None)
+            .group_by(Listing.price_rating).all()
+        )
+        by_source = {}
+        sources = db.query(Listing.source).filter(Listing.is_active == True).distinct().all()
+        for (src,) in sources:
+            r = db.query(func.count(Listing.id)).filter(
+                Listing.is_active == True,
+                Listing.source == src,
+                Listing.price_rating != None,
+            ).scalar()
+            t = db.query(func.count(Listing.id)).filter(
+                Listing.is_active == True,
+                Listing.source == src,
+            ).scalar()
+            by_source[src] = {"rated": r, "total": t, "pct": round(r/t*100, 1) if t else 0}
+        return {
+            "total":        total,
+            "rated":        rated,
+            "unrated":      total - rated,
+            "pct_rated":    round(rated / total * 100, 1) if total else 0,
+            "distribution": ratings,
+            "by_source":    by_source,
+        }
+    finally:
+        db.close()
+
+
+@router.get("/cleanup/source")
+async def cleanup_by_source(source: str, secret: str, deactivate_only: bool = False):
+    """Briše ili deaktivira sve oglase određenog izvora"""
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    db = SessionLocal()
+    try:
+        q = db.query(Listing).filter(Listing.source == source)
+        count = q.count()
+        if deactivate_only:
+            q.update({"is_active": False})
+            db.commit()
+            return {"status": "ok", "action": "deactivated", "source": source, "count": count}
+        else:
+            q.delete()
+            db.commit()
+            return {"status": "ok", "action": "deleted", "source": source, "count": count}
+    finally:
+        db.close()
+
+
 @router.get("/cleanup/bad-prices")
 async def cleanup_bad_prices(secret: str):
     check_secret(secret)
@@ -119,6 +182,26 @@ async def cleanup_bad_prices(secret: str):
         ).delete()
         db.commit()
         return {"status": "ok", "deleted": count}
+    finally:
+        db.close()
+
+
+@router.get("/cleanup/old-listings")
+async def cleanup_old_listings(secret: str, days: int = 14):
+    """Deaktivira oglase koje nismo videli duže od N dana"""
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    from datetime import timedelta
+    db = SessionLocal()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        count = db.query(Listing).filter(
+            Listing.last_seen_at < cutoff,
+            Listing.is_active == True,
+        ).update({"is_active": False})
+        db.commit()
+        return {"status": "ok", "deactivated": count, "older_than_days": days}
     finally:
         db.close()
 
@@ -145,15 +228,51 @@ async def fix_willhaben_urls(secret: str):
         return {"status": "ok", "fixed": count}
     finally:
         db.close()
-@router.get("/cleanup/kleinanzeigen")
-async def cleanup_kleinanzeigen(secret: str):
+
+
+@router.get("/db/overview")
+async def db_overview(secret: str):
+    """Kompletan pregled stanja baze"""
     check_secret(secret)
     from app.core.db import SessionLocal
     from app.models import Listing
+    from sqlalchemy import func
     db = SessionLocal()
     try:
-        count = db.query(Listing).filter(Listing.source == "kleinanzeigen").delete()
-        db.commit()
-        return {"deleted": count}
+        total_active = db.query(func.count(Listing.id)).filter(Listing.is_active == True).scalar()
+        total_all    = db.query(func.count(Listing.id)).scalar()
+
+        by_source = dict(
+            db.query(Listing.source, func.count(Listing.id))
+            .filter(Listing.is_active == True)
+            .group_by(Listing.source).all()
+        )
+
+        with_price     = db.query(func.count(Listing.id)).filter(Listing.is_active == True, Listing.price != None).scalar()
+        with_year      = db.query(func.count(Listing.id)).filter(Listing.is_active == True, Listing.year != None).scalar()
+        with_mileage   = db.query(func.count(Listing.id)).filter(Listing.is_active == True, Listing.mileage != None).scalar()
+        with_fuel      = db.query(func.count(Listing.id)).filter(Listing.is_active == True, Listing.fuel_type != None).scalar()
+        with_images    = db.query(func.count(Listing.id)).filter(Listing.is_active == True, Listing.images != None, Listing.images != '[]').scalar()
+        with_rating    = db.query(func.count(Listing.id)).filter(Listing.is_active == True, Listing.price_rating != None).scalar()
+
+        avg_price = db.query(func.avg(Listing.price)).filter(
+            Listing.is_active == True, Listing.price != None, Listing.price > 0
+        ).scalar()
+
+        return {
+            "total_active":    total_active,
+            "total_all":       total_all,
+            "inactive":        total_all - total_active,
+            "by_source":       by_source,
+            "completeness": {
+                "with_price":   f"{with_price} ({round(with_price/total_active*100,1) if total_active else 0}%)",
+                "with_year":    f"{with_year} ({round(with_year/total_active*100,1) if total_active else 0}%)",
+                "with_mileage": f"{with_mileage} ({round(with_mileage/total_active*100,1) if total_active else 0}%)",
+                "with_fuel":    f"{with_fuel} ({round(with_fuel/total_active*100,1) if total_active else 0}%)",
+                "with_images":  f"{with_images} ({round(with_images/total_active*100,1) if total_active else 0}%)",
+                "with_rating":  f"{with_rating} ({round(with_rating/total_active*100,1) if total_active else 0}%)",
+            },
+            "avg_price_eur": round(float(avg_price), 0) if avg_price else None,
+        }
     finally:
         db.close()
