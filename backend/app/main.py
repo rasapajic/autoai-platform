@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 import sentry_sdk
 from app.core.config import settings
 from app.core.db import engine, Base
+from app.api import vin
+app.include_router(vin.router, prefix="/api/v1/vin", tags=["vin"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
