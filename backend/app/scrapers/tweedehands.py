@@ -3,7 +3,6 @@ import json
 import re
 import aiohttp
 
-# 2dehands.be — belgijski Marktplaats, isti API format
 API_URL = "https://www.2dehands.be/lrp/api/search"
 
 HEADERS = {
@@ -12,6 +11,19 @@ HEADERS = {
     "Accept-Language": "nl-BE,nl;q=0.9,fr;q=0.8,en;q=0.7",
     "Referer": "https://www.2dehands.be/c/auto-s/c91.html",
 }
+
+
+def _hq_image(url: str) -> str:
+    """Zameni thumbnail rule sa high-quality verzijom"""
+    if not url:
+        return url
+    # Marktplaats/2dehands image rules
+    url = url.replace("ecg_mp_eps$_79.jpg", "ecg_mp_eps$_14.jpg")
+    url = url.replace("ecg_mp_eps$_57.jpg", "ecg_mp_eps$_14.jpg")
+    url = url.replace("$_79.AUTO", "$_14.AUTO")
+    url = url.replace("$_2.AUTO",  "$_14.AUTO")
+    url = url.replace("$_57.AUTO", "$_14.AUTO")
+    return url
 
 
 def _parse_price(val) -> float | None:
@@ -139,17 +151,19 @@ def _parse_listing(item: dict) -> dict | None:
         if year and year < 2000:
             return None
 
+        # ✅ HQ slike
         images = []
         for img in (item.get("pictures", []) or item.get("images", []) or []):
             if isinstance(img, dict):
-                url = (img.get("mediumUrl") or img.get("largeUrl") or
+                # Prefer largeUrl > mediumUrl > url
+                url = (img.get("largeUrl") or img.get("mediumUrl") or
                        img.get("url") or img.get("src") or "")
                 if not url and img.get("id"):
-                    url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_79.jpg"
+                    url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_14.jpg"
             else:
                 url = str(img)
             if url and url.startswith("http"):
-                images.append(url)
+                images.append(_hq_image(url))
 
         vip_url = item.get("vipUrl") or item.get("url") or ""
         if vip_url and not vip_url.startswith("http"):
@@ -228,7 +242,11 @@ class TweedehandsScraper:
 
                         if first_run and all_items:
                             first_run = False
-                            print(f"[2dehands] FULL ITEM: {json.dumps(all_items[0])[:600]}")
+                            # Debug slike prvog oglasa
+                            first = all_items[0]
+                            pics = first.get("pictures", []) or []
+                            if pics:
+                                print(f"[2dehands] Slika primer: {json.dumps(pics[0])[:200]}")
 
                         before = len(all_listings)
                         for item in all_items:
