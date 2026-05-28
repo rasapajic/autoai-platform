@@ -4,6 +4,8 @@ import { useSearchParams } from 'next/navigation'
 import { searchListings, parseQuery } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
+
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', gasoline: 'Benzin',
   electric: 'Električni', hybrid: 'Hibrid', lpg: 'Plin',
@@ -19,11 +21,6 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
   eligible: '#22C55E', needs_check: '#F97316',
   not_recommended: '#EF4444', oldtimer: '#A855F7',
 }
-const MAKES = [
-  'VW','BMW','Mercedes','Audi','Toyota','Ford','Opel','Skoda',
-  'Renault','Peugeot','Hyundai','Kia','Volvo','Seat','Mazda',
-  'Honda','Nissan','Fiat','Citroën','Porshe','Land Rover','Jeep',
-]
 
 function calcBreakdown(price: number, carinaPct: number) {
   const carina = Math.round(price * (carinaPct / 100))
@@ -89,6 +86,12 @@ export default function SearchPage() {
   const [searchHistory,  setSearchHistory]  = useState<string[]>([])
   const [compareList,    setCompareList]    = useState<any[]>([])
 
+  // ✅ Dinamičke marke i modeli iz baze
+  const [makes,        setMakes]        = useState<{make: string; count: number}[]>([])
+  const [models,       setModels]       = useState<{model: string; count: number}[]>([])
+  const [makesLoading, setMakesLoading] = useState(false)
+  const [modelSearch,  setModelSearch]  = useState('')
+
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '', model: searchParams.get('model') || '',
     min_price: searchParams.get('min_price') || '', max_price: searchParams.get('max_price') || '',
@@ -98,6 +101,25 @@ export default function SearchPage() {
     price_rating: searchParams.get('price_rating') || '', sort_by: searchParams.get('sort_by') || 'date',
     page: 1,
   })
+
+  // Učitaj marke pri startu
+  useEffect(() => {
+    setMakesLoading(true)
+    fetch(`${API_BASE}/search/makes`)
+      .then(r => r.json())
+      .then(data => setMakes(data || []))
+      .catch(() => {})
+      .finally(() => setMakesLoading(false))
+  }, [])
+
+  // Učitaj modele kad se promeni marka
+  useEffect(() => {
+    if (!filters.make) { setModels([]); return }
+    fetch(`${API_BASE}/search/models?make=${encodeURIComponent(filters.make)}`)
+      .then(r => r.json())
+      .then(data => setModels(data || []))
+      .catch(() => setModels([]))
+  }, [filters.make])
 
   const doSearch = useCallback(async (f = filters) => {
     setLoading(true)
@@ -114,6 +136,8 @@ export default function SearchPage() {
 
   const setFilter = (key: string, val: any) => {
     const next = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
+    // Resetuj model kad se promeni marka
+    if (key === 'make') next.model = ''
     setFilters(next); doSearch(next)
   }
 
@@ -125,11 +149,9 @@ export default function SearchPage() {
       const { filters: parsed } = await parseQuery(aiQuery)
       const next = { ...filters, ...parsed, page: 1 }
       setFilters(next); doSearch(next)
-      if (aiQuery.trim()) {
-        const newHistory = [aiQuery, ...searchHistory.filter(h => h !== aiQuery)].slice(0, 5)
-        setSearchHistory(newHistory)
-        localStorage.setItem('autoai_search_history', JSON.stringify(newHistory))
-      }
+      const newHistory = [aiQuery, ...searchHistory.filter(h => h !== aiQuery)].slice(0, 5)
+      setSearchHistory(newHistory)
+      localStorage.setItem('autoai_search_history', JSON.stringify(newHistory))
     } finally { setAiLoading(false) }
   }
 
@@ -138,8 +160,7 @@ export default function SearchPage() {
     if (!token) { window.location.href = '/login'; return }
     setSaving(true)
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
-      const res = await fetch(`${apiBase}/alerts/`, {
+      const res = await fetch(`${API_BASE}/alerts/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name: saveName || 'Moja pretraga', filters, frequency: 'daily' }),
@@ -154,6 +175,12 @@ export default function SearchPage() {
     filters.min_year, filters.max_year, filters.max_km, filters.fuel_type, filters.price_rating,
   ].filter(Boolean).length
 
+  // Top 20 marki za brzi prikaz, ostale u modal
+  const topMakes = makes.slice(0, 20)
+  const filteredModels = models.filter(m =>
+    !modelSearch || m.model?.toLowerCase().includes(modelSearch.toLowerCase())
+  )
+
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
       <style dangerouslySetInnerHTML={{__html: `
@@ -166,6 +193,7 @@ export default function SearchPage() {
           .ai-btn{width:100%!important;margin-top:6px!important}
           .pagination-desktop{display:none!important}
           .pagination-mobile{display:flex!important}
+          .makes-grid{grid-template-columns:repeat(3,1fr)!important}
         }
         @media(min-width:769px){
           .mfb{display:none!important}
@@ -176,49 +204,20 @@ export default function SearchPage() {
         .ch{transition:all .22s ease!important}
         .ch:hover{border-color:var(--accent)!important;transform:translateY(-3px)!important;box-shadow:0 14px 44px rgba(0,0,0,.45)!important}
         .cb:hover{opacity:.82!important}
+        .mkbtn{transition:all .15s!important}
+        .mkbtn:hover{border-color:var(--accent)!important;color:var(--accent)!important}
       `}} />
 
-      {/* Modali */}
       {contactListing && <ContactModal listing={contactListing} onClose={() => setContactListing(null)} />}
 
-      {/* Save pretraga modal */}
+      {/* Save modal */}
       {showSaveModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}
           onClick={() => setShowSaveModal(false)}>
           <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:28, width:380, maxWidth:'90vw' }}
             onClick={e => e.stopPropagation()}>
             <h3 style={{ margin:'0 0 8px', fontSize:17 }}>🔔 Sačuvaj pretragu</h3>
-            <p style={{ fontSize:13, color:'var(--text3)', margin:'0 0 12px' }}>Dobijaš email čim se pojavi novi oglas koji odgovara ovim filterima.</p>
-            <div style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', marginBottom:14 }}>
-              <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:8, letterSpacing:'.07em' }}>AKTIVNI FILTERI</div>
-              {[
-                filters.make      && `🚗 ${filters.make}`,
-                filters.model     && `📋 ${filters.model}`,
-                filters.min_price && `od ${Number(filters.min_price).toLocaleString()} €`,
-                filters.max_price && `do ${Number(filters.max_price).toLocaleString()} €`,
-                filters.min_year  && `od ${filters.min_year}.`,
-                filters.max_year  && `do ${filters.max_year}.`,
-                filters.max_km    && `max ${Number(filters.max_km).toLocaleString()} km`,
-                filters.fuel_type && `⛽ ${FUEL_LABELS[filters.fuel_type] || filters.fuel_type}`,
-              ].filter(Boolean).length > 0 ? (
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {[
-                    filters.make      && `🚗 ${filters.make}`,
-                    filters.model     && `📋 ${filters.model}`,
-                    filters.min_price && `od ${Number(filters.min_price).toLocaleString()} €`,
-                    filters.max_price && `do ${Number(filters.max_price).toLocaleString()} €`,
-                    filters.min_year  && `od ${filters.min_year}.`,
-                    filters.max_year  && `do ${filters.max_year}.`,
-                    filters.max_km    && `max ${Number(filters.max_km).toLocaleString()} km`,
-                    filters.fuel_type && `⛽ ${FUEL_LABELS[filters.fuel_type] || filters.fuel_type}`,
-                  ].filter(Boolean).map((tag, i) => (
-                    <span key={i} style={{ background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.25)', color:'var(--accent)', borderRadius:20, padding:'3px 10px', fontSize:12 }}>{tag as string}</span>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ fontSize:12, color:'#F97316', margin:0 }}>⚠️ Nema filtera — alert za sve nove oglase.</p>
-              )}
-            </div>
+            <p style={{ fontSize:13, color:'var(--text3)', margin:'0 0 16px' }}>Dobijaš email čim se pojavi novi oglas koji odgovara ovim filterima.</p>
             <input placeholder="Naziv pretrage (npr. BMW 3 do 10k)" value={saveName} onChange={e => setSaveName(e.target.value)}
               style={{ width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', color:'var(--text)', fontSize:14, outline:'none', marginBottom:14 }} />
             <button onClick={handleSaveSearch} disabled={saving} style={{ width:'100%', padding:'12px', borderRadius:10, background:'var(--accent)', color:'#fff', border:'none', fontSize:14, fontWeight:700, cursor:'pointer' }}>
@@ -228,27 +227,42 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Make picker modal */}
+      {/* ✅ Make modal — dinamički iz baze */}
       {showMakeModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:1000, display:'flex', alignItems:'flex-end' }}
           onClick={() => setShowMakeModal(false)}>
           <div style={{ background:'var(--bg2)', borderRadius:'20px 20px 0 0', padding:'20px 16px 40px', width:'100%', border:'1px solid var(--border)', maxHeight:'80vh', overflowY:'auto' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-              <h3 style={{ fontSize:16, margin:0 }}>Izaberi marku</h3>
+              <div>
+                <h3 style={{ fontSize:16, margin:0 }}>Izaberi marku</h3>
+                <p style={{ fontSize:12, color:'var(--text3)', margin:'4px 0 0' }}>{makes.length} marki u sistemu</p>
+              </div>
               <button onClick={() => setShowMakeModal(false)} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:20, cursor:'pointer' }}>✕</button>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
-              {MAKES.map(make => (
-                <button key={make} onClick={() => { setFilter('make', filters.make === make ? '' : make); setShowMakeModal(false) }} style={{
-                  padding:'10px 8px', borderRadius:10, fontSize:14, fontWeight:500, cursor:'pointer',
+            {/* Sve marke */}
+            <div className="makes-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6 }}>
+              {makes.map(({ make, count }) => (
+                <button key={make} className="mkbtn cb" onClick={() => { setFilter('make', filters.make === make ? '' : make); setShowMakeModal(false) }} style={{
+                  padding:'8px 6px', borderRadius:10, fontSize:12, fontWeight:500, cursor:'pointer',
                   background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg3)',
                   border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
                   color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
-                }}>{make}</button>
+                  textAlign:'center',
+                }}>
+                  <div style={{ fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{make}</div>
+                  <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{count}</div>
+                </button>
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ✅ Model modal */}
+      {filters.make && models.length > 0 && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:999, display:'flex', alignItems:'flex-end' }}
+          id="model-modal" onClick={e => { if ((e.target as HTMLElement).id === 'model-modal') {} }}>
         </div>
       )}
 
@@ -294,56 +308,92 @@ export default function SearchPage() {
           </div>
         </form>
 
-        {/* Istorija pretrage */}
+        {/* Istorija */}
         {searchHistory.length > 0 && !aiQuery && (
           <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
-              NEDAVNE PRETRAGE
-            </div>
+            <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>NEDAVNE PRETRAGE</div>
             <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
               {searchHistory.map((h, i) => (
-                <button key={i} onClick={() => {
-                  setAiQuery(h)
-                  handleAiSearch({ preventDefault: () => {} } as any)
-                }} style={{
-                  padding:'6px 12px', borderRadius:20, fontSize:12,
-                  background:'var(--bg2)', border:'1px solid var(--border)',
-                  color:'var(--text3)', cursor:'pointer',
-                }}>🕐 {h}</button>
+                <button key={i} onClick={() => { setAiQuery(h); handleAiSearch({ preventDefault: () => {} } as any) }}
+                  style={{ padding:'6px 12px', borderRadius:20, fontSize:12, background:'var(--bg2)', border:'1px solid var(--border)', color:'var(--text3)', cursor:'pointer' }}>🕐 {h}</button>
               ))}
-              <button onClick={() => {
-                setSearchHistory([])
-                localStorage.removeItem('autoai_search_history')
-              }} style={{
-                padding:'6px 12px', borderRadius:20, fontSize:12,
-                background:'transparent', border:'none',
-                color:'var(--text3)', cursor:'pointer', opacity:.6,
-              }}>✕ Obriši</button>
+              <button onClick={() => { setSearchHistory([]); localStorage.removeItem('autoai_search_history') }}
+                style={{ padding:'6px 12px', borderRadius:20, fontSize:12, background:'transparent', border:'none', color:'var(--text3)', cursor:'pointer', opacity:.6 }}>✕ Obriši</button>
             </div>
           </div>
         )}
 
-        {/* Marka dugme */}
+        {/* ✅ Dinamički brzi izbor marke */}
         <div style={{ marginBottom:12 }}>
-          <button onClick={() => setShowMakeModal(true)} style={{
-            width:'100%', padding:'12px 16px', borderRadius:12,
-            background: filters.make ? 'rgba(255,107,0,.1)' : 'var(--bg2)',
-            border: `1px solid ${filters.make ? 'var(--accent)' : 'var(--border)'}`,
-            color: filters.make ? 'var(--accent)' : 'var(--text2)',
-            fontSize:14, fontWeight:600, cursor:'pointer',
-            display:'flex', justifyContent:'space-between', alignItems:'center',
-          }}>
-            <span>🚗 {filters.make || 'Izaberi marku automobila'}</span>
-            <span style={{ fontSize:12, opacity:.6 }}>▼</span>
-          </button>
+          <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
+            BRZI IZBOR MARKE {makesLoading && <span style={{ opacity:.5 }}>učitavam...</span>}
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
+            {topMakes.map(({ make, count }) => (
+              <button key={make} className="mkbtn cb" onClick={() => setFilter('make', filters.make === make ? '' : make)} style={{
+                padding:'6px 12px', borderRadius:20, fontSize:12, fontWeight:500, cursor:'pointer',
+                background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
+                border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
+                color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
+                display:'flex', gap:5, alignItems:'center',
+              }}>
+                {make}
+                <span style={{ fontSize:10, opacity:.6 }}>{count}</span>
+              </button>
+            ))}
+            {makes.length > 20 && (
+              <button className="mkbtn cb" onClick={() => setShowMakeModal(true)} style={{
+                padding:'6px 12px', borderRadius:20, fontSize:12,
+                background:'var(--bg2)', border:'1px dashed var(--border)',
+                color:'var(--text3)', cursor:'pointer',
+              }}>+ {makes.length - 20} više</button>
+            )}
+          </div>
+
+          {/* ✅ Modeli — prikazuju se kad je marka izabrana */}
           {filters.make && (
-            <button onClick={() => setFilter('make', '')} style={{ marginTop:6, background:'none', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer' }}>
-              ✕ Ukloni {filters.make}
-            </button>
+            <div style={{ marginTop:8 }}>
+              <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:6 }}>
+                MODEL {filters.make.toUpperCase()}
+              </div>
+              {models.length > 0 ? (
+                <>
+                  {models.length > 10 && (
+                    <input placeholder="Traži model..." value={modelSearch} onChange={e => setModelSearch(e.target.value)}
+                      style={{ width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, padding:'7px 12px', color:'var(--text)', fontSize:13, outline:'none', marginBottom:8 }} />
+                  )}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                    <button className="mkbtn cb" onClick={() => setFilter('model', '')} style={{
+                      padding:'5px 11px', borderRadius:20, fontSize:12, cursor:'pointer',
+                      background: !filters.model ? 'rgba(255,107,0,.15)' : 'transparent',
+                      border: `1px solid ${!filters.model ? 'var(--accent)' : 'var(--border)'}`,
+                      color: !filters.model ? 'var(--accent)' : 'var(--text3)',
+                    }}>Svi modeli</button>
+                    {filteredModels.slice(0, 30).map(({ model, count }) => (
+                      <button key={model} className="mkbtn cb" onClick={() => setFilter('model', filters.model === model ? '' : model)} style={{
+                        padding:'5px 11px', borderRadius:20, fontSize:12, cursor:'pointer',
+                        background: filters.model === model ? 'rgba(255,107,0,.15)' : 'transparent',
+                        border: `1px solid ${filters.model === model ? 'var(--accent)' : 'var(--border)'}`,
+                        color: filters.model === model ? 'var(--accent)' : 'var(--text3)',
+                        display:'flex', gap:4, alignItems:'center',
+                      }}>
+                        {model}
+                        <span style={{ fontSize:10, opacity:.6 }}>{count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p style={{ fontSize:12, color:'var(--text3)', margin:0 }}>Učitavam modele...</p>
+              )}
+              <button onClick={() => setFilter('make', '')} style={{ marginTop:6, background:'none', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer' }}>
+                ✕ Ukloni {filters.make}
+              </button>
+            </div>
           )}
         </div>
 
-        {/* Sačuvaj pretragu */}
+        {/* Sačuvaj */}
         <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:10, marginBottom:12 }}>
           {saveSuccess && <span style={{ fontSize:13, color:'#22C55E', fontWeight:600 }}>✅ Pretraga sačuvana!</span>}
           <button onClick={() => setShowSaveModal(true)} style={{
@@ -353,7 +403,7 @@ export default function SearchPage() {
           }}>🔔 Sačuvaj pretragu</button>
         </div>
 
-        {/* Mobile filter toggle */}
+        {/* Mobile filter */}
         <button className="mfb cb" onClick={() => setSidebarOpen(!sidebarOpen)} style={{
           display:'flex', alignItems:'center', justifyContent:'center', gap:8,
           padding:'11px 16px', borderRadius:10, marginBottom:16, width:'100%',
@@ -407,13 +457,10 @@ export default function SearchPage() {
                   {results.results.map((l: any) => (
                     <ListingCard key={l.id} listing={l}
                       onContact={() => setContactListing(l)}
-                      onCompare={() => {
-                        setCompareList(prev =>
-                          prev.find(c => c.id === l.id)
-                            ? prev.filter(c => c.id !== l.id)
-                            : prev.length < 3 ? [...prev, l] : prev
-                        )
-                      }}
+                      onCompare={() => setCompareList(prev =>
+                        prev.find(c => c.id === l.id) ? prev.filter(c => c.id !== l.id)
+                        : prev.length < 3 ? [...prev, l] : prev
+                      )}
                       inCompare={!!compareList.find(c => c.id === l.id)}
                     />
                   ))}
@@ -436,13 +483,9 @@ export default function SearchPage() {
                           width:'100%', padding:'14px', borderRadius:12,
                           background:'var(--bg2)', border:'1px solid var(--border)',
                           color:'var(--text2)', fontSize:15, fontWeight:600, cursor:'pointer',
-                        }}>
-                          ⬇️ Učitaj još oglasa
-                        </button>
+                        }}>⬇️ Učitaj još oglasa</button>
                       )}
-                      <span style={{ fontSize:12, color:'var(--text3)' }}>
-                        Strana {filters.page} od {results.pages}
-                      </span>
+                      <span style={{ fontSize:12, color:'var(--text3)' }}>Strana {filters.page} od {results.pages}</span>
                     </div>
                   </div>
                 )}
@@ -458,44 +501,24 @@ export default function SearchPage() {
         </div>
       </div>
 
-      {/* Sticky compare traka */}
+      {/* Compare traka */}
       {compareList.length > 0 && (
-        <div style={{
-          position:'fixed', bottom:0, left:0, right:0, zIndex:200,
-          background:'rgba(17,17,20,.97)', borderTop:'1px solid rgba(99,102,241,.4)',
-          backdropFilter:'blur(12px)', padding:'12px 16px',
-        }}>
+        <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:200, background:'rgba(17,17,20,.97)', borderTop:'1px solid rgba(99,102,241,.4)', backdropFilter:'blur(12px)', padding:'12px 16px' }}>
           <div className="container" style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-            <span style={{ fontSize:13, color:'var(--text3)', fontWeight:600 }}>
-              ⚖️ Poređenje ({compareList.length}/3):
-            </span>
+            <span style={{ fontSize:13, color:'var(--text3)', fontWeight:600 }}>⚖️ Poređenje ({compareList.length}/3):</span>
             <div style={{ display:'flex', gap:8, flex:1, flexWrap:'wrap' }}>
               {compareList.map(c => (
-                <div key={c.id} style={{
-                  background:'var(--bg3)', border:'1px solid rgba(99,102,241,.3)',
-                  borderRadius:8, padding:'5px 10px', fontSize:12,
-                  display:'flex', alignItems:'center', gap:6,
-                }}>
+                <div key={c.id} style={{ background:'var(--bg3)', border:'1px solid rgba(99,102,241,.3)', borderRadius:8, padding:'5px 10px', fontSize:12, display:'flex', alignItems:'center', gap:6 }}>
                   <span style={{ color:'var(--text2)' }}>{c.year} {c.make} {c.model}</span>
-                  <button onClick={() => setCompareList(prev => prev.filter(x => x.id !== c.id))}
-                    style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:14, lineHeight:1 }}>✕</button>
+                  <button onClick={() => setCompareList(prev => prev.filter(x => x.id !== c.id))} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:14 }}>✕</button>
                 </div>
               ))}
             </div>
             <div style={{ display:'flex', gap:8 }}>
-              <button onClick={() => setCompareList([])} style={{
-                padding:'8px 14px', borderRadius:8, fontSize:13,
-                background:'transparent', border:'1px solid var(--border)',
-                color:'var(--text3)', cursor:'pointer',
-              }}>Otkaži</button>
+              <button onClick={() => setCompareList([])} style={{ padding:'8px 14px', borderRadius:8, fontSize:13, background:'transparent', border:'1px solid var(--border)', color:'var(--text3)', cursor:'pointer' }}>Otkaži</button>
               {compareList.length >= 2 && (
-                <button onClick={() => {
-                  const ids = compareList.map(c => c.id).join(',')
-                  window.location.href = `/compare?ids=${ids}`
-                }} style={{
-                  padding:'8px 20px', borderRadius:8, fontSize:13, fontWeight:700,
-                  background:'var(--accent)', color:'#fff', border:'none', cursor:'pointer',
-                }}>Uporedi →</button>
+                <button onClick={() => { window.location.href = `/compare?ids=${compareList.map(c => c.id).join(',')}` }}
+                  style={{ padding:'8px 20px', borderRadius:8, fontSize:13, fontWeight:700, background:'var(--accent)', color:'#fff', border:'none', cursor:'pointer' }}>Uporedi →</button>
               )}
             </div>
           </div>
@@ -522,11 +545,7 @@ function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: an
       {badge ? (
         <div style={{ background:badge.bg, borderBottom:`2px solid ${badge.color}`, padding:'9px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ color:badge.color, fontSize:13, fontWeight:800, letterSpacing:'.03em' }}>{badge.label}</span>
-          {delta !== null && (
-            <span style={{ color: delta < 0 ? '#22C55E' : '#EF4444', fontSize:12, fontWeight:600 }}>
-              {delta > 0 ? '+' : ''}{delta.toFixed(0)}% vs tržišta
-            </span>
-          )}
+          {delta !== null && <span style={{ color: delta < 0 ? '#22C55E' : '#EF4444', fontSize:12, fontWeight:600 }}>{delta > 0 ? '+' : ''}{delta.toFixed(0)}% vs tržišta</span>}
         </div>
       ) : (
         <div style={{ background:'rgba(99,102,241,.07)', borderBottom:'2px solid rgba(99,102,241,.2)', padding:'9px 16px' }}>
@@ -537,14 +556,10 @@ function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: an
       <a href={`/listing/${listing.id}`} style={{ display:'block', textDecoration:'none' }}>
         <div style={{ height:200, background:'var(--bg3)', position:'relative', overflow:'hidden' }}>
           {img
-            ? <img src={fullImg(img)} alt={`${listing.make} ${listing.model}`}
-                style={{ width:'100%', height:'100%', objectFit:'cover' }}
-                onError={e => { (e.target as HTMLImageElement).src = img }} />
+            ? <img src={fullImg(img)} alt={`${listing.make} ${listing.model}`} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.target as HTMLImageElement).src = img }} />
             : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', fontSize:48, opacity:.35 }}>🚗</div>
           }
-          <span style={{ position:'absolute', bottom:10, left:10, background:'rgba(0,0,0,.75)', borderRadius:6, padding:'3px 8px', fontSize:11, color:'rgba(255,255,255,.65)', backdropFilter:'blur(4px)' }}>
-            {listing.source}
-          </span>
+          <span style={{ position:'absolute', bottom:10, left:10, background:'rgba(0,0,0,.75)', borderRadius:6, padding:'3px 8px', fontSize:11, color:'rgba(255,255,255,.65)', backdropFilter:'blur(4px)' }}>{listing.source}</span>
         </div>
         <div style={{ padding:'14px 18px 0' }}>
           <h3 style={{ fontSize:15, fontWeight:600, margin:'0 0 4px', fontFamily:'Syne,sans-serif', lineHeight:1.3, color:'var(--text)' }}>
@@ -552,8 +567,7 @@ function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: an
           </h3>
           {insight && (
             <p style={{ fontSize:12, color:badge?.color||'#818CF8', margin:'0 0 10px', display:'flex', alignItems:'center', gap:5 }}>
-              <span style={{ width:5, height:5, borderRadius:'50%', background:badge?.color||'#818CF8', display:'inline-block', flexShrink:0 }} />
-              {insight}
+              <span style={{ width:5, height:5, borderRadius:'50%', background:badge?.color||'#818CF8', display:'inline-block', flexShrink:0 }} />{insight}
             </p>
           )}
         </div>
@@ -567,14 +581,10 @@ function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: an
             {eligibility.tooltip && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2, lineHeight:1.4 }}>{eligibility.tooltip}</div>}
           </div>
         )}
-
         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
           <span style={{ fontSize:12, color:'var(--text3)' }}>EU cena:</span>
-          <span style={{ fontSize:18, fontWeight:700, color:'var(--text2)' }}>
-            {price ? `${price.toLocaleString('de-DE')} €` : 'Na upit'}
-          </span>
+          <span style={{ fontSize:18, fontWeight:700, color:'var(--text2)' }}>{price ? `${price.toLocaleString('de-DE')} €` : 'Na upit'}</span>
         </div>
-
         {bd && (
           <div style={{ background:'rgba(255,107,0,.07)', border:'1px solid rgba(255,107,0,.2)', borderRadius:10, overflow:'hidden', marginBottom:12 }}>
             <button onClick={() => setShowBd(!showBd)} className="cb" style={{ width:'100%', background:'none', border:'none', cursor:'pointer', padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -594,12 +604,8 @@ function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: an
                   { label:'Registracija', val:bd.reg, note:'procena' },
                 ].map(({ label, val, note }, i) => (
                   <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', borderTop: i===0?'none':'1px solid rgba(255,255,255,.04)', marginTop: i===0?8:0 }}>
-                    <span style={{ fontSize:12, color: i===0?'var(--text2)':'var(--text3)' }}>
-                      {i>0&&'+ '}{label}{note&&<span style={{ fontSize:10, marginLeft:4, opacity:.5 }}>({note})</span>}
-                    </span>
-                    <span style={{ fontSize:12, fontWeight:500, color: i===0?'var(--text2)':'#fb923c' }}>
-                      {i===0?'':'+'}{val.toLocaleString('de-DE')} €
-                    </span>
+                    <span style={{ fontSize:12, color: i===0?'var(--text2)':'var(--text3)' }}>{i>0&&'+ '}{label}{note&&<span style={{ fontSize:10, marginLeft:4, opacity:.5 }}>({note})</span>}</span>
+                    <span style={{ fontSize:12, fontWeight:500, color: i===0?'var(--text2)':'#fb923c' }}>{i===0?'':'+'}{val.toLocaleString('de-DE')} €</span>
                   </div>
                 ))}
                 <div style={{ display:'flex', justifyContent:'space-between', marginTop:8, paddingTop:8, borderTop:'1px solid rgba(255,107,0,.25)' }}>
@@ -610,28 +616,21 @@ function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: an
             )}
           </div>
         )}
-
         <div style={{ display:'flex', gap:10, flexWrap:'wrap', fontSize:12, color:'var(--text3)', paddingBottom:10, borderBottom:'1px solid var(--border)' }}>
           {mileage && <span>🛣 {mileage}</span>}
           {listing.fuel_type && <span>⛽ {FUEL_LABELS[listing.fuel_type] || listing.fuel_type}</span>}
           {listing.country && <span>📍 {listing.country}</span>}
         </div>
-
         <p style={{ fontSize:10, color:'var(--text3)', margin:'8px 0 10px', lineHeight:1.5, opacity:.7 }}>
           * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju i važeće propise.
         </p>
-
-        {/* Uporedi dugme */}
         <button onClick={onCompare} style={{
           width:'100%', padding:'9px', marginBottom:8,
           background: inCompare ? 'rgba(99,102,241,.15)' : 'transparent',
           border: `1px solid ${inCompare ? 'rgba(99,102,241,.5)' : 'var(--border)'}`,
           color: inCompare ? '#818CF8' : 'var(--text3)',
           borderRadius:10, fontSize:13, cursor:'pointer', fontWeight:500,
-        }}>
-          {inCompare ? '✓ Dodato za poređenje' : '⚖️ Uporedi'}
-        </button>
-
+        }}>{inCompare ? '✓ Dodato za poređenje' : '⚖️ Uporedi'}</button>
         <button onClick={onContact} className="cb" style={{ width:'100%', padding:'11px', background:'rgba(99,102,241,.1)', border:'1px solid rgba(99,102,241,.3)', color:'#818CF8', borderRadius:10, fontSize:13, fontWeight:600, cursor:'pointer' }}>
           🤖 Kontaktiraj prodavca
         </button>
