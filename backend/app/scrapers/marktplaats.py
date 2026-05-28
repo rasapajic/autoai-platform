@@ -13,6 +13,18 @@ HEADERS = {
 }
 
 
+def _hq_image(url: str) -> str:
+    """Zameni thumbnail rule sa high-quality verzijom"""
+    if not url:
+        return url
+    url = url.replace("ecg_mp_eps$_79.jpg", "ecg_mp_eps$_14.jpg")
+    url = url.replace("ecg_mp_eps$_57.jpg", "ecg_mp_eps$_14.jpg")
+    url = url.replace("$_79.AUTO", "$_14.AUTO")
+    url = url.replace("$_2.AUTO",  "$_14.AUTO")
+    url = url.replace("$_57.AUTO", "$_14.AUTO")
+    return url
+
+
 def _parse_price(val) -> float | None:
     if val is None:
         return None
@@ -64,7 +76,6 @@ def _normalize_transmission(val) -> str | None:
 
 
 def _get_attr(attributes: list, *keys) -> str | None:
-    """Traži atribut po jednom od više ključeva"""
     for attr in attributes:
         key = attr.get("key", "").lower()
         for k in keys:
@@ -78,8 +89,6 @@ def _get_attr(attributes: list, *keys) -> str | None:
 
 
 def _extract_price(item: dict) -> float | None:
-    """Pokušava sve moguće lokacije cene u Marktplaats JSON-u"""
-    # 1. price.priceInfo.priceCents
     price_obj = item.get("price")
     if isinstance(price_obj, dict):
         info = price_obj.get("priceInfo", {}) or {}
@@ -90,35 +99,23 @@ def _extract_price(item: dict) -> float | None:
         p = _parse_price(text)
         if p:
             return p
-
-    # 2. priceInfo direktno na item nivou
     info2 = item.get("priceInfo", {}) or {}
     cents2 = info2.get("priceCents")
     if cents2:
         return float(cents2) / 100
-
-    # 3. price kao broj
     if isinstance(price_obj, (int, float)):
         p = float(price_obj)
         return p if p >= 500 else None
-
-    # 4. price kao string
     if isinstance(price_obj, str):
         return _parse_price(price_obj)
-
-    # 5. askingPrice
     asking = item.get("askingPrice") or item.get("asking_price")
     if asking:
         return _parse_price(str(asking))
-
     return None
 
 
-def _parse_listing(item: dict, debug: bool = False) -> dict | None:
+def _parse_listing(item: dict) -> dict | None:
     try:
-        if debug:
-            print(f"[Marktplaats] FULL: {json.dumps(item)[:700]}")
-
         item_id = str(item.get("itemId", "") or item.get("id", ""))
         if not item_id:
             return None
@@ -129,11 +126,9 @@ def _parse_listing(item: dict, debug: bool = False) -> dict | None:
         if not price or price < 500:
             return None
 
-        # Lokacija
         location = item.get("location", {}) or {}
         city = location.get("cityName") or location.get("city") or ""
 
-        # Atributi — koristi ENGLESKE nazive koje API stvarno vraća
         attributes = item.get("attributes", []) or []
         extended   = item.get("extendedAttributes", []) or []
         all_attrs  = attributes + extended
@@ -148,7 +143,6 @@ def _parse_listing(item: dict, debug: bool = False) -> dict | None:
         power_str = _get_attr(all_attrs, "power", "vermogen", "enginepower")
         color_str = _get_attr(all_attrs, "color", "kleur", "colour")
 
-        # Izvuci make/model iz naslova ako nema iz atributa
         if not make and title:
             parts = title.split()
             make  = parts[0] if parts else None
@@ -158,20 +152,19 @@ def _parse_listing(item: dict, debug: bool = False) -> dict | None:
         if year and year < 2000:
             return None
 
-        # Slike
+        # ✅ HQ slike
         images = []
         for img in (item.get("pictures", []) or item.get("images", []) or []):
             if isinstance(img, dict):
-                url = (img.get("mediumUrl") or img.get("largeUrl") or
+                url = (img.get("largeUrl") or img.get("mediumUrl") or
                        img.get("url") or img.get("src") or "")
                 if not url and img.get("id"):
-                    url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_79.jpg"
+                    url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_14.jpg"
             else:
                 url = str(img)
             if url and url.startswith("http"):
-                images.append(url)
+                images.append(_hq_image(url))
 
-        # URL
         vip_url = item.get("vipUrl") or item.get("url") or ""
         if vip_url and not vip_url.startswith("http"):
             vip_url = f"https://www.marktplaats.nl{vip_url}"
@@ -213,7 +206,6 @@ class MarktplaatsScraper:
         async with aiohttp.ClientSession(headers=HEADERS) as session:
             for page_num in range(max_pages):
                 offset = page_num * limit
-                # ✅ Bez l2CategoryId — samo l1=91 za sve automobile
                 params = {
                     "l1CategoryId": 91,
                     "sortBy": "SORT_INDEX",
@@ -248,10 +240,11 @@ class MarktplaatsScraper:
                         if not all_items:
                             break
 
-                        # Debug prvog oglasa
                         if first_run and all_items:
                             first_run = False
-                            print(f"[Marktplaats] FULL ITEM: {json.dumps(all_items[0])[:800]}")
+                            pics = all_items[0].get("pictures", []) or []
+                            if pics:
+                                print(f"[Marktplaats] Slika primer: {json.dumps(pics[0])[:200]}")
 
                         before = len(all_listings)
                         for item in all_items:
