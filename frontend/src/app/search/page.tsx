@@ -85,12 +85,10 @@ export default function SearchPage() {
   const [saveSuccess,    setSaveSuccess]    = useState(false)
   const [searchHistory,  setSearchHistory]  = useState<string[]>([])
   const [compareList,    setCompareList]    = useState<any[]>([])
-
-  // ✅ Dinamičke marke i modeli iz baze
-  const [makes,        setMakes]        = useState<{make: string; count: number}[]>([])
-  const [models,       setModels]       = useState<{model: string; count: number}[]>([])
-  const [makesLoading, setMakesLoading] = useState(false)
-  const [modelSearch,  setModelSearch]  = useState('')
+  const [makes,          setMakes]          = useState<{make: string; count: number}[]>([])
+  const [models,         setModels]         = useState<{model: string; count: number}[]>([])
+  const [makesLoading,   setMakesLoading]   = useState(false)
+  const [modelSearch,    setModelSearch]    = useState('')
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '', model: searchParams.get('model') || '',
@@ -102,22 +100,21 @@ export default function SearchPage() {
     page: 1,
   })
 
-  // Učitaj marke pri startu
   useEffect(() => {
     setMakesLoading(true)
     fetch(`${API_BASE}/search/makes`)
       .then(r => r.json())
-      .then(data => setMakes(data || []))
+      // ✅ Filtriraj prazne/null marke
+      .then(data => setMakes((data || []).filter((m: any) => m.make && m.make.trim())))
       .catch(() => {})
       .finally(() => setMakesLoading(false))
   }, [])
 
-  // Učitaj modele kad se promeni marka
   useEffect(() => {
     if (!filters.make) { setModels([]); return }
     fetch(`${API_BASE}/search/models?make=${encodeURIComponent(filters.make)}`)
       .then(r => r.json())
-      .then(data => setModels(data || []))
+      .then(data => setModels((data || []).filter((m: any) => m.model && m.model.trim())))
       .catch(() => setModels([]))
   }, [filters.make])
 
@@ -135,8 +132,7 @@ export default function SearchPage() {
   }, [])
 
   const setFilter = (key: string, val: any) => {
-    const next = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
-    // Resetuj model kad se promeni marka
+    const next: any = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
     if (key === 'make') next.model = ''
     setFilters(next); doSearch(next)
   }
@@ -175,10 +171,10 @@ export default function SearchPage() {
     filters.min_year, filters.max_year, filters.max_km, filters.fuel_type, filters.price_rating,
   ].filter(Boolean).length
 
-  // Top 20 marki za brzi prikaz, ostale u modal
+  // ✅ Top 20 marki, prazne filtrirane
   const topMakes = makes.slice(0, 20)
   const filteredModels = models.filter(m =>
-    !modelSearch || m.model?.toLowerCase().includes(modelSearch.toLowerCase())
+    !modelSearch || (m.model || '').toLowerCase().includes(modelSearch.toLowerCase())
   )
 
   return (
@@ -227,7 +223,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* ✅ Make modal — dinamički iz baze */}
+      {/* Make modal — sve marke */}
       {showMakeModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:1000, display:'flex', alignItems:'flex-end' }}
           onClick={() => setShowMakeModal(false)}>
@@ -240,29 +236,23 @@ export default function SearchPage() {
               </div>
               <button onClick={() => setShowMakeModal(false)} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:20, cursor:'pointer' }}>✕</button>
             </div>
-            {/* Sve marke */}
             <div className="makes-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6 }}>
-              {makes.map(({ make, count }) => (
-                <button key={make} className="mkbtn cb" onClick={() => { setFilter('make', filters.make === make ? '' : make); setShowMakeModal(false) }} style={{
-                  padding:'8px 6px', borderRadius:10, fontSize:12, fontWeight:500, cursor:'pointer',
-                  background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg3)',
-                  border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
-                  color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
-                  textAlign:'center',
-                }}>
-                  <div style={{ fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{make}</div>
-                  <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{count}</div>
+              {makes.map(({ make: mkName, count: mkCount }) => (
+                <button key={mkName} className="mkbtn cb"
+                  onClick={() => { setFilter('make', filters.make === mkName ? '' : mkName); setShowMakeModal(false) }}
+                  style={{
+                    padding:'8px 6px', borderRadius:10, fontSize:12, fontWeight:500, cursor:'pointer',
+                    background: filters.make === mkName ? 'rgba(255,107,0,.15)' : 'var(--bg3)',
+                    border: `1px solid ${filters.make === mkName ? 'var(--accent)' : 'var(--border)'}`,
+                    color: filters.make === mkName ? 'var(--accent)' : 'var(--text2)',
+                    textAlign:'center',
+                  }}>
+                  <div style={{ fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mkName}</div>
+                  <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{mkCount}</div>
                 </button>
               ))}
             </div>
           </div>
-        </div>
-      )}
-
-      {/* ✅ Model modal */}
-      {filters.make && models.length > 0 && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:999, display:'flex', alignItems:'flex-end' }}
-          id="model-modal" onClick={e => { if ((e.target as HTMLElement).id === 'model-modal') {} }}>
         </div>
       )}
 
@@ -329,15 +319,18 @@ export default function SearchPage() {
             BRZI IZBOR MARKE {makesLoading && <span style={{ opacity:.5 }}>učitavam...</span>}
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
-                          <button key={make} className="mkbtn cb" onClick={() => setFilter('make', filters.make === make ? '' : make)} style={{
-                padding:'6px 12px', borderRadius:20, fontSize:12, fontWeight:500, cursor:'pointer',
-                background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
-                border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
-                color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
-                display:'flex', gap:5, alignItems:'center',
-              }}>
-                {make}
-                <span style={{ fontSize:10, opacity:.6 }}>{count}</span>
+            {topMakes.map(({ make: mkName, count: mkCount }) => (
+              <button key={mkName} className="mkbtn cb"
+                onClick={() => setFilter('make', filters.make === mkName ? '' : mkName)}
+                style={{
+                  padding:'6px 12px', borderRadius:20, fontSize:12, fontWeight:500, cursor:'pointer',
+                  background: filters.make === mkName ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
+                  border: `1px solid ${filters.make === mkName ? 'var(--accent)' : 'var(--border)'}`,
+                  color: filters.make === mkName ? 'var(--accent)' : 'var(--text2)',
+                  display:'flex', gap:5, alignItems:'center',
+                }}>
+                {mkName}
+                <span style={{ fontSize:10, opacity:.6 }}>{mkCount}</span>
               </button>
             ))}
             {makes.length > 20 && (
@@ -349,11 +342,11 @@ export default function SearchPage() {
             )}
           </div>
 
-          {/* ✅ Modeli — prikazuju se kad je marka izabrana */}
+          {/* ✅ Modeli */}
           {filters.make && (
-            <div style={{ marginTop:8 }}>
-              <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:6 }}>
-                MODEL {filters.make.toUpperCase()}
+            <div style={{ marginTop:8, padding:'12px 14px', background:'var(--bg2)', borderRadius:12, border:'1px solid var(--border)' }}>
+              <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
+                MODEL — {filters.make.toUpperCase()}
               </div>
               {models.length > 0 ? (
                 <>
@@ -367,17 +360,19 @@ export default function SearchPage() {
                       background: !filters.model ? 'rgba(255,107,0,.15)' : 'transparent',
                       border: `1px solid ${!filters.model ? 'var(--accent)' : 'var(--border)'}`,
                       color: !filters.model ? 'var(--accent)' : 'var(--text3)',
-                    }}>Svi modeli</button>
-                    {filteredModels.slice(0, 30).map(({ model, count }) => (
-                      <button key={model} className="mkbtn cb" onClick={() => setFilter('model', filters.model === model ? '' : model)} style={{
-                        padding:'5px 11px', borderRadius:20, fontSize:12, cursor:'pointer',
-                        background: filters.model === model ? 'rgba(255,107,0,.15)' : 'transparent',
-                        border: `1px solid ${filters.model === model ? 'var(--accent)' : 'var(--border)'}`,
-                        color: filters.model === model ? 'var(--accent)' : 'var(--text3)',
-                        display:'flex', gap:4, alignItems:'center',
-                      }}>
-                        {model}
-                        <span style={{ fontSize:10, opacity:.6 }}>{count}</span>
+                    }}>Svi</button>
+                    {filteredModels.slice(0, 40).map(({ model: mdName, count: mdCount }) => (
+                      <button key={mdName} className="mkbtn cb"
+                        onClick={() => setFilter('model', filters.model === mdName ? '' : mdName)}
+                        style={{
+                          padding:'5px 11px', borderRadius:20, fontSize:12, cursor:'pointer',
+                          background: filters.model === mdName ? 'rgba(255,107,0,.15)' : 'transparent',
+                          border: `1px solid ${filters.model === mdName ? 'var(--accent)' : 'var(--border)'}`,
+                          color: filters.model === mdName ? 'var(--accent)' : 'var(--text3)',
+                          display:'flex', gap:4, alignItems:'center',
+                        }}>
+                        {mdName}
+                        <span style={{ fontSize:10, opacity:.6 }}>{mdCount}</span>
                       </button>
                     ))}
                   </div>
@@ -385,7 +380,7 @@ export default function SearchPage() {
               ) : (
                 <p style={{ fontSize:12, color:'var(--text3)', margin:0 }}>Učitavam modele...</p>
               )}
-              <button onClick={() => setFilter('make', '')} style={{ marginTop:6, background:'none', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer' }}>
+              <button onClick={() => setFilter('make', '')} style={{ marginTop:8, background:'none', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer' }}>
                 ✕ Ukloni {filters.make}
               </button>
             </div>
@@ -413,7 +408,6 @@ export default function SearchPage() {
         }}>⚙️ Filteri {activeCount > 0 && `(${activeCount})`} {sidebarOpen ? '▲' : '▼'}</button>
 
         <div className="sg" style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:24, alignItems:'start' }}>
-
           <aside className="sd" style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, position:'sticky', top:80 }}>
             <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
               const r = { make:'',model:'',min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
@@ -500,7 +494,6 @@ export default function SearchPage() {
         </div>
       </div>
 
-      {/* Compare traka */}
       {compareList.length > 0 && (
         <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:200, background:'rgba(17,17,20,.97)', borderTop:'1px solid rgba(99,102,241,.4)', backdropFilter:'blur(12px)', padding:'12px 16px' }}>
           <div className="container" style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
