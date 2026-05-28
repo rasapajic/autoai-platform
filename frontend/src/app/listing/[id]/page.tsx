@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { getListing, getPriceHistory, getSimilar, fraudCheck, addFavorite } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
+import VinChecker from '@/components/VinChecker'
 
 const ELIGIBILITY_COLORS: Record<string, string> = {
   eligible: '#22C55E', needs_check: '#F97316', not_recommended: '#EF4444', oldtimer: '#A855F7',
@@ -121,11 +122,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [enriching,   setEnriching]   = useState(false)
   const [enriched,    setEnriched]    = useState(false)
   const [scanMsg,     setScanMsg]     = useState(AI_SCAN_MESSAGES[0])
-  // ✅ Pamti URL prethodne pretrage
   const [backUrl,     setBackUrl]     = useState('/search')
   const scanInterval = useRef<any>(null)
 
-  // ✅ Učitaj sačuvani search URL
   useEffect(() => {
     const prev = sessionStorage.getItem('autoai_search_url')
     if (prev) setBackUrl(prev)
@@ -231,21 +230,24 @@ export default function ListingPage({ params }: { params: { id: string } }) {
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
         @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @media(max-width:768px){
+          .listing-grid { grid-template-columns: 1fr !important; }
+          .listing-sidebar { position: static !important; }
+        }
       `}</style>
 
       <div className="container">
 
-        {/* ✅ Breadcrumb — vraća na prethodnu pretragu */}
+        {/* Breadcrumb */}
         <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20, display:'flex', alignItems:'center', gap:6 }}>
           <a href="/" style={{ color: 'var(--text3)', textDecoration:'none' }}>Početna</a>
           <span>→</span>
-          <a href={backUrl} style={{ color: 'var(--text3)', textDecoration:'none', display:'flex', alignItems:'center', gap:4 }}>
-            ← Pretraga
-          </a>
+          <a href={backUrl} style={{ color: 'var(--text3)', textDecoration:'none' }}>← Pretraga</a>
           <span>→</span>
           <span style={{ color: 'var(--text)' }}>{listing.make} {listing.model}</span>
         </div>
 
+        {/* AI enrichment banner */}
         {enriching && (
           <div style={{
             background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.3)',
@@ -267,9 +269,12 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 28, alignItems: 'start' }}>
+        <div className="listing-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 28, alignItems: 'start' }}>
 
+          {/* Leva kolona */}
           <div>
+
+            {/* Galerija */}
             <div style={{ marginBottom: 24 }}>
               <div style={{ height: 420, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8 }}>
                 {enriching && images.length === 0
@@ -295,6 +300,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
+            {/* Specifikacije */}
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
               <h2 style={{ fontSize:16, marginBottom:16 }}>Specifikacije</h2>
               {enriching && specs.length === 0 ? (
@@ -322,6 +328,16 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
+            {/* ✅ VIN Provera */}
+            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
+              <h2 style={{ fontSize:16, marginBottom:4 }}>🔐 VIN Provera</h2>
+              <p style={{ fontSize:13, color:'var(--text3)', margin:'0 0 16px', lineHeight:1.5 }}>
+                Zatraži VIN broj od prodavca i proveri da li podaci odgovaraju oglasu.
+              </p>
+              <VinChecker listing={listing} />
+            </div>
+
+            {/* Opis */}
             {listing.description && (
               <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
                 <h2 style={{ fontSize:16, marginBottom:12 }}>Opis</h2>
@@ -329,6 +345,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
+            {/* Oprema */}
             {listing.features?.length > 0 && (
               <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
                 <h2 style={{ fontSize:16, marginBottom:16 }}>Oprema ({listing.features.length})</h2>
@@ -340,6 +357,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
+            {/* Istorija cene */}
             {history.length > 1 && (
               <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
                 <h2 style={{ fontSize:16, marginBottom:16 }}>Istorija cene</h2>
@@ -347,6 +365,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
+            {/* Slični oglasi */}
             {similar.length > 0 && (
               <div style={{ marginBottom: 20 }}>
                 <h2 style={{ fontSize:16, marginBottom:16 }}>Slični oglasi</h2>
@@ -374,8 +393,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             )}
           </div>
 
-          {/* Desna kolona */}
-          <div style={{ position:'sticky', top:80, display:'flex', flexDirection:'column', gap:14 }}>
+          {/* Desna kolona — sidebar */}
+          <div className="listing-sidebar" style={{ position:'sticky', top:80, display:'flex', flexDirection:'column', gap:14 }}>
 
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:22 }}>
               <h1 style={{ fontSize:20, marginBottom:4, fontFamily:'Syne,sans-serif' }}>{listing.make} {listing.model}</h1>
@@ -443,11 +462,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <button onClick={() => {
                 const url = window.location.href
                 if (navigator.share) {
-                  navigator.share({
-                    title: `${listing.year} ${listing.make} ${listing.model}`,
-                    text: `Pogledaj ovaj oglas na AutoAI — ${listing.year} ${listing.make} ${listing.model} za ${listing.price ? Number(listing.price).toLocaleString() + ' €' : 'na upit'}`,
-                    url,
-                  })
+                  navigator.share({ title: `${listing.year} ${listing.make} ${listing.model}`, url })
                 } else {
                   navigator.clipboard.writeText(url)
                   alert('Link kopiran!')
@@ -501,7 +516,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {/* Troškovi */}
+            {/* Troškovi uvoza */}
             {bd && (
               <div style={{ background:'rgba(255,107,0,.07)', border:'1px solid rgba(255,107,0,.2)', borderRadius:'var(--radius)', overflow:'hidden' }}>
                 <button onClick={() => setShowBd(!showBd)} style={{
