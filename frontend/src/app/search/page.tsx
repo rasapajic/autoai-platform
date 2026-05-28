@@ -22,6 +22,12 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
   not_recommended: '#EF4444', oldtimer: '#A855F7',
 }
 
+const DEFAULT_FILTERS = {
+  make: '', model: '', min_price: '', max_price: '',
+  min_year: '', max_year: '', max_km: '', fuel_type: '',
+  country: '', price_rating: '', sort_by: 'date', page: 1,
+}
+
 function calcBreakdown(price: number, carinaPct: number) {
   const carina = Math.round(price * (carinaPct / 100))
   const pdv    = Math.round((price + carina) * 0.20)
@@ -72,6 +78,35 @@ function getSerbiaEligibility(listing: any) {
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
+
+  // ✅ Vrati sačuvane filtere ako dolazimo sa listing stranice
+  const getInitialFilters = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('autoai_filters')
+        const fromListing = sessionStorage.getItem('autoai_from_listing')
+        if (saved && fromListing === '1') {
+          sessionStorage.removeItem('autoai_from_listing')
+          return JSON.parse(saved)
+        }
+      } catch {}
+    }
+    return {
+      ...DEFAULT_FILTERS,
+      make:         searchParams.get('make')         || '',
+      model:        searchParams.get('model')        || '',
+      min_price:    searchParams.get('min_price')    || '',
+      max_price:    searchParams.get('max_price')    || '',
+      min_year:     searchParams.get('min_year')     || '',
+      max_year:     searchParams.get('max_year')     || '',
+      max_km:       searchParams.get('max_km')       || '',
+      fuel_type:    searchParams.get('fuel_type')    || '',
+      country:      searchParams.get('country')      || '',
+      price_rating: searchParams.get('price_rating') || '',
+      sort_by:      searchParams.get('sort_by')      || 'date',
+    }
+  }
+
   const [results,        setResults]        = useState<any>(null)
   const [loading,        setLoading]        = useState(true)
   const [aiQuery,        setAiQuery]        = useState(searchParams.get('q') || '')
@@ -89,27 +124,19 @@ export default function SearchPage() {
   const [models,         setModels]         = useState<{model: string; count: number}[]>([])
   const [makesLoading,   setMakesLoading]   = useState(false)
   const [modelSearch,    setModelSearch]    = useState('')
+  const [filters,        setFilters]        = useState(getInitialFilters)
 
-  const [filters, setFilters] = useState({
-    make: searchParams.get('make') || '', model: searchParams.get('model') || '',
-    min_price: searchParams.get('min_price') || '', max_price: searchParams.get('max_price') || '',
-    min_year: searchParams.get('min_year') || '', max_year: searchParams.get('max_year') || '',
-    max_km: searchParams.get('max_km') || '', fuel_type: searchParams.get('fuel_type') || '',
-    country: searchParams.get('country') || '',
-    price_rating: searchParams.get('price_rating') || '', sort_by: searchParams.get('sort_by') || 'date',
-    page: 1,
-  })
-
+  // Učitaj marke
   useEffect(() => {
     setMakesLoading(true)
     fetch(`${API_BASE}/search/makes`)
       .then(r => r.json())
-      // ✅ Filtriraj prazne/null marke
       .then(data => setMakes((data || []).filter((m: any) => m.make && m.make.trim())))
       .catch(() => {})
       .finally(() => setMakesLoading(false))
   }, [])
 
+  // Učitaj modele kad se promeni marka
   useEffect(() => {
     if (!filters.make) { setModels([]); return }
     fetch(`${API_BASE}/search/models?make=${encodeURIComponent(filters.make)}`)
@@ -120,12 +147,18 @@ export default function SearchPage() {
 
   const doSearch = useCallback(async (f = filters) => {
     setLoading(true)
+    // ✅ Čuvaj filtere i URL pretrage
+    try {
+      sessionStorage.setItem('autoai_filters', JSON.stringify(f))
+      sessionStorage.setItem('autoai_search_url', window.location.href)
+    } catch {}
     try   { const data = await searchListings(f); setResults(data) }
     catch { setResults(null) }
     finally { setLoading(false) }
   }, [filters])
 
   useEffect(() => { doSearch() }, [])
+
   useEffect(() => {
     const h = localStorage.getItem('autoai_search_history')
     if (h) setSearchHistory(JSON.parse(h))
@@ -134,7 +167,8 @@ export default function SearchPage() {
   const setFilter = (key: string, val: any) => {
     const next: any = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
     if (key === 'make') next.model = ''
-    setFilters(next); doSearch(next)
+    setFilters(next)
+    doSearch(next)
   }
 
   const handleAiSearch = async (e: React.FormEvent) => {
@@ -166,12 +200,19 @@ export default function SearchPage() {
     finally { setSaving(false) }
   }
 
+  // ✅ Označi da idemo na listing stranicu
+  const handleListingClick = () => {
+    try {
+      sessionStorage.setItem('autoai_from_listing', '1')
+      sessionStorage.setItem('autoai_filters', JSON.stringify(filters))
+    } catch {}
+  }
+
   const activeCount = [
     filters.make, filters.model, filters.min_price, filters.max_price,
     filters.min_year, filters.max_year, filters.max_km, filters.fuel_type, filters.price_rating,
   ].filter(Boolean).length
 
-  // ✅ Top 20 marki, prazne filtrirane
   const topMakes = makes.slice(0, 20)
   const filteredModels = models.filter(m =>
     !modelSearch || (m.model || '').toLowerCase().includes(modelSearch.toLowerCase())
@@ -223,7 +264,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Make modal — sve marke */}
+      {/* Make modal */}
       {showMakeModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:1000, display:'flex', alignItems:'flex-end' }}
           onClick={() => setShowMakeModal(false)}>
@@ -313,7 +354,23 @@ export default function SearchPage() {
           </div>
         )}
 
-        {/* ✅ Dinamički brzi izbor marke */}
+        {/* ✅ Aktivni filteri — prikaz */}
+        {activeCount > 0 && (
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10, alignItems:'center' }}>
+            <span style={{ fontSize:11, color:'var(--text3)' }}>Prikazujem:</span>
+            {filters.make && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>{filters.make}</span>}
+            {filters.model && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>{filters.model}</span>}
+            {filters.fuel_type && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>{FUEL_LABELS[filters.fuel_type] || filters.fuel_type}</span>}
+            {filters.min_price && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>od {Number(filters.min_price).toLocaleString()} €</span>}
+            {filters.max_price && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>do {Number(filters.max_price).toLocaleString()} €</span>}
+            {filters.min_year && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>od {filters.min_year}.</span>}
+            {filters.max_year && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>do {filters.max_year}.</span>}
+            <button onClick={() => { const r = {...DEFAULT_FILTERS}; setFilters(r); doSearch(r) }}
+              style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'transparent', border:'1px solid var(--border)', color:'var(--text3)', cursor:'pointer' }}>✕ Ukloni</button>
+          </div>
+        )}
+
+        {/* Brzi izbor marke */}
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
             BRZI IZBOR MARKE {makesLoading && <span style={{ opacity:.5 }}>učitavam...</span>}
@@ -342,7 +399,7 @@ export default function SearchPage() {
             )}
           </div>
 
-          {/* ✅ Modeli */}
+          {/* Modeli */}
           {filters.make && (
             <div style={{ marginTop:8, padding:'12px 14px', background:'var(--bg2)', borderRadius:12, border:'1px solid var(--border)' }}>
               <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
@@ -410,7 +467,7 @@ export default function SearchPage() {
         <div className="sg" style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:24, alignItems:'start' }}>
           <aside className="sd" style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, position:'sticky', top:80 }}>
             <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
-              const r = { make:'',model:'',min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
+              const r = {...DEFAULT_FILTERS}
               setFilters(r); doSearch(r)
             }} />
           </aside>
@@ -418,7 +475,7 @@ export default function SearchPage() {
           {sidebarOpen && (
             <div className="sm" style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, marginBottom:16, gridColumn:'1/-1' }}>
               <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
-                const r = { make:'',model:'',min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
+                const r = {...DEFAULT_FILTERS}
                 setFilters(r); doSearch(r)
               }} />
             </div>
@@ -428,7 +485,7 @@ export default function SearchPage() {
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:8 }}>
               <span style={{ fontSize:15, fontWeight:600 }}>
                 {loading ? '...' : `${results?.total?.toLocaleString() || 0} vozila`}
-                {!loading && results?.total > 0 && <span style={{ color:'var(--text3)', fontSize:13, marginLeft:8 }}>AI-om</span>}
+                {!loading && results?.total > 0 && <span style={{ color:'var(--text3)', fontSize:13, marginLeft:8 }}>analiziranih AI-om</span>}
               </span>
               <select value={filters.sort_by} onChange={e => setFilter('sort_by', e.target.value)}
                 style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px', color:'var(--text)', fontSize:13, outline:'none', cursor:'pointer' }}>
@@ -440,6 +497,42 @@ export default function SearchPage() {
               </select>
             </div>
 
+            {/* Paginacija gore */}
+            {!loading && results?.pages > 1 && (
+              <div className="pagination-desktop" style={{ display:'flex', justifyContent:'center', gap:6, flexWrap:'wrap', marginBottom:16 }}>
+                {filters.page > 1 && (
+                  <button onClick={() => setFilter('page', filters.page - 1)} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>‹</button>
+                )}
+                {(() => {
+                  const total = Math.min(results.pages, 74)
+                  const cur = filters.page
+                  const pages: number[] = []
+                  if (total <= 7) {
+                    for (let i = 1; i <= total; i++) pages.push(i)
+                  } else {
+                    pages.push(1)
+                    if (cur > 3) pages.push(-1)
+                    for (let i = Math.max(2, cur-1); i <= Math.min(total-1, cur+1); i++) pages.push(i)
+                    if (cur < total - 2) pages.push(-2)
+                    pages.push(total)
+                  }
+                  return pages.map((p, i) => p < 0 ? (
+                    <span key={p} style={{ width:38, height:38, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text3)', fontSize:14 }}>…</span>
+                  ) : (
+                    <button key={p} onClick={() => { setFilter('page', p); window.scrollTo({top:0,behavior:'smooth'}) }} style={{
+                      width:38, height:38, borderRadius:10, border:'1px solid var(--border)',
+                      background: cur === p ? 'var(--accent)' : 'var(--bg2)',
+                      color: cur === p ? '#fff' : 'var(--text2)',
+                      fontSize:13, cursor:'pointer', fontWeight:600,
+                    }}>{p}</button>
+                  ))
+                })()}
+                {filters.page < results.pages && (
+                  <button onClick={() => setFilter('page', filters.page + 1)} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>›</button>
+                )}
+              </div>
+            )}
+
             {loading ? (
               <div className="rg" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:20 }}>
                 {[...Array(6)].map((_,i) => <div key={i} className="skeleton" style={{ height:520, borderRadius:16 }} />)}
@@ -450,6 +543,7 @@ export default function SearchPage() {
                   {results.results.map((l: any) => (
                     <ListingCard key={l.id} listing={l}
                       onContact={() => setContactListing(l)}
+                      onListingClick={handleListingClick}
                       onCompare={() => setCompareList(prev =>
                         prev.find(c => c.id === l.id) ? prev.filter(c => c.id !== l.id)
                         : prev.length < 3 ? [...prev, l] : prev
@@ -458,19 +552,43 @@ export default function SearchPage() {
                     />
                   ))}
                 </div>
+
+                {/* Paginacija dole */}
                 {results.pages > 1 && (
                   <div style={{ marginTop:32 }}>
-                    <div className="pagination-desktop" style={{ display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap' }}>
-                      {[...Array(Math.min(results.pages, 8))].map((_,i) => (
-                        <button key={i} onClick={() => setFilter('page', i+1)} style={{
-                          width:42, height:42, borderRadius:10, border:'1px solid var(--border)',
-                          background: filters.page === i+1 ? 'var(--accent)' : 'var(--bg2)',
-                          color: filters.page === i+1 ? '#fff' : 'var(--text2)',
-                          fontSize:14, cursor:'pointer', fontWeight:600,
-                        }}>{i+1}</button>
-                      ))}
+                    <div className="pagination-desktop" style={{ display:'flex', justifyContent:'center', gap:6, flexWrap:'wrap' }}>
+                      {filters.page > 1 && (
+                        <button onClick={() => { setFilter('page', filters.page - 1); window.scrollTo({top:0,behavior:'smooth'}) }} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>‹</button>
+                      )}
+                      {(() => {
+                        const total = Math.min(results.pages, 74)
+                        const cur = filters.page
+                        const pages: number[] = []
+                        if (total <= 7) {
+                          for (let i = 1; i <= total; i++) pages.push(i)
+                        } else {
+                          pages.push(1)
+                          if (cur > 3) pages.push(-1)
+                          for (let i = Math.max(2, cur-1); i <= Math.min(total-1, cur+1); i++) pages.push(i)
+                          if (cur < total - 2) pages.push(-2)
+                          pages.push(total)
+                        }
+                        return pages.map((p, i) => p < 0 ? (
+                          <span key={p} style={{ width:38, height:38, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text3)', fontSize:14 }}>…</span>
+                        ) : (
+                          <button key={p} onClick={() => { setFilter('page', p); window.scrollTo({top:0,behavior:'smooth'}) }} style={{
+                            width:38, height:38, borderRadius:10, border:'1px solid var(--border)',
+                            background: cur === p ? 'var(--accent)' : 'var(--bg2)',
+                            color: cur === p ? '#fff' : 'var(--text2)',
+                            fontSize:13, cursor:'pointer', fontWeight:600,
+                          }}>{p}</button>
+                        ))
+                      })()}
+                      {filters.page < results.pages && (
+                        <button onClick={() => { setFilter('page', filters.page + 1); window.scrollTo({top:0,behavior:'smooth'}) }} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>›</button>
+                      )}
                     </div>
-                    <div className="pagination-mobile" style={{ display:'none', flexDirection:'column', alignItems:'center', gap:12 }}>
+                    <div className="pagination-mobile" style={{ display:'none', flexDirection:'column', alignItems:'center', gap:12, marginTop:16 }}>
                       {filters.page < results.pages && (
                         <button onClick={() => setFilter('page', filters.page + 1)} style={{
                           width:'100%', padding:'14px', borderRadius:12,
@@ -494,6 +612,7 @@ export default function SearchPage() {
         </div>
       </div>
 
+      {/* Compare traka */}
       {compareList.length > 0 && (
         <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:200, background:'rgba(17,17,20,.97)', borderTop:'1px solid rgba(99,102,241,.4)', backdropFilter:'blur(12px)', padding:'12px 16px' }}>
           <div className="container" style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
@@ -520,7 +639,9 @@ export default function SearchPage() {
   )
 }
 
-function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: any; onContact: () => void; onCompare: () => void; inCompare: boolean }) {
+function ListingCard({ listing, onContact, onCompare, inCompare, onListingClick }: {
+  listing: any; onContact: () => void; onCompare: () => void; inCompare: boolean; onListingClick: () => void
+}) {
   const badge       = AI_BADGES[listing.price_rating]
   const insight     = getInsight(listing)
   const img         = listing.images?.[0]
@@ -545,7 +666,8 @@ function ListingCard({ listing, onContact, onCompare, inCompare }: { listing: an
         </div>
       )}
 
-      <a href={`/listing/${listing.id}`} style={{ display:'block', textDecoration:'none' }}>
+      {/* ✅ onClick čuva filtere pre navigacije */}
+      <a href={`/listing/${listing.id}`} onClick={onListingClick} style={{ display:'block', textDecoration:'none' }}>
         <div style={{ height:200, background:'var(--bg3)', position:'relative', overflow:'hidden' }}>
           {img
             ? <img src={fullImg(img)} alt={`${listing.make} ${listing.model}`} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => { (e.target as HTMLImageElement).src = img }} />
