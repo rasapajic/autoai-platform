@@ -14,18 +14,31 @@ const QUICK_QUESTIONS = [
 ]
 
 const COUNTRY_LANG: Record<string, { name: string; code: string }> = {
-  DE: { name: 'Nemačkom (Deutsch)',      code: 'German'    },
-  AT: { name: 'Nemačkom (Deutsch)',      code: 'German'    },
-  CH: { name: 'Nemačkom (Deutsch)',      code: 'German'    },
-  FR: { name: 'Francuskom (Français)',  code: 'French'    },
-  IT: { name: 'Italijanskom (Italiano)', code: 'Italian'   },
-  NL: { name: 'Holandskom (Nederlands)',code: 'Dutch'     },
-  BE: { name: 'Holandskom (Nederlands)',code: 'Dutch'     },
-  ES: { name: 'Španskom (Español)',      code: 'Spanish'   },
-  DK: { name: 'Danskom (Dansk)',         code: 'Danish'    },
-  SE: { name: 'Švedskom (Svenska)',      code: 'Swedish'   },
-  NO: { name: 'Norveškom (Norsk)',       code: 'Norwegian' },
-  PL: { name: 'Poljskom (Polski)',       code: 'Polish'    },
+  DE: { name: 'Nemačkom (Deutsch)',       code: 'German'    },
+  AT: { name: 'Nemačkom (Deutsch)',       code: 'German'    },
+  CH: { name: 'Nemačkom (Deutsch)',       code: 'German'    },
+  FR: { name: 'Francuskom (Français)',   code: 'French'    },
+  IT: { name: 'Italijanskom (Italiano)',  code: 'Italian'   },
+  NL: { name: 'Holandskom (Nederlands)', code: 'Dutch'     },
+  BE: { name: 'Holandskom (Nederlands)', code: 'Dutch'     },
+  ES: { name: 'Španskom (Español)',       code: 'Spanish'   },
+  DK: { name: 'Danskom (Dansk)',          code: 'Danish'    },
+  SE: { name: 'Švedskom (Svenska)',       code: 'Swedish'   },
+  NO: { name: 'Norveškom (Norsk)',        code: 'Norwegian' },
+  PL: { name: 'Poljskom (Polski)',        code: 'Polish'    },
+}
+
+// VIN poruka po jeziku
+const VIN_MESSAGES: Record<string, string> = {
+  German:    'Könnten Sie mir bitte die Fahrgestellnummer (VIN/Chassisnummer) mitteilen, damit ich das Fahrzeug und die Importbedingungen überprüfen kann?',
+  Dutch:     'Kunt u mij alstublieft het VIN/chassisnummer sturen zodat ik het voertuig en de importvoorwaarden kan controleren?',
+  French:    'Pourriez-vous me communiquer le numéro de châssis (VIN) afin que je puisse vérifier le véhicule et les conditions d\'importation?',
+  Italian:   'Potrebbe fornirmi il numero di telaio (VIN) per poter verificare il veicolo e le condizioni di importazione?',
+  Spanish:   '¿Podría proporcionarme el número de bastidor (VIN) para verificar el vehículo y las condiciones de importación?',
+  Danish:    'Må jeg bede om køretøjets stelnummer (VIN), så jeg kan verificere køretøjet og importbetingelserne?',
+  Swedish:   'Kan du skicka fordonets chassinummer (VIN) så att jag kan kontrollera fordonet och importvillkoren?',
+  Norwegian: 'Kan du oppgi kjøretøyets chassisnummer (VIN) slik at jeg kan verifisere kjøretøyet og importbetingelsene?',
+  Polish:    'Czy mógłby Pan/Pani podać numer VIN pojazdu, abym mógł zweryfikować pojazd i warunki importu?',
 }
 
 interface Props {
@@ -34,12 +47,13 @@ interface Props {
 }
 
 export default function ContactModal({ listing, onClose }: Props) {
-  const [selected, setSelected] = useState<string[]>([])
-  const [custom,   setCustom]   = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [message,  setMessage]  = useState('')
-  const [copied,   setCopied]   = useState(false)
-  const [error,    setError]    = useState('')
+  const [selected,    setSelected]    = useState<string[]>([])
+  const [vinRequested, setVinRequested] = useState(false)
+  const [custom,      setCustom]      = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [message,     setMessage]     = useState('')
+  const [copied,      setCopied]      = useState(false)
+  const [error,       setError]       = useState('')
 
   const detectCountry = (): string => {
     if (listing.country && listing.country.length <= 3) return listing.country
@@ -55,29 +69,36 @@ export default function ContactModal({ listing, onClose }: Props) {
     return 'DE'
   }
 
-  const country   = detectCountry()
-  const langInfo  = COUNTRY_LANG[country] || COUNTRY_LANG.DE
+  const country  = detectCountry()
+  const langInfo = COUNTRY_LANG[country] || COUNTRY_LANG.DE
+  const vinMsg   = VIN_MESSAGES[langInfo.code] || VIN_MESSAGES.German
 
   const toggleQ = (q: string) =>
     setSelected(s => s.includes(q) ? s.filter(x => x !== q) : [...s, q])
 
-  const canGenerate = selected.length > 0 || custom.trim().length > 0
+  const canGenerate = vinRequested || selected.length > 0 || custom.trim().length > 0
 
   const generate = async () => {
     if (!canGenerate) return
     setLoading(true); setMessage(''); setError('')
+
+    // Dodaj VIN poruku na jezik prodavca ako je zatražen
+    const vinQuestion = vinRequested ? `[VIN] ${vinMsg}` : null
+    const allQuestions = [...(vinQuestion ? [vinQuestion] : []), ...selected]
+
     try {
       const res = await fetch('/api/contact-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          country:     country,
+          country,
           make:        listing.make,
           model:       listing.model,
           year:        listing.year,
           price:       listing.price,
-          questions:   selected,
+          questions:   allQuestions,
           custom_text: custom,
+          vin_requested: vinRequested,
         }),
       })
       if (!res.ok) throw new Error()
@@ -94,8 +115,7 @@ export default function ContactModal({ listing, onClose }: Props) {
   }
 
   const openWhatsApp = () => {
-    const text = encodeURIComponent(message)
-    window.open(`https://wa.me/?text=${text}`, '_blank')
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank')
   }
 
   const openGmail = () => {
@@ -161,15 +181,100 @@ export default function ContactModal({ listing, onClose }: Props) {
             </div>
           </div>
 
-          {/* Quick questions */}
+          {/* ✅ SEKCIJA 1: VIN - Sigurnosna provera */}
+          <div style={{
+            marginBottom: 22,
+            background: vinRequested
+              ? 'linear-gradient(135deg, rgba(34,197,94,.08), rgba(34,197,94,.04))'
+              : 'linear-gradient(135deg, rgba(99,102,241,.08), rgba(99,102,241,.04))',
+            border: `2px solid ${vinRequested ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.35)'}`,
+            borderRadius: 14,
+            padding: '16px 18px',
+            boxShadow: vinRequested
+              ? '0 0 20px rgba(34,197,94,.1)'
+              : '0 0 20px rgba(99,102,241,.08)',
+            transition: 'all .25s',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 22 }}>🔐</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: vinRequested ? '#22C55E' : '#818CF8' }}>
+                  Sigurnosna provera vozila
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>
+                  PREPORUČEN KORAK · VISOKA VAŽNOST
+                </div>
+              </div>
+              {vinRequested && (
+                <span style={{
+                  marginLeft: 'auto', fontSize: 11, fontWeight: 700,
+                  color: '#22C55E', background: 'rgba(34,197,94,.12)',
+                  border: '1px solid rgba(34,197,94,.3)',
+                  padding: '3px 10px', borderRadius: 20,
+                }}>✓ Dodato</span>
+              )}
+            </div>
+
+            <p style={{ fontSize: 13, color: 'var(--text2)', margin: '0 0 12px', lineHeight: 1.55 }}>
+              Zatraži VIN broj radi detaljne provere vozila, Euro norme i istorije.
+            </p>
+
+            {/* Preview VIN poruke */}
+            <div style={{
+              background: 'rgba(0,0,0,.2)', borderRadius: 8, padding: '10px 13px',
+              marginBottom: 12, fontSize: 12, color: 'var(--text3)',
+              fontStyle: 'italic', lineHeight: 1.5, borderLeft: '3px solid rgba(99,102,241,.4)',
+            }}>
+              "{vinMsg}"
+            </div>
+
+            <button
+              onClick={() => setVinRequested(v => !v)}
+              style={{
+                width: '100%', padding: '12px', borderRadius: 10, border: 'none',
+                cursor: 'pointer', fontSize: 14, fontWeight: 700,
+                transition: 'all .2s',
+                background: vinRequested
+                  ? 'rgba(34,197,94,.15)'
+                  : 'linear-gradient(135deg, rgba(99,102,241,.25), rgba(99,102,241,.15))',
+                color: vinRequested ? '#22C55E' : '#818CF8',
+                border: `1px solid ${vinRequested ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.4)'}` as any,
+              }}
+            >
+              {vinRequested ? '✓ VIN zahtev dodat u poruku' : '🔐 Zatraži VIN broj'}
+            </button>
+
+            {/* Info box */}
+            <div style={{
+              marginTop: 12, padding: '10px 13px',
+              background: 'rgba(255,255,255,.03)', borderRadius: 8,
+              border: '1px solid rgba(255,255,255,.06)',
+            }}>
+              <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, marginBottom: 5 }}>
+                Nakon VIN provere AutoAI može:
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {[
+                  '• Proveriti Euro normu vozila',
+                  '• Potvrditi originalnu opremu',
+                  '• Analizirati istoriju vozila',
+                  '• Proveriti uslove uvoza u Srbiju',
+                ].map((item, i) => (
+                  <div key={i} style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.4 }}>{item}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ✅ SEKCIJA 2: Dodatna pitanja */}
           <div style={{ marginBottom: 18 }}>
             <p style={{ fontSize: 11, color: 'var(--text3)', margin: '0 0 10px', fontWeight: 600, letterSpacing: '.07em' }}>
-              BRZA PITANJA (odaberi jedno ili više)
+              💬 DODATNA PITANJA (opcionalno)
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {QUICK_QUESTIONS.map(q => (
                 <button key={q} onClick={() => toggleQ(q)} style={{
-                  padding: '9px 15px', borderRadius: 20, fontSize: 14,
+                  padding: '8px 14px', borderRadius: 20, fontSize: 13,
                   background: selected.includes(q) ? 'rgba(255,107,0,.14)' : 'var(--bg3)',
                   border: `1px solid ${selected.includes(q) ? 'var(--accent)' : 'var(--border)'}`,
                   color: selected.includes(q) ? 'var(--accent)' : 'var(--text2)',
@@ -216,7 +321,6 @@ export default function ContactModal({ listing, onClose }: Props) {
               : `🤖 Generiši poruku na ${langInfo.name.split(' ')[0]}`}
           </button>
 
-          {/* Error */}
           {error && (
             <p style={{ color: '#EF4444', fontSize: 13, textAlign: 'center', margin: '0 0 12px' }}>{error}</p>
           )}
@@ -224,27 +328,21 @@ export default function ContactModal({ listing, onClose }: Props) {
           {/* Generated message */}
           {message && (
             <div>
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                marginBottom: 8,
-              }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.07em' }}>
                   GENERISANA PORUKA
                 </span>
-                <span style={{
-                  fontSize: 11, color: '#22C55E',
-                  background: 'rgba(34,197,94,.1)', padding: '3px 9px', borderRadius: 10,
-                }}>✓ Prevedeno AI-om</span>
+                <span style={{ fontSize: 11, color: '#22C55E', background: 'rgba(34,197,94,.1)', padding: '3px 9px', borderRadius: 10 }}>
+                  ✓ Prevedeno AI-om
+                </span>
               </div>
 
               <div style={{
                 background: 'var(--bg3)', border: '1px solid var(--border)',
                 borderRadius: 12, padding: '16px', marginBottom: 12,
-                fontSize: 13, lineHeight: 1.75, color: 'var(--text2)',
-                whiteSpace: 'pre-wrap',
+                fontSize: 13, lineHeight: 1.75, color: 'var(--text2)', whiteSpace: 'pre-wrap',
               }}>{message}</div>
 
-              {/* Akcijska dugmad */}
               <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                 <button onClick={copy} style={{
                   flex: 1, padding: '11px', borderRadius: 10,
@@ -256,27 +354,26 @@ export default function ContactModal({ listing, onClose }: Props) {
 
                 <button onClick={openWhatsApp} style={{
                   flex: 1, padding: '11px', borderRadius: 10,
-                  background: 'rgba(37,211,102,.1)',
-                  border: '1px solid rgba(37,211,102,.35)',
-                  color: '#25D366',
-                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: 'rgba(37,211,102,.1)', border: '1px solid rgba(37,211,102,.35)',
+                  color: '#25D366', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 }}>💬 WhatsApp</button>
 
                 <button onClick={openGmail} style={{
                   flex: 1, padding: '11px', borderRadius: 10,
-                  background: 'rgba(234,67,53,.1)',
-                  border: '1px solid rgba(234,67,53,.35)',
-                  color: '#EA4335',
-                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: 'rgba(234,67,53,.1)', border: '1px solid rgba(234,67,53,.35)',
+                  color: '#EA4335', fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 }}>✉️ Gmail</button>
               </div>
 
               <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: '0 0 6px', lineHeight: 1.5 }}>
-  Poruka je generisana AI-om. Preporučujemo da je pregledate pre slanja.
-</p>
-<p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: 0, lineHeight: 1.5, opacity: .7 }}>
-  💡 Email adresu prodavca nađi na <a href={listing.url} target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none' }}>originalnom oglasu →</a>
-</p>
+                Poruka je generisana AI-om. Preporučujemo da je pregledate pre slanja.
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', margin: 0, lineHeight: 1.5, opacity: .7 }}>
+                💡 Email adresu prodavca nađi na{' '}
+                <a href={listing.url} target="_blank" rel="noopener" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                  originalnom oglasu →
+                </a>
+              </p>
             </div>
           )}
         </div>
