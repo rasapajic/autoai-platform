@@ -276,3 +276,148 @@ async def db_overview(secret: str):
         }
     finally:
         db.close()
+
+
+@router.get("/ai/train")
+async def train_price_model(secret: str, min_listings: int = 300):
+    """Trenira XGBoost model za procenu cena. Pokreni nakon skupljanja dovoljno oglasa."""
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    import pandas as pd
+
+    db = SessionLocal()
+    try:
+        listings = db.query(Listing).filter(
+            Listing.price != None,
+            Listing.year != None,
+            Listing.mileage != None,
+            Listing.is_active == True,
+            Listing.price > 500,
+            Listing.price < 300000,
+        ).all()
+
+        if len(listings) < min_listings:
+            return {
+                "status": "insufficient_data",
+                "available": len(listings),
+                "required": min_listings,
+                "message": f"Nedovoljno oglasa za treniranje. Potrebno min {min_listings}, dostupno {len(listings)}.",
+            }
+
+        df = pd.DataFrame([{
+            "make":         l.make or "",
+            "model":        l.model or "",
+            "year":         l.year or 0,
+            "mileage":      l.mileage or 0,
+            "fuel_type":    l.fuel_type or "",
+            "transmission": l.transmission or "",
+            "country":      l.country or "",
+            "engine_cc":    l.engine_cc or 0,
+            "price":        float(l.price),
+        } for l in listings])
+
+        from app.ai.price_estimator import PriceEstimator
+        estimator = PriceEstimator()
+        result = estimator.train(df)
+
+        return {"status": "ok", "trained_on": len(listings), **result}
+
+    except Exception as e:
+        logger.error(f"❌ Treniranje neuspelo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.get("/ai/status")
+async def ai_model_status(secret: str):
+    """Proverava da li je price model istreniran i dostupan."""
+    check_secret(secret)
+    from pathlib import Path
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    from sqlalchemy import func
+
+    model_path = Path("/app/app/ai/models/price_model.pkl")
+
+    db = SessionLocal()
+    try:
+        total = db.query(func.count(Listing.id)).filter(
+            Listing.is_active == True,
+            Listing.price != None,
+            Listing.year != None,
+            Listing.mileage != None,
+        ).scalar()
+
+        rated = db.query(func.count(Listing.id)).filter(
+            Listing.is_active == True,
+            Listing.price_rating != None,
+        ).scalar()
+
+        return {
+            "model_exists":         model_path.exists(),
+            "model_size_kb":        round(model_path.stat().st_size / 1024, 1) if model_path.exists() else 0,
+            "trainable_listings":   total,
+            "rated_listings":       rated,
+            "ready_to_train":       total >= 300,
+            "recommendation":       "Pokreni /ai/train" if not model_path.exists() and total >= 300
+                                    else "Skupi još oglasa" if total < 300
+                                    else "Model je aktivan" if model_path.exists()
+                                    else "—",
+        }
+    finally:
+        db.close()
+
+
+@router.get("/ai/apply-ratings")
+async def apply_ratings_to_all(secret: str, limit: int = 500):
+    """Primeni price_rating na sve oglase koji ga nemaju. Pokreni posle treniranja."""
+    check_secret(secret)
+    from app.core.db import SessionLocal
+    from app.models import Listing
+    from app.ai.price_estimator import PriceEstimator
+
+    estimator = PriceEstimator.load()
+    if not estimator.is_trained:
+        raise HTTPException(status_code=400, detail="Model nije istreniran. Pokreni /ai/train prvo.")
+
+    db = SessionLocal()
+    try:
+        listings = db.query(Listing).filter(
+            Listing.is_active == True,
+            Listing.price_rating == None,
+            Listing.price != None,
+            Listing.year != None,
+        ).limit(limit).all()
+
+        count = 0
+        for l in listings:
+            try:
+                result = estimator.predict({
+                    "make":         l.make or "",
+                    "model":        l.model or "",
+                    "year":         l.year or 0,
+                    "mileage":      l.mileage or 0,
+                    "fuel_type":    l.fuel_type or "",
+                    "transmission": l.transmission or "",
+                    "country":      l.country or "",
+                    "engine_cc":    l.engine_cc or 0,
+                })
+                l.price_estimated = result["estimated_price"]
+                if l.price and result["estimated_price"]:
+                    delta = ((float(l.price) - result["estimated_price"]) / result["estimated_price"]) * 100
+                    l.price_delta_pct = round(delta, 2)
+                    if delta < -15:   l.price_rating = "great"
+                    elif delta < -5:  l.price_rating = "good"
+                    elif delta < 5:   l.price_rating = "fair"
+                    elif delta < 15:  l.price_rating = "high"
+                    else:             l.price_rating = "overpriced"
+                count += 1
+            except Exception as e:
+                logger.warning(f"Rating greška za {l.id}: {e}")
+
+        db.commit()
+        return {"status": "ok", "rated": count, "limit": limit}
+    finally:
+        db.close()
