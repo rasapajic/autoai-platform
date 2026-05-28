@@ -13,6 +13,27 @@ const QUICK_QUESTIONS = [
   'Da li je auto još dostupan?', 'Koliko ima vlasnika?',
 ]
 
+// ✅ Svi podržani portali
+const SUPPORTED_PORTALS: Record<string, string> = {
+  autoscout24:  'AutoScout24',
+  willhaben:    'Willhaben',
+  marktplaats:  'Marktplaats',
+  '2dehands':   '2dehands',
+  kleinanzeigen:'Kleinanzeigen',
+  mobile_de:    'Mobile.de',
+}
+
+// ✅ Detektuj portal iz URL-a
+function detectPortal(url: string): string | null {
+  if (url.includes('autoscout24'))    return 'autoscout24'
+  if (url.includes('willhaben'))      return 'willhaben'
+  if (url.includes('marktplaats'))    return 'marktplaats'
+  if (url.includes('2dehands'))       return '2dehands'
+  if (url.includes('kleinanzeigen'))  return 'kleinanzeigen'
+  if (url.includes('mobile.de'))      return 'mobile_de'
+  return null
+}
+
 function fmt(n: number) { return n.toLocaleString('de-DE') }
 function fmtKm(km: any): string | null {
   const n = Number(km); if (!n || n < 1 || n > 999999) return null
@@ -38,15 +59,22 @@ export default function AnalyzePage() {
   const [message,   setMessage]   = useState('')
   const [msgError,  setMsgError]  = useState('')
   const [copied,    setCopied]    = useState(false)
-  // Fallback
   const [pastedText,   setPastedText]   = useState('')
   const [textLoading,  setTextLoading]  = useState(false)
   const [textError,    setTextError]    = useState('')
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
+  // ✅ Validacija — proveri da li je portal podržan
+  const detectedPortal = detectPortal(url)
+  const isSupported = !url.trim() || !!detectedPortal
+
   async function analyze() {
     if (!url.trim()) return
+    if (!detectedPortal) {
+      setError('Portal nije podržan. Koristite link sa: AutoScout24, Willhaben, Marktplaats, 2dehands ili Kleinanzeigen.')
+      return
+    }
     setLoading(true); setResult(null); setError('')
     setMessage(''); setSelected([]); setCustom('')
     try {
@@ -114,7 +142,7 @@ export default function AnalyzePage() {
   const bd         = result?.import_cost
   const elig       = result?.serbia_eligibility
   const eligColor  = elig ? (ELIGIBILITY_COLORS[elig.eligible_status] || '#F97316') : '#F97316'
-  const portalName = result?.source === 'autoscout24' ? 'AutoScout24' : result?.source === 'mobile_de' ? 'Mobile.de' : 'Portal'
+  const portalName = SUPPORTED_PORTALS[result?.source] || 'Portal'
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 80 }}>
@@ -147,7 +175,7 @@ export default function AnalyzePage() {
             Proveri auto iz EU
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text2)', margin: 0, lineHeight: 1.5 }}>
-            Zalepi link sa AutoScout24 ili Mobile.de — AI analizira za Srbiju.
+            Zalepi link oglasa — AI analizira za uvoz u Srbiju.
           </p>
         </div>
 
@@ -155,16 +183,37 @@ export default function AnalyzePage() {
         <div className="az-card" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.08em', fontWeight: 600, marginBottom: 8 }}>LINK OGLASA</div>
           <input
-            value={url} onChange={e => setUrl(e.target.value)}
+            value={url} onChange={e => { setUrl(e.target.value); setError('') }}
             onKeyDown={e => e.key === 'Enter' && analyze()}
             placeholder="Zalepi link oglasa ovde…"
-            style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: '13px 16px', color: 'var(--text)', fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 10 }}
+            style={{
+              width: '100%', background: 'var(--bg3)',
+              border: `1px solid ${url && !isSupported ? 'rgba(239,68,68,.5)' : 'var(--border)'}`,
+              borderRadius: 10, padding: '13px 16px', color: 'var(--text)', fontSize: 15,
+              outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 8,
+            }}
           />
-          <button onClick={analyze} disabled={loading || !url.trim()} style={{
+
+          {/* ✅ Portal indikator */}
+          {url && (
+            <div style={{ marginBottom: 10 }}>
+              {detectedPortal ? (
+                <span style={{ fontSize: 12, color: '#22C55E', fontWeight: 600 }}>
+                  ✅ {SUPPORTED_PORTALS[detectedPortal]} — podržan portal
+                </span>
+              ) : (
+                <span style={{ fontSize: 12, color: '#EF4444' }}>
+                  ❌ Portal nije podržan
+                </span>
+              )}
+            </div>
+          )}
+
+          <button onClick={analyze} disabled={loading || !url.trim() || !isSupported} style={{
             width: '100%', padding: '15px', borderRadius: 12, border: 'none',
-            background: (!url.trim() || loading) ? 'var(--bg3)' : 'var(--accent)',
-            color: (!url.trim() || loading) ? 'var(--text3)' : '#fff',
-            fontSize: 16, fontWeight: 800, cursor: (!url.trim() || loading) ? 'default' : 'pointer',
+            background: (!url.trim() || loading || !isSupported) ? 'var(--bg3)' : 'var(--accent)',
+            color: (!url.trim() || loading || !isSupported) ? 'var(--text3)' : '#fff',
+            fontSize: 16, fontWeight: 800, cursor: (!url.trim() || loading || !isSupported) ? 'default' : 'pointer',
           }}>
             {loading ? '⏳ Analiziram oglas…' : '🔍 ANALIZIRAJ OGLAS'}
           </button>
@@ -174,9 +223,18 @@ export default function AnalyzePage() {
               <span key={t} style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 500 }}>{t}</span>
             ))}
           </div>
-          <p style={{ fontSize: 11, color: 'var(--text3)', margin: '10px 0 0', textAlign: 'center' }}>
-            autoscout24.com · mobile.de
-          </p>
+
+          {/* ✅ Lista podržanih portala */}
+          <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+            {Object.entries(SUPPORTED_PORTALS).filter(([k]) => k !== 'mobile_de').map(([key, name]) => (
+              <span key={key} style={{
+                fontSize: 11, padding: '3px 9px', borderRadius: 20,
+                background: detectedPortal === key ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
+                border: `1px solid ${detectedPortal === key ? '#22C55E44' : 'var(--border)'}`,
+                color: detectedPortal === key ? '#22C55E' : 'var(--text3)',
+              }}>{name}</span>
+            ))}
+          </div>
         </div>
 
         {error && (
@@ -185,7 +243,7 @@ export default function AnalyzePage() {
           </div>
         )}
 
-        {/* Fallback — scraping nije uspio */}
+        {/* Fallback */}
         {result && !result.scrape_success && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ background: 'rgba(249,115,22,.08)', border: '1px solid rgba(249,115,22,.25)', borderRadius: 16, padding: 20 }}>
@@ -194,27 +252,14 @@ export default function AnalyzePage() {
               <p style={{ fontSize: 13, color: 'var(--text3)', margin: '0 0 16px', lineHeight: 1.6, textAlign: 'center' }}>
                 Portal je blokirao automatsko čitanje. Kopiraj tekst oglasa i zalijepi ispod — AI će izvući sve podatke.
               </p>
-
-              <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.07em', marginBottom: 8 }}>
-                ZALIJEPI TEKST OGLASA
-              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.07em', marginBottom: 8 }}>ZALIJEPI TEKST OGLASA</div>
               <textarea
-                value={pastedText}
-                onChange={e => setPastedText(e.target.value)}
+                value={pastedText} onChange={e => setPastedText(e.target.value)}
                 placeholder={'Kopiraj sve sa stranice oglasa:\n- naziv vozila\n- godište, km, gorivo\n- cenu\n- opis\n\nPa zalijepi ovde...'}
                 rows={8}
-                style={{
-                  width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)',
-                  borderRadius: 10, padding: '12px 14px', color: 'var(--text)', fontSize: 13,
-                  outline: 'none', resize: 'vertical', boxSizing: 'border-box',
-                  fontFamily: 'inherit', marginBottom: 10, lineHeight: 1.6,
-                }}
+                style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 10, lineHeight: 1.6 }}
               />
-
-              {textError && (
-                <p style={{ color: '#EF4444', fontSize: 13, margin: '0 0 10px' }}>{textError}</p>
-              )}
-
+              {textError && <p style={{ color: '#EF4444', fontSize: 13, margin: '0 0 10px' }}>{textError}</p>}
               <button onClick={analyzeFromText} disabled={textLoading || pastedText.trim().length < 30} style={{
                 width: '100%', padding: '14px', borderRadius: 12, border: 'none',
                 background: textLoading || pastedText.trim().length < 30 ? 'var(--bg3)' : 'var(--accent)',
@@ -223,10 +268,9 @@ export default function AnalyzePage() {
               }}>
                 {textLoading ? '⏳ AI analizira tekst…' : '🤖 ANALIZIRAJ TEKST'}
               </button>
-
               <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,255,255,.03)', borderRadius: 8 }}>
                 <p style={{ fontSize: 11, color: 'var(--text3)', margin: 0, lineHeight: 1.6 }}>
-                  💡 <strong>Kako kopirati tekst:</strong> Otvori oglas → Ctrl+A (selektuj sve) → Ctrl+C (kopiraj) → zalijepi ovde
+                  💡 <strong>Kako kopirati tekst:</strong> Otvori oglas → Ctrl+A → Ctrl+C → zalijepi ovde
                 </p>
               </div>
             </div>
@@ -243,13 +287,14 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Slika + info */}
             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
               {result.images?.[0] && (
                 <div style={{ height: 210, overflow: 'hidden', position: 'relative' }}>
                   <img src={fullImg(result.images[0])} alt={result.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={e => { (e.target as HTMLImageElement).src = result.images[0] }} />
-                  <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,.7)', borderRadius: 6, padding: '3px 10px', fontSize: 11, color: 'rgba(255,255,255,.7)' }}>{result.source}</span>
+                  <span style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(0,0,0,.7)', borderRadius: 6, padding: '3px 10px', fontSize: 11, color: 'rgba(255,255,255,.7)' }}>
+                    {SUPPORTED_PORTALS[result.source] || result.source}
+                  </span>
                 </div>
               )}
               <div style={{ padding: '14px 16px' }}>
@@ -266,13 +311,11 @@ export default function AnalyzePage() {
               </div>
             </div>
 
-            {/* EU cena */}
             <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 14, color: 'var(--text3)', fontWeight: 600 }}>EU cena</span>
               <span style={{ fontSize: 22, fontWeight: 800 }}>{result.price ? `${fmt(result.price)} €` : 'Na upit'}</span>
             </div>
 
-            {/* Uvoz u Srbiju */}
             {elig && (
               <div style={{ background: `${eligColor}11`, border: `1px solid ${eligColor}33`, borderRadius: 16, padding: '14px 16px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 6 }}>UVOZ U SRBIJU</div>
@@ -288,7 +331,6 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Trošak uvoza */}
             {bd && (
               <div style={{ background: 'rgba(255,107,0,.07)', border: '1px solid rgba(255,107,0,.2)', borderRadius: 16, padding: '14px 16px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 6 }}>🇷🇸 TROŠAK UVOZA U SRBIJU</div>
@@ -300,7 +342,7 @@ export default function AnalyzePage() {
                   { label: 'Transport EU→RS', val: bd.transport, note: 'procena' },
                   { label: 'Registracija', val: bd.registration, note: 'procena' },
                 ].map(({ label, val, note }, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.05)', marginTop: i === 0 ? 0 : 0 }}>
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.05)' }}>
                     <span style={{ fontSize: 12, color: i === 0 ? 'var(--text2)' : 'var(--text3)' }}>
                       {i > 0 && '+ '}{label}{note && <span style={{ fontSize: 10, marginLeft: 5, opacity: .5 }}>({note})</span>}
                     </span>
@@ -316,7 +358,6 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Rizici */}
             {result.risk_warnings?.length > 0 && (
               <div style={{ background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.2)', borderRadius: 16, padding: '14px 16px' }}>
                 <div style={{ fontSize: 11, color: '#EF4444', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>⚠️ RIZICI I UPOZORENJA</div>
@@ -328,7 +369,6 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {/* Oprema */}
             {result.features?.length > 0 && (
               <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '14px 16px' }}>
                 <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.07em', fontWeight: 600, marginBottom: 10 }}>OPREMA ({result.features.length} stavki)</div>
@@ -347,7 +387,6 @@ export default function AnalyzePage() {
               <p style={{ fontSize: 13, color: 'var(--text3)', margin: '0 0 12px', lineHeight: 1.5 }}>
                 AI generiše poruku na jeziku prodavca ({result.seller_language || 'Deutsch'}).
               </p>
-
               <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.06em', marginBottom: 8 }}>BRZA PITANJA</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                 {QUICK_QUESTIONS.map(q => (
@@ -360,7 +399,6 @@ export default function AnalyzePage() {
                   }}>{q}</button>
                 ))}
               </div>
-
               <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, letterSpacing: '.06em', marginBottom: 6 }}>DODAJ VLASTITO PITANJE</div>
               <textarea
                 value={custom} onChange={e => setCustom(e.target.value)}
@@ -368,7 +406,6 @@ export default function AnalyzePage() {
                 rows={2}
                 style={{ width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 13px', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 10 }}
               />
-
               <button onClick={generateMessage} disabled={msgLoad || (!selected.length && !custom.trim())} style={{
                 width: '100%', padding: '12px', borderRadius: 10, border: 'none',
                 background: (!selected.length && !custom.trim()) || msgLoad ? 'var(--bg3)' : 'rgba(99,102,241,.2)',
@@ -377,9 +414,7 @@ export default function AnalyzePage() {
               }}>
                 {msgLoad ? '⏳ Generišem…' : '🤖 Generiši poruku'}
               </button>
-
               {msgError && <p style={{ color: '#EF4444', fontSize: 13, margin: '0 0 10px' }}>{msgError}</p>}
-
               {message && (
                 <div>
                   <div style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, padding: 13, fontSize: 13, lineHeight: 1.75, color: 'var(--text2)', whiteSpace: 'pre-wrap', marginBottom: 10 }}>
@@ -404,7 +439,6 @@ export default function AnalyzePage() {
                   </p>
                 </div>
               )}
-
               {result.url && result.source !== 'text_input' && (
                 <>
                   <a href={result.url} target="_blank" rel="noopener noreferrer" style={{
@@ -428,7 +462,6 @@ export default function AnalyzePage() {
             <p style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', lineHeight: 1.6, opacity: .7 }}>
               * Procena je informativna. Pre kupovine obavezno proveriti dokumentaciju vozila, Euro normu i važeće propise u Srbiji.
             </p>
-
           </div>
         )}
       </div>
