@@ -121,7 +121,15 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [enriching,   setEnriching]   = useState(false)
   const [enriched,    setEnriched]    = useState(false)
   const [scanMsg,     setScanMsg]     = useState(AI_SCAN_MESSAGES[0])
+  // ✅ Pamti URL prethodne pretrage
+  const [backUrl,     setBackUrl]     = useState('/search')
   const scanInterval = useRef<any>(null)
+
+  // ✅ Učitaj sačuvani search URL
+  useEffect(() => {
+    const prev = sessionStorage.getItem('autoai_search_url')
+    if (prev) setBackUrl(prev)
+  }, [])
 
   useEffect(() => {
     Promise.allSettled([
@@ -207,9 +215,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
     { label: 'Godište',     value: listing.year },
     { label: 'Kilometraža', value: fmtKm(listing.mileage) },
     { label: 'Gorivo', value: listing.fuel_type ? ({
-  diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni',
-  hybrid: 'Hibrid', lpg: 'Plin', gasoline: 'Benzin',
-} as any)[listing.fuel_type] || listing.fuel_type : null },
+      diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni',
+      hybrid: 'Hibrid', lpg: 'Plin', gasoline: 'Benzin',
+    } as any)[listing.fuel_type] || listing.fuel_type : null },
     { label: 'Menjač',      value: listing.transmission === 'automatic' ? 'Automatik' : listing.transmission === 'manual' ? 'Manuel' : listing.transmission },
     { label: 'Snaga',       value: listing.engine_power_kw ? `${listing.engine_power_kw} kW` : null },
     { label: 'Karoserija',  value: listing.body_type },
@@ -227,13 +235,17 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
       <div className="container">
 
-        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20 }}>
-          <a href="/" style={{ color: 'var(--text3)' }}>Početna</a> →{' '}
-          <a href="/search" style={{ color: 'var(--text3)' }}>Pretraga</a> →{' '}
+        {/* ✅ Breadcrumb — vraća na prethodnu pretragu */}
+        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20, display:'flex', alignItems:'center', gap:6 }}>
+          <a href="/" style={{ color: 'var(--text3)', textDecoration:'none' }}>Početna</a>
+          <span>→</span>
+          <a href={backUrl} style={{ color: 'var(--text3)', textDecoration:'none', display:'flex', alignItems:'center', gap:4 }}>
+            ← Pretraga
+          </a>
+          <span>→</span>
           <span style={{ color: 'var(--text)' }}>{listing.make} {listing.model}</span>
         </div>
 
-        {/* AI Enrichment scanning banner */}
         {enriching && (
           <div style={{
             background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.3)',
@@ -257,9 +269,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 28, alignItems: 'start' }}>
 
-          {/* Leva kolona */}
           <div>
-            {/* Galerija */}
             <div style={{ marginBottom: 24 }}>
               <div style={{ height: 420, background: 'var(--bg3)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 8 }}>
                 {enriching && images.length === 0
@@ -285,7 +295,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {/* Specifikacije */}
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:24, marginBottom:20 }}>
               <h2 style={{ fontSize:16, marginBottom:16 }}>Specifikacije</h2>
               {enriching && specs.length === 0 ? (
@@ -365,7 +374,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             )}
           </div>
 
-          {/* Desna kolona — sidebar */}
+          {/* Desna kolona */}
           <div style={{ position:'sticky', top:80, display:'flex', flexDirection:'column', gap:14 }}>
 
             <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:22 }}>
@@ -391,14 +400,12 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               )}
 
-              {/* Pogledaj oglas — primarno */}
               <a href={listing.url} target="_blank" rel="noopener" style={{
                 display:'block', width:'100%', padding:'13px', textAlign:'center',
                 background:'var(--accent)', color:'#fff', borderRadius:10,
                 fontWeight:700, fontSize:15, marginBottom:10, textDecoration:'none',
               }}>Pogledaj oglas →</a>
 
-              {/* Kontaktiraj prodavca */}
               <button onClick={() => setShowContact(true)} style={{
                 width:'100%', padding:'12px', marginBottom:10,
                 background:'rgba(99,102,241,.1)', border:'1px solid rgba(99,102,241,.35)',
@@ -410,32 +417,20 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               </button>
 
-              {/* VELIKO AZURIRAJ DUGME — primarna akcija */}
-              <button
-                onClick={manualRefresh}
-                disabled={enriching || enriched}
-                style={{
-                  width:'100%', padding:'14px', marginBottom:10,
-                  background: enriched
-                    ? 'rgba(34,197,94,.1)'
-                    : enriching
-                    ? 'var(--bg3)'
-                    : 'linear-gradient(135deg, rgba(99,102,241,.15), rgba(99,102,241,.08))',
-                  border: `2px solid ${enriched ? '#22C55E' : enriching ? 'var(--border)' : 'rgba(99,102,241,.5)'}`,
-                  color: enriched ? '#22C55E' : enriching ? 'var(--text3)' : '#818CF8',
-                  borderRadius:12, fontSize:14, fontWeight:700,
-                  cursor: (enriching || enriched) ? 'default' : 'pointer',
-                  transition:'all .2s',
-                }}
-              >
+              <button onClick={manualRefresh} disabled={enriching || enriched} style={{
+                width:'100%', padding:'14px', marginBottom:10,
+                background: enriched ? 'rgba(34,197,94,.1)' : enriching ? 'var(--bg3)' : 'linear-gradient(135deg, rgba(99,102,241,.15), rgba(99,102,241,.08))',
+                border: `2px solid ${enriched ? '#22C55E' : enriching ? 'var(--border)' : 'rgba(99,102,241,.5)'}`,
+                color: enriched ? '#22C55E' : enriching ? 'var(--text3)' : '#818CF8',
+                borderRadius:12, fontSize:14, fontWeight:700,
+                cursor: (enriching || enriched) ? 'default' : 'pointer', transition:'all .2s',
+              }}>
                 {enriching ? (
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
                     <div style={{ width:8, height:8, borderRadius:'50%', background:'#818CF8', animation:'pulse 1s infinite' }} />
                     AI analizira oglas...
                   </div>
-                ) : enriched ? (
-                  '✅ Oglas analiziran'
-                ) : (
+                ) : enriched ? '✅ Oglas analiziran' : (
                   <div>
                     🔍 Analiziraj oglas sa AI
                     <div style={{ fontSize:11, fontWeight:400, color:'rgba(129,140,248,.7)', marginTop:3 }}>
@@ -445,8 +440,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 )}
               </button>
 
-              {/* Sačuvaj oglas */}
-              {/* Share dugme */}
               <button onClick={() => {
                 const url = window.location.href
                 if (navigator.share) {
@@ -461,14 +454,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 }
               }} style={{
                 width:'100%', padding:'10px', marginBottom:10,
-                background:'transparent',
-                border:'1px solid var(--border)',
-                color:'var(--text2)',
-                borderRadius:10, fontSize:13, cursor:'pointer',
+                background:'transparent', border:'1px solid var(--border)',
+                color:'var(--text2)', borderRadius:10, fontSize:13, cursor:'pointer',
                 display:'flex', alignItems:'center', justifyContent:'center', gap:6,
-              }}>
-                🔗 Podeli oglas
-              </button>
+              }}>🔗 Podeli oglas</button>
+
               <button onClick={async () => {
                 const token = localStorage.getItem('autoai_token')
                 if (!token) { window.location.href = '/login'; return }
@@ -511,7 +501,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {/* Troškovi uvoza */}
+            {/* Troškovi */}
             {bd && (
               <div style={{ background:'rgba(255,107,0,.07)', border:'1px solid rgba(255,107,0,.2)', borderRadius:'var(--radius)', overflow:'hidden' }}>
                 <button onClick={() => setShowBd(!showBd)} style={{
