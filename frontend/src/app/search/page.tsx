@@ -329,8 +329,7 @@ export default function SearchPage() {
             BRZI IZBOR MARKE {makesLoading && <span style={{ opacity:.5 }}>učitavam...</span>}
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
-            {topMakes.map(({ make, count }) => (
-              <button key={make} className="mkbtn cb" onClick={() => setFilter('make', filters.make === make ? '' : make)} style={{
+                          <button key={make} className="mkbtn cb" onClick={() => setFilter('make', filters.make === make ? '' : make)} style={{
                 padding:'6px 12px', borderRadius:20, fontSize:12, fontWeight:500, cursor:'pointer',
                 background: filters.make === make ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
                 border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
