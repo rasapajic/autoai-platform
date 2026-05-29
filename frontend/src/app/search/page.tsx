@@ -58,6 +58,46 @@ function groupModels(raw: { model: string; count: number }[]): { model: string; 
     .sort((a, b) => b.count - a.count)
 }
 
+// ✅ Normalizacija marki — ukloni duplikate (BMW + Bmw + bmw → BMW)
+// Poznate marke sa tačnim pisanjem
+const MAKE_CANONICAL: Record<string, string> = {
+  'bmw': 'BMW', 'vw': 'Volkswagen', 'volkswagen': 'Volkswagen',
+  'mercedes': 'Mercedes-Benz', 'mercedes-benz': 'Mercedes-Benz',
+  'audi': 'Audi', 'ford': 'Ford', 'opel': 'Opel',
+  'renault': 'Renault', 'peugeot': 'Peugeot', 'citroen': 'Citroën',
+  'citroën': 'Citroën', 'skoda': 'Škoda', 'škoda': 'Škoda',
+  'toyota': 'Toyota', 'honda': 'Honda', 'mazda': 'Mazda',
+  'nissan': 'Nissan', 'hyundai': 'Hyundai', 'kia': 'Kia',
+  'seat': 'SEAT', 'fiat': 'Fiat', 'volvo': 'Volvo',
+  'mini': 'MINI', 'porsche': 'Porsche', 'jaguar': 'Jaguar',
+  'land rover': 'Land Rover', 'jeep': 'Jeep', 'subaru': 'Subaru',
+  'mitsubishi': 'Mitsubishi', 'suzuki': 'Suzuki', 'tesla': 'Tesla',
+  'dacia': 'Dacia', 'alfa romeo': 'Alfa Romeo', 'alfa': 'Alfa Romeo',
+  'cupra': 'Cupra', 'lexus': 'Lexus', 'infiniti': 'Infiniti',
+  'dodge': 'Dodge', 'chevrolet': 'Chevrolet', 'cadillac': 'Cadillac',
+  'bentley': 'Bentley', 'maserati': 'Maserati', 'ferrari': 'Ferrari',
+  'lamborghini': 'Lamborghini', 'aston martin': 'Aston Martin',
+  'rolls-royce': 'Rolls-Royce', 'smart': 'Smart', 'saab': 'Saab',
+}
+
+function canonicalMake(make: string): string {
+  const lower = make.toLowerCase().trim()
+  return MAKE_CANONICAL[lower] || make.trim()
+}
+
+function groupMakes(raw: { make: string; count: number }[]): { make: string; count: number }[] {
+  const map = new Map<string, number>()
+  for (const { make, count } of raw) {
+    if (!make || !make.trim()) continue
+    const canon = canonicalMake(make)
+    map.set(canon, (map.get(canon) || 0) + count)
+  }
+  return Array.from(map.entries())
+    .map(([make, count]) => ({ make, count }))
+    .sort((a, b) => a.make.localeCompare(b.make))
+}
+
+
 function calcBreakdown(price: number, carinaPct: number) {
   const carina = Math.round(price * (carinaPct / 100))
   const pdv    = Math.round((price + carina) * 0.20)
@@ -162,9 +202,8 @@ export default function SearchPage() {
       .then(r => r.json())
       .then(data => {
         const filtered = (data || []).filter((m: any) => m.make && m.make.trim())
-        // Sortiranje abecedno
-        filtered.sort((a: any, b: any) => a.make.localeCompare(b.make))
-        setMakes(filtered)
+        // Normalizuj i grupiši duplikate, sortiraj abecedno
+        setMakes(groupMakes(filtered))
       })
       .catch(() => {})
       .finally(() => setMakesLoading(false))
@@ -204,7 +243,8 @@ export default function SearchPage() {
   }, [])
 
   const setFilter = (key: string, val: any) => {
-    const next: any = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
+    const normalized = key === 'make' && val ? canonicalMake(val) : val
+    const next: any = { ...filters, [key]: normalized, page: key === 'page' ? val : 1 }
     if (key === 'make') next.model = ''
     setFilters(next)
     doSearch(next)
