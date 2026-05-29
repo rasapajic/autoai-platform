@@ -457,19 +457,19 @@ export default function SearchPage() {
                   )}
                   <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                     <button className="mkbtn cb" onClick={() => setFilter('model', '')} style={{
-                      padding:'5px 11px', borderRadius:20, fontSize:12, cursor:'pointer',
+                      padding:'5px 11px', borderRadius:20, fontSize:13, cursor:'pointer',
                       background: !filters.model ? 'rgba(255,107,0,.15)' : 'transparent',
                       border: `1px solid ${!filters.model ? 'var(--accent)' : 'var(--border)'}`,
-                      color: !filters.model ? 'var(--accent)' : 'var(--text3)',
+                      color: !filters.model ? 'var(--accent)' : 'var(--text)',
                     }}>Svi</button>
                     {filteredModels.slice(0, 40).map(({ model: mdName, count: mdCount, raw }) => (
                       <button key={mdName} className="mkbtn cb"
                         onClick={() => handleModelSelect(mdName, raw)}
                         style={{
-                          padding:'5px 11px', borderRadius:20, fontSize:12, cursor:'pointer',
+                          padding:'5px 11px', borderRadius:20, fontSize:13, cursor:'pointer',
                           background: filters.model === mdName ? 'rgba(255,107,0,.15)' : 'transparent',
                           border: `1px solid ${filters.model === mdName ? 'var(--accent)' : 'var(--border)'}`,
-                          color: filters.model === mdName ? 'var(--accent)' : 'var(--text3)',
+                          color: filters.model === mdName ? 'var(--accent)' : 'var(--text)',
                           display:'flex', gap:4, alignItems:'center',
                         }}>
                         {mdName}
@@ -481,7 +481,7 @@ export default function SearchPage() {
               ) : (
                 <p style={{ fontSize:12, color:'var(--text3)', margin:0 }}>Učitavam modele...</p>
               )}
-              <button onClick={() => setFilter('make', '')} style={{ marginTop:8, background:'none', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer' }}>
+              <button onClick={() => setFilter('make', '')} style={{ marginTop:8, background:'none', border:'none', color:'var(--text2)', fontSize:13, cursor:'pointer' }}>
                 ✕ Ukloni {filters.make}
               </button>
             </div>
