@@ -28,6 +28,36 @@ const DEFAULT_FILTERS = {
   country: '', price_rating: '', sort_by: 'date', page: 1,
 }
 
+// ✅ Normalizacija modela — ukloni motorske oznake, zadrži prava imena
+const ENGINE_SUFFIXES = /\s+(BlueHDI|BlueHDi|HDi|HDI|TDi|TDI|CDI|SDi|dCi|dci|TSI|TFSI|FSI|GTI|GTE|GTD|STI|MHEV|PHEV|HEV|EV|e-tron|4Motion|xDrive|sDrive|AWD|FWD|4WD|quattro|Hybrid|Electric)\b.*/i
+const ENGINE_DISPLACEMENT = /\s+\d+[.,]\d+\s*(L|l|T|D)?\s*.*$/
+
+function normalizeModel(model: string): string {
+  if (!model) return model
+  return model
+    .replace(ENGINE_SUFFIXES, '')
+    .replace(ENGINE_DISPLACEMENT, '')
+    .trim()
+}
+
+function groupModels(raw: { model: string; count: number }[]): { model: string; count: number; raw: string[] }[] {
+  const map = new Map<string, { count: number; raw: string[] }>()
+  for (const { model, count } of raw) {
+    const norm = normalizeModel(model)
+    if (!norm) continue
+    const existing = map.get(norm)
+    if (existing) {
+      existing.count += count
+      existing.raw.push(model)
+    } else {
+      map.set(norm, { count, raw: [model] })
+    }
+  }
+  return Array.from(map.entries())
+    .map(([model, { count, raw }]) => ({ model, count, raw }))
+    .sort((a, b) => b.count - a.count)
+}
+
 function calcBreakdown(price: number, carinaPct: number) {
   const carina = Math.round(price * (carinaPct / 100))
   const pdv    = Math.round((price + carina) * 0.20)
@@ -69,8 +99,8 @@ function getSerbiaEligibility(listing: any) {
   if (fuel === 'electric') return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Električna vozila su oslobođena carine.', carinaPct:0 }
   if (age !== null && age >= 30) return { status:'oldtimer', emoji:'🟣', label:'Oldtimer izuzetak', tooltip:'Poseban režim uvoza.', carinaPct:5 }
   if (!year) return null
-  if (year >= 2015) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 6 — bez ograničenja za uvoz.', carinaPct:5 }
-  if (year >= 2011) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 5 — može se uvesti bez ograničenja.', carinaPct:5 }
+  if (year >= 2015) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 6 — bez ograničenja.', carinaPct:5 }
+  if (year >= 2011) return { status:'eligible', emoji:'🟢', label:'Može uvoz u Srbiju', tooltip:'Euro 5 — može se uvesti.', carinaPct:5 }
   if (year >= 2006) return { status:'eligible', emoji:'🟢', label: fuel==='diesel' ? 'Može uvoz — proveri Euro 4' : 'Može uvoz u Srbiju', tooltip:'Euro 4 je minimalni standard.', carinaPct:5 }
   if (year >= 2001) return { status:'needs_check', emoji:'🟠', label:'Potrebna provera Euro norme', tooltip:'Moguće uz dodatnu dokumentaciju.', carinaPct:5 }
   return { status:'not_recommended', emoji:'🔴', label:'Uvoz nije preporučljiv', tooltip:'Stara emisiona norma.', carinaPct:5 }
@@ -79,7 +109,6 @@ function getSerbiaEligibility(listing: any) {
 export default function SearchPage() {
   const searchParams = useSearchParams()
 
-  // ✅ Vrati sačuvane filtere ako dolazimo sa listing stranice
   const getInitialFilters = () => {
     if (typeof window !== 'undefined') {
       try {
@@ -121,33 +150,43 @@ export default function SearchPage() {
   const [searchHistory,  setSearchHistory]  = useState<string[]>([])
   const [compareList,    setCompareList]    = useState<any[]>([])
   const [makes,          setMakes]          = useState<{make: string; count: number}[]>([])
-  const [models,         setModels]         = useState<{model: string; count: number}[]>([])
+  const [rawModels,      setRawModels]      = useState<{model: string; count: number}[]>([])
   const [makesLoading,   setMakesLoading]   = useState(false)
   const [modelSearch,    setModelSearch]    = useState('')
   const [filters,        setFilters]        = useState(getInitialFilters)
 
-  // Učitaj marke
+  // ✅ Učitaj marke — sortirane abecedno
   useEffect(() => {
     setMakesLoading(true)
     fetch(`${API_BASE}/search/makes`)
       .then(r => r.json())
-      .then(data => setMakes((data || []).filter((m: any) => m.make && m.make.trim())))
+      .then(data => {
+        const filtered = (data || []).filter((m: any) => m.make && m.make.trim())
+        // Sortiranje abecedno
+        filtered.sort((a: any, b: any) => a.make.localeCompare(b.make))
+        setMakes(filtered)
+      })
       .catch(() => {})
       .finally(() => setMakesLoading(false))
   }, [])
 
   // Učitaj modele kad se promeni marka
   useEffect(() => {
-    if (!filters.make) { setModels([]); return }
+    if (!filters.make) { setRawModels([]); return }
     fetch(`${API_BASE}/search/models?make=${encodeURIComponent(filters.make)}`)
       .then(r => r.json())
-      .then(data => setModels((data || []).filter((m: any) => m.model && m.model.trim())))
-      .catch(() => setModels([]))
+      .then(data => setRawModels((data || []).filter((m: any) => m.model && m.model.trim())))
+      .catch(() => setRawModels([]))
   }, [filters.make])
+
+  // ✅ Normalizovani i grupisani modeli
+  const groupedModels = groupModels(rawModels)
+  const filteredModels = groupedModels.filter(m =>
+    !modelSearch || m.model.toLowerCase().includes(modelSearch.toLowerCase())
+  )
 
   const doSearch = useCallback(async (f = filters) => {
     setLoading(true)
-    // ✅ Čuvaj filtere i URL pretrage
     try {
       sessionStorage.setItem('autoai_filters', JSON.stringify(f))
       sessionStorage.setItem('autoai_search_url', window.location.href)
@@ -167,6 +206,14 @@ export default function SearchPage() {
   const setFilter = (key: string, val: any) => {
     const next: any = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
     if (key === 'make') next.model = ''
+    setFilters(next)
+    doSearch(next)
+  }
+
+  // Kad korisnik bira normalizovani model, šalji sve raw varijante OR samo normalizovano
+  const handleModelSelect = (normalizedModel: string, rawVariants: string[]) => {
+    const isDeselect = filters.model === normalizedModel
+    const next: any = { ...filters, model: isDeselect ? '' : normalizedModel, page: 1 }
     setFilters(next)
     doSearch(next)
   }
@@ -200,7 +247,6 @@ export default function SearchPage() {
     finally { setSaving(false) }
   }
 
-  // ✅ Označi da idemo na listing stranicu
   const handleListingClick = () => {
     try {
       sessionStorage.setItem('autoai_from_listing', '1')
@@ -214,9 +260,6 @@ export default function SearchPage() {
   ].filter(Boolean).length
 
   const topMakes = makes.slice(0, 20)
-  const filteredModels = models.filter(m =>
-    !modelSearch || (m.model || '').toLowerCase().includes(modelSearch.toLowerCase())
-  )
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
@@ -264,7 +307,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Make modal */}
+      {/* Make modal — abecedno */}
       {showMakeModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:1000, display:'flex', alignItems:'flex-end' }}
           onClick={() => setShowMakeModal(false)}>
@@ -273,7 +316,7 @@ export default function SearchPage() {
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <div>
                 <h3 style={{ fontSize:16, margin:0 }}>Izaberi marku</h3>
-                <p style={{ fontSize:12, color:'var(--text3)', margin:'4px 0 0' }}>{makes.length} marki u sistemu</p>
+                <p style={{ fontSize:12, color:'var(--text3)', margin:'4px 0 0' }}>{makes.length} marki — sortirano abecedno</p>
               </div>
               <button onClick={() => setShowMakeModal(false)} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:20, cursor:'pointer' }}>✕</button>
             </div>
@@ -354,7 +397,7 @@ export default function SearchPage() {
           </div>
         )}
 
-        {/* ✅ Aktivni filteri — prikaz */}
+        {/* Aktivni filteri */}
         {activeCount > 0 && (
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:10, alignItems:'center' }}>
             <span style={{ fontSize:11, color:'var(--text3)' }}>Prikazujem:</span>
@@ -366,14 +409,14 @@ export default function SearchPage() {
             {filters.min_year && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>od {filters.min_year}.</span>}
             {filters.max_year && <span style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)', color:'var(--accent)' }}>do {filters.max_year}.</span>}
             <button onClick={() => { const r = {...DEFAULT_FILTERS}; setFilters(r); doSearch(r) }}
-              style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'transparent', border:'1px solid var(--border)', color:'var(--text3)', cursor:'pointer' }}>✕ Ukloni</button>
+              style={{ padding:'4px 10px', borderRadius:20, fontSize:12, background:'transparent', border:'1px solid var(--border)', color:'var(--text3)', cursor:'pointer' }}>✕ Ukloni sve</button>
           </div>
         )}
 
-        {/* Brzi izbor marke */}
+        {/* ✅ Brzi izbor marke — abecedno */}
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
-            BRZI IZBOR MARKE {makesLoading && <span style={{ opacity:.5 }}>učitavam...</span>}
+            MARKA {makesLoading && <span style={{ opacity:.5 }}>učitavam...</span>}
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
             {topMakes.map(({ make: mkName, count: mkCount }) => (
@@ -395,19 +438,20 @@ export default function SearchPage() {
                 padding:'6px 12px', borderRadius:20, fontSize:12,
                 background:'var(--bg2)', border:'1px dashed var(--border)',
                 color:'var(--text3)', cursor:'pointer',
-              }}>+ {makes.length - 20} više</button>
+              }}>+ {makes.length - 20} više →</button>
             )}
           </div>
 
-          {/* Modeli */}
+          {/* ✅ Normalizovani modeli */}
           {filters.make && (
             <div style={{ marginTop:8, padding:'12px 14px', background:'var(--bg2)', borderRadius:12, border:'1px solid var(--border)' }}>
               <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
                 MODEL — {filters.make.toUpperCase()}
+                {groupedModels.length > 0 && <span style={{ fontWeight:400, opacity:.6, marginLeft:6 }}>({groupedModels.length} modela)</span>}
               </div>
-              {models.length > 0 ? (
+              {rawModels.length > 0 ? (
                 <>
-                  {models.length > 10 && (
+                  {groupedModels.length > 10 && (
                     <input placeholder="Traži model..." value={modelSearch} onChange={e => setModelSearch(e.target.value)}
                       style={{ width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, padding:'7px 12px', color:'var(--text)', fontSize:13, outline:'none', marginBottom:8 }} />
                   )}
@@ -418,9 +462,9 @@ export default function SearchPage() {
                       border: `1px solid ${!filters.model ? 'var(--accent)' : 'var(--border)'}`,
                       color: !filters.model ? 'var(--accent)' : 'var(--text3)',
                     }}>Svi</button>
-                    {filteredModels.slice(0, 40).map(({ model: mdName, count: mdCount }) => (
+                    {filteredModels.slice(0, 40).map(({ model: mdName, count: mdCount, raw }) => (
                       <button key={mdName} className="mkbtn cb"
-                        onClick={() => setFilter('model', filters.model === mdName ? '' : mdName)}
+                        onClick={() => handleModelSelect(mdName, raw)}
                         style={{
                           padding:'5px 11px', borderRadius:20, fontSize:12, cursor:'pointer',
                           background: filters.model === mdName ? 'rgba(255,107,0,.15)' : 'transparent',
@@ -454,7 +498,7 @@ export default function SearchPage() {
           }}>🔔 Sačuvaj pretragu</button>
         </div>
 
-        {/* Mobile filter */}
+        {/* Mobile filter toggle */}
         <button className="mfb cb" onClick={() => setSidebarOpen(!sidebarOpen)} style={{
           display:'flex', alignItems:'center', justifyContent:'center', gap:8,
           padding:'11px 16px', borderRadius:10, marginBottom:16, width:'100%',
@@ -466,18 +510,12 @@ export default function SearchPage() {
 
         <div className="sg" style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:24, alignItems:'start' }}>
           <aside className="sd" style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, position:'sticky', top:80 }}>
-            <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
-              const r = {...DEFAULT_FILTERS}
-              setFilters(r); doSearch(r)
-            }} />
+            <Sidebar filters={filters} setFilter={setFilter} onReset={() => { const r={...DEFAULT_FILTERS}; setFilters(r); doSearch(r) }} />
           </aside>
 
           {sidebarOpen && (
             <div className="sm" style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:20, marginBottom:16, gridColumn:'1/-1' }}>
-              <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
-                const r = {...DEFAULT_FILTERS}
-                setFilters(r); doSearch(r)
-              }} />
+              <Sidebar filters={filters} setFilter={setFilter} onReset={() => { const r={...DEFAULT_FILTERS}; setFilters(r); doSearch(r) }} />
             </div>
           )}
 
@@ -497,41 +535,7 @@ export default function SearchPage() {
               </select>
             </div>
 
-            {/* Paginacija gore */}
-            {!loading && results?.pages > 1 && (
-              <div className="pagination-desktop" style={{ display:'flex', justifyContent:'center', gap:6, flexWrap:'wrap', marginBottom:16 }}>
-                {filters.page > 1 && (
-                  <button onClick={() => setFilter('page', filters.page - 1)} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>‹</button>
-                )}
-                {(() => {
-                  const total = Math.min(results.pages, 74)
-                  const cur = filters.page
-                  const pages: number[] = []
-                  if (total <= 7) {
-                    for (let i = 1; i <= total; i++) pages.push(i)
-                  } else {
-                    pages.push(1)
-                    if (cur > 3) pages.push(-1)
-                    for (let i = Math.max(2, cur-1); i <= Math.min(total-1, cur+1); i++) pages.push(i)
-                    if (cur < total - 2) pages.push(-2)
-                    pages.push(total)
-                  }
-                  return pages.map((p, i) => p < 0 ? (
-                    <span key={p} style={{ width:38, height:38, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text3)', fontSize:14 }}>…</span>
-                  ) : (
-                    <button key={p} onClick={() => { setFilter('page', p); window.scrollTo({top:0,behavior:'smooth'}) }} style={{
-                      width:38, height:38, borderRadius:10, border:'1px solid var(--border)',
-                      background: cur === p ? 'var(--accent)' : 'var(--bg2)',
-                      color: cur === p ? '#fff' : 'var(--text2)',
-                      fontSize:13, cursor:'pointer', fontWeight:600,
-                    }}>{p}</button>
-                  ))
-                })()}
-                {filters.page < results.pages && (
-                  <button onClick={() => setFilter('page', filters.page + 1)} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>›</button>
-                )}
-              </div>
-            )}
+            {!loading && results?.pages > 1 && <Pagination pages={results.pages} current={filters.page} onPage={p => { setFilter('page', p); window.scrollTo({top:0,behavior:'smooth'}) }} />}
 
             {loading ? (
               <div className="rg" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:20 }}>
@@ -552,49 +556,12 @@ export default function SearchPage() {
                     />
                   ))}
                 </div>
-
-                {/* Paginacija dole */}
                 {results.pages > 1 && (
                   <div style={{ marginTop:32 }}>
-                    <div className="pagination-desktop" style={{ display:'flex', justifyContent:'center', gap:6, flexWrap:'wrap' }}>
-                      {filters.page > 1 && (
-                        <button onClick={() => { setFilter('page', filters.page - 1); window.scrollTo({top:0,behavior:'smooth'}) }} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>‹</button>
-                      )}
-                      {(() => {
-                        const total = Math.min(results.pages, 74)
-                        const cur = filters.page
-                        const pages: number[] = []
-                        if (total <= 7) {
-                          for (let i = 1; i <= total; i++) pages.push(i)
-                        } else {
-                          pages.push(1)
-                          if (cur > 3) pages.push(-1)
-                          for (let i = Math.max(2, cur-1); i <= Math.min(total-1, cur+1); i++) pages.push(i)
-                          if (cur < total - 2) pages.push(-2)
-                          pages.push(total)
-                        }
-                        return pages.map((p, i) => p < 0 ? (
-                          <span key={p} style={{ width:38, height:38, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text3)', fontSize:14 }}>…</span>
-                        ) : (
-                          <button key={p} onClick={() => { setFilter('page', p); window.scrollTo({top:0,behavior:'smooth'}) }} style={{
-                            width:38, height:38, borderRadius:10, border:'1px solid var(--border)',
-                            background: cur === p ? 'var(--accent)' : 'var(--bg2)',
-                            color: cur === p ? '#fff' : 'var(--text2)',
-                            fontSize:13, cursor:'pointer', fontWeight:600,
-                          }}>{p}</button>
-                        ))
-                      })()}
-                      {filters.page < results.pages && (
-                        <button onClick={() => { setFilter('page', filters.page + 1); window.scrollTo({top:0,behavior:'smooth'}) }} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>›</button>
-                      )}
-                    </div>
+                    <Pagination pages={results.pages} current={filters.page} onPage={p => { setFilter('page', p); window.scrollTo({top:0,behavior:'smooth'}) }} />
                     <div className="pagination-mobile" style={{ display:'none', flexDirection:'column', alignItems:'center', gap:12, marginTop:16 }}>
                       {filters.page < results.pages && (
-                        <button onClick={() => setFilter('page', filters.page + 1)} style={{
-                          width:'100%', padding:'14px', borderRadius:12,
-                          background:'var(--bg2)', border:'1px solid var(--border)',
-                          color:'var(--text2)', fontSize:15, fontWeight:600, cursor:'pointer',
-                        }}>⬇️ Učitaj još oglasa</button>
+                        <button onClick={() => setFilter('page', filters.page + 1)} style={{ width:'100%', padding:'14px', borderRadius:12, background:'var(--bg2)', border:'1px solid var(--border)', color:'var(--text2)', fontSize:15, fontWeight:600, cursor:'pointer' }}>⬇️ Učitaj još oglasa</button>
                       )}
                       <span style={{ fontSize:12, color:'var(--text3)' }}>Strana {filters.page} od {results.pages}</span>
                     </div>
@@ -639,6 +606,31 @@ export default function SearchPage() {
   )
 }
 
+// ✅ Pagination komponenta — DRY
+function Pagination({ pages, current, onPage }: { pages: number; current: number; onPage: (p: number) => void }) {
+  const total = Math.min(pages, 74)
+  const pageNums: number[] = []
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) pageNums.push(i)
+  } else {
+    pageNums.push(1)
+    if (current > 3) pageNums.push(-1)
+    for (let i = Math.max(2, current-1); i <= Math.min(total-1, current+1); i++) pageNums.push(i)
+    if (current < total - 2) pageNums.push(-2)
+    pageNums.push(total)
+  }
+  return (
+    <div className="pagination-desktop" style={{ display:'flex', justifyContent:'center', gap:6, flexWrap:'wrap', marginBottom:16 }}>
+      {current > 1 && <button onClick={() => onPage(current-1)} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>‹</button>}
+      {pageNums.map((p, i) => p < 0
+        ? <span key={p} style={{ width:38, height:38, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text3)' }}>…</span>
+        : <button key={p} onClick={() => onPage(p)} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:current===p?'var(--accent)':'var(--bg2)', color:current===p?'#fff':'var(--text2)', fontSize:13, cursor:'pointer', fontWeight:600 }}>{p}</button>
+      )}
+      {current < total && <button onClick={() => onPage(current+1)} style={{ width:38, height:38, borderRadius:10, border:'1px solid var(--border)', background:'var(--bg2)', color:'var(--text2)', fontSize:14, cursor:'pointer' }}>›</button>}
+    </div>
+  )
+}
+
 function ListingCard({ listing, onContact, onCompare, inCompare, onListingClick }: {
   listing: any; onContact: () => void; onCompare: () => void; inCompare: boolean; onListingClick: () => void
 }) {
@@ -666,7 +658,6 @@ function ListingCard({ listing, onContact, onCompare, inCompare, onListingClick 
         </div>
       )}
 
-      {/* ✅ onClick čuva filtere pre navigacije */}
       <a href={`/listing/${listing.id}`} onClick={onListingClick} style={{ display:'block', textDecoration:'none' }}>
         <div style={{ height:200, background:'var(--bg3)', position:'relative', overflow:'hidden' }}>
           {img
