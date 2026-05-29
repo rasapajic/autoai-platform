@@ -23,7 +23,6 @@ class LaCentraleScraper:
                 "families": "AUTO",
                 "pageSize": 10,
                 "page":     1,
-                "boostVo":  "true",
             }
 
             try:
@@ -31,17 +30,11 @@ class LaCentraleScraper:
                     SEARCH_URL, params=params,
                     timeout=aiohttp.ClientTimeout(total=20)
                 ) as resp:
-                    status = resp.status
-                    ct     = resp.content_type
-                    text   = await resp.text()
-
-                    # Ispiši sve za debug
-                    print(f"[LaCentrale DEBUG] Status: {status}")
-                    print(f"[LaCentrale DEBUG] Content-Type: {ct}")
-                    print(f"[LaCentrale DEBUG] Response (prvi 1000 znakova):")
-                    print(text[:1000])
+                    text = await resp.text()
+                    raise Exception(f"STATUS={resp.status} BODY={text[:600]}")
 
             except Exception as e:
-                print(f"[LaCentrale DEBUG] Exception: {e}")
+                print(f"[LaCentrale DEBUG] {e}")
+                raise
 
         return []
