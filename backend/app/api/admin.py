@@ -45,6 +45,9 @@ async def _run_scraper(portal: str):
         elif portal == "bilbasen":
             from app.scrapers.bilbasen import BilbasenScraper
             scraper = BilbasenScraper()
+            elif portal == "lacentrale":
+    from app.scrapers.lacentrale import LaCentraleScraper
+    scraper = LaCentraleScraper()
         else:
             from app.scrapers.mobile_de import MobileDeScraper
             scraper = MobileDeScraper()
