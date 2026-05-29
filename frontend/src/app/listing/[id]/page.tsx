@@ -18,12 +18,21 @@ const AI_SCAN_MESSAGES = [
   '🧠 Izračunavanje troška uvoza...',
 ]
 
+const SOURCE_LABELS: Record<string, string> = {
+  autoscout24:  'AutoScout24',
+  willhaben:    'Willhaben',
+  marktplaats:  'Marktplaats',
+  '2dehands':   '2dehands',
+  kleinanzeigen:'Kleinanzeigen',
+  mobile_de:    'Mobile.de',
+}
+
 function getSerbiaEligibility(listing: any) {
   const year = listing.year ? Number(listing.year) : null
   const fuel = listing.fuel_type || null
   const age  = year ? (2026 - year) : null
-  if (fuel === 'electric') return { status:'eligible', emoji:'🟢', label:'Visoka verovatnoća uvoza', sublabel:'EV · 0% carine', reason:'Električna vozila oslobođena carine. Potrebna COC dokumentacija.', warnings:['Proveri tip punjača (Tip 2 / CCS).'], confidence:'high', carinaPct:0 }
-  if (age !== null && age >= 30) return { status:'oldtimer', emoji:'🟣', label:'Oldtimer — poseban režim', sublabel:'Starije od 30 god.', reason:`Vozilo (${year}) — poseban carinski tretman.`, warnings:['Konsultuj carinskog agenta.'], confidence:'medium', carinaPct:5 }
+  if (fuel === 'electric') return { status:'eligible', emoji:'🟢', label:'Visoka verovatnoća uvoza', sublabel:'EV · 0% carine', reason:'Električna vozila oslobođena carine.', warnings:['Proveri tip punjača (Tip 2 / CCS).'], confidence:'high', carinaPct:0 }
+  if (age !== null && age >= 30) return { status:'oldtimer', emoji:'🟣', label:'Oldtimer — poseban režim', sublabel:'Starije od 30 god.', reason:`Poseban carinski tretman.`, warnings:['Konsultuj carinskog agenta.'], confidence:'medium', carinaPct:5 }
   if (!year) return { status:'needs_check', emoji:'🟠', label:'Proveriti detalje uvoza', sublabel:'Godište nepoznato', reason:'Bez potvrđenog godišta nije moguće proceniti Euro normu.', warnings:['Zatraži COC i datum prve registracije.'], confidence:'low', carinaPct:5 }
   if (year >= 2015) return { status:'eligible', emoji:'🟢', label:'Visoka verovatnoća uvoza', sublabel:`Euro 6 · ${year}.`, reason:`Euro 6 — bez ograničenja.`, warnings:['Pribavi COC.', ...(fuel==='diesel'?['Proveri DPF.']:[])] , confidence:'high', carinaPct:5 }
   if (year >= 2011) return { status:'eligible', emoji:'🟢', label:'Verovatno uspešan uvoz', sublabel:`Euro 5 · ${year}.`, reason:`Euro 5 — može se uvesti.`, warnings:['Pribavi COC.', ...(fuel==='diesel'?['Dizel Euro 5 — proveri DPF.']:[])] , confidence:'high', carinaPct:5 }
@@ -40,29 +49,24 @@ function calcTrustScore(listing: any) {
   const delta   = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
   const imgCount = (listing.images||[]).length
 
-  // Slike (max 10)
   if (imgCount >= 6)      { score += 10; explanations.push({text:`${imgCount} fotografija vozila`, ok:true}) }
   else if (imgCount >= 3) { score += 6 }
   else if (imgCount >= 1) { score += 2; explanations.push({text:'Malo fotografija vozila', ok:false}) }
   else                    { explanations.push({text:'Nema fotografija vozila', ok:false}) }
 
-  // Godište (10)
   if (year) { score += 10; explanations.push({text:`Godište potvrđeno (${year})`, ok:true}) }
   else { explanations.push({text:'Godište nije navedeno', ok:false}) }
 
-  // Kilometraža (10)
   if (mileage) {
     const annual = year ? mileage/(2026-year) : null
     if (annual && annual > 40000) { score += 4; explanations.push({text:`Visoka godišnja kilometraža (~${Math.round(annual/1000)}k/god)`, ok:false}) }
     else { score += 10; explanations.push({text:`Kilometraža deluje realno (${mileage.toLocaleString()} km)`, ok:true}) }
   } else { explanations.push({text:'Kilometraža nije navedena', ok:false}) }
 
-  // Gorivo + menjač (8)
   if (listing.fuel_type) { score += 4; explanations.push({text:'Gorivo navedeno', ok:true}) }
   else explanations.push({text:'Gorivo nije navedeno', ok:false})
   if (listing.transmission) score += 4
 
-  // Cena (20)
   if (delta !== null) {
     if (delta < -25) { score += 6; explanations.push({text:`Cena ${Math.abs(delta).toFixed(0)}% ispod proseka — proveri razlog`, ok:false}) }
     else if (delta < -5) { score += 20; explanations.push({text:`Cena ispod tržišnog proseka za ${Math.abs(delta).toFixed(0)}%`, ok:true}) }
@@ -71,20 +75,17 @@ function calcTrustScore(listing: any) {
     else { score += 3; explanations.push({text:`Cena značajno iznad proseka (${delta.toFixed(0)}%)`, ok:false}) }
   } else if (listing.price) score += 8
 
-  // Opis (8)
   const descLen = (listing.description||'').length
   if (descLen > 100) { score += 8; explanations.push({text:'Detaljan opis vozila', ok:true}) }
   else if (descLen > 30) score += 4
   else explanations.push({text:'Kratak ili nedostaje opis', ok:false})
 
-  // Uvoz (20)
   const elig = getSerbiaEligibility(listing)
   if (elig.confidence==='high')   { score += 20; explanations.push({text:'Pogodan za uvoz u Srbiju', ok:true}) }
   else if (elig.confidence==='medium') { score += 10 }
   else if (elig.confidence==='low')    { score += 4; explanations.push({text:'Nesigurnost pri uvozu', ok:false}) }
   else explanations.push({text:'Problematičan uvoz', ok:false})
 
-  // VIN/COC hint
   explanations.push({text:'VIN broj nije verifikovan', ok:false})
 
   score = Math.min(100, Math.max(0, Math.round(score)))
@@ -114,7 +115,6 @@ function fullImg(url: string) {
   return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
 }
 
-// ✅ Bottom Sheet component
 function BottomSheet({ open, onClose, title, children }: {open:boolean; onClose:()=>void; title:string; children:React.ReactNode}) {
   if (!open) return null
   return (
@@ -131,7 +131,6 @@ function BottomSheet({ open, onClose, title, children }: {open:boolean; onClose:
   )
 }
 
-// ✅ Accordion section
 function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:string; icon:string; children:React.ReactNode; defaultOpen?:boolean; badge?:string}) {
   const [open, setOpen] = useState(defaultOpen)
   return (
@@ -211,6 +210,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const bd        = price ? calcImport(price, elig.carinaPct) : null
   const deltaGood = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
   const trust     = calcTrustScore(listing)
+  const portalName = SOURCE_LABELS[listing.source] || listing.source || 'Portal'
 
   const fuelLabel = (f: string) => ({diesel:'Dizel',petrol:'Benzin',electric:'Električni',hybrid:'Hibrid',lpg:'Plin',gasoline:'Benzin'} as any)[f]||f
 
@@ -228,10 +228,10 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const criticalChecks = trust.explanations.filter(e=>!e.ok).length
 
   return (
-    <div style={{paddingBottom:80}}>
+    <div style={{paddingBottom:90}}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
 
-      {/* ✅ AI Score Bottom Sheet */}
+      {/* AI Score Bottom Sheet */}
       <BottomSheet open={showScoreSheet} onClose={() => setShowScoreSheet(false)} title={`AI procena: ${trust.score}/100`}>
         <div style={{marginBottom:16}}>
           <div style={{height:8, background:'rgba(255,255,255,.06)', borderRadius:4, overflow:'hidden', marginBottom:8}}>
@@ -248,7 +248,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           ))}
         </div>
         <p style={{fontSize:11, color:'var(--text3)', marginTop:14, lineHeight:1.6, opacity:.7}}>
-          Score se poboljšava sa VIN verifikacijom, kompletnim podacima i realnom cenom.
+          Score se poboljšava sa VIN verifikacijom i kompletnim podacima.
         </p>
       </BottomSheet>
 
@@ -266,7 +266,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             ].map(({label,val,note},i) => (
               <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'11px 0',borderBottom:'1px solid var(--border)'}}>
                 <span style={{fontSize:14,color:i===0?'var(--text)':'var(--text2)'}}>{i>0&&'+ '}{label}{note&&<span style={{fontSize:11,marginLeft:5,opacity:.6}}>({note})</span>}</span>
-                <span style={{fontSize:14,fontWeight:600,color:i===0?'var(--text)':'var(--accent)'}}>{i===0?'':''}{fmt(val)} €</span>
+                <span style={{fontSize:14,fontWeight:600,color:i===0?'var(--text)':'var(--accent)'}}>{fmt(val)} €</span>
               </div>
             ))}
             <div style={{display:'flex',justifyContent:'space-between',marginTop:14,paddingTop:14,borderTop:'2px solid rgba(255,107,0,.25)'}}>
@@ -297,9 +297,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
       `}</style>
 
       <div className="container" style={{padding:'12px 12px 0'}}>
-        {/* Breadcrumb kompaktan */}
+        {/* Breadcrumb */}
         <div style={{fontSize:12,color:'var(--text3)',marginBottom:10,display:'flex',alignItems:'center',gap:5}}>
-          <a href={backUrl} style={{color:'var(--text3)',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>← Pretraga</a>
+          <a href={backUrl} style={{color:'var(--text3)',textDecoration:'none'}}>← Pretraga</a>
           <span>·</span>
           <span style={{color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{listing.make} {listing.model}</span>
         </div>
@@ -313,7 +313,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
         <div className="listing-grid" style={{display:'grid',gridTemplateColumns:'1fr 340px',gap:24,alignItems:'start'}}>
 
-          {/* ✅ MOBILE STACK — prioritet sadržaja */}
+          {/* MOBILE STACK */}
           <div className="mobile-stack">
 
             {/* 1. Slika */}
@@ -322,11 +322,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
                 : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
               }
-              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{listing.source}</span>
+              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
               {images.length > 1 && (
-                <div style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
+                <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
                   {activeImg+1}/{images.length}
-                </div>
+                </span>
               )}
             </div>
             {images.length > 1 && (
@@ -360,7 +360,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             </div>
 
-            {/* 3. AI Score — klikabilan */}
+            {/* 3. AI Score */}
             <button className="score-btn" onClick={() => setShowScoreSheet(true)} style={{width:'100%',background:'var(--bg2)',border:`1px solid ${trust.color}33`,borderRadius:14,padding:'11px 14px',marginBottom:8,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{flex:1}}>
                 <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:5}}>AI PROCENA OGLASA</div>
@@ -386,7 +386,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             </div>
 
-            {/* ✅ "Podaci provereni" kao badge, ne dugme */}
+            {/* Podaci provereni badge */}
             {enriched ? (
               <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,padding:'9px 14px',marginBottom:8}}>
                 <span style={{fontSize:16}}>✅</span>
@@ -395,14 +395,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   <div style={{fontSize:11,color:'var(--text3)'}}>AutoAI je ažurirao godište, km i Euro normu</div>
                 </div>
               </div>
-            ) : !enriching && (
+            ) : !enriching && listing.url && (
               <button onClick={() => autoEnrich(listing.url)} style={{width:'100%',padding:'10px 14px',marginBottom:8,background:'linear-gradient(135deg,rgba(99,102,241,.12),rgba(99,102,241,.06))',border:'1px solid rgba(99,102,241,.3)',color:'#818CF8',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer',textAlign:'left'}}>
                 🔍 Proveri podatke oglasa
                 <span style={{fontSize:11,color:'rgba(129,140,248,.6)',display:'block',marginTop:1}}>Godište · km · Euro norma · uvoz</span>
               </button>
             )}
 
-            {/* 5. Specifikacije — kompaktne */}
+            {/* 5. Specifikacije */}
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
               <div style={{fontSize:12,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:8}}>SPECIFIKACIJE</div>
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
@@ -415,7 +415,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             </div>
 
-            {/* 6. AI Checklist */}
+            {/* 6. Checklist */}
             {listing.make && (
               <Accordion title="Šta proveriti" icon="🔧" badge={criticalChecks > 0 ? `${criticalChecks}` : undefined}>
                 <ModelChecklist make={listing.make} model={listing.model} year={listing.year} fuelType={listing.fuel_type} transmission={listing.transmission} />
@@ -432,21 +432,21 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </Accordion>
             )}
 
-            {/* 8. VIN — kompaktan */}
+            {/* 8. VIN */}
             <Accordion title="VIN Provera vozila" icon="🔐">
               <div style={{paddingTop:8}}>
                 <p style={{fontSize:12,color:'var(--text3)',margin:'0 0 12px',lineHeight:1.5}}>
                   Zatraži VIN od prodavca koristeći{' '}
                   <button onClick={() => setShowContact(true)} style={{background:'none',border:'none',color:'var(--accent)',cursor:'pointer',fontSize:12,fontWeight:600,padding:0,textDecoration:'underline'}}>
                     Kontaktiraj prodavca
-                  </button>{' '}
-                  — AI automatski dodaje pitanje za VIN na jeziku prodavca.
+                  </button>
+                  {' '}— AI automatski dodaje pitanje za VIN na jeziku prodavca.
                 </p>
                 <VinChecker listing={listing} compact />
               </div>
             </Accordion>
 
-            {/* 9. Slični oglasi — horizontalni scroll */}
+            {/* 9. Slični oglasi */}
             {similar.length > 0 && (
               <div style={{marginBottom:10}}>
                 <div style={{fontSize:13,fontWeight:600,marginBottom:10,padding:'0 2px'}}>Slični oglasi</div>
@@ -467,14 +467,12 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {/* Opis */}
             {listing.description && (
               <Accordion title="Opis" icon="📄">
                 <p style={{color:'var(--text2)',lineHeight:1.7,fontSize:13,whiteSpace:'pre-line',margin:0}}>{listing.description}</p>
               </Accordion>
             )}
 
-            {/* Oprema */}
             {listing.features?.length > 0 && (
               <Accordion title={`Oprema (${listing.features.length})`} icon="⚙️">
                 <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
@@ -493,7 +491,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
                 : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:60}}>🚗</div>
               }
-              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{listing.source}</span>
+              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
             </div>
             {images.length > 1 && (
               <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:16}}>
@@ -504,8 +502,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ))}
               </div>
             )}
-
-            {/* AI Procena desktop */}
             <div style={{background:'var(--bg2)',border:`2px solid ${trust.color}22`,borderRadius:'var(--radius)',padding:20,marginBottom:16,cursor:'pointer'}} onClick={() => setShowScoreSheet(true)}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
                 <div>
@@ -522,29 +518,22 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
               <div style={{fontSize:13,fontWeight:700,color:trust.color}}>{trust.label}</div>
             </div>
-
-            {/* Specifikacije desktop */}
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20,marginBottom:16}}>
               <h2 style={{fontSize:15,marginBottom:14}}>Specifikacije</h2>
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
                 {specs.map(s => (
                   <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'9px 12px'}}>
                     <div style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>{s.label}</div>
-                    <div style={{fontSize:13,fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
-                      {s.value}
-                      {s.label==='Grad' && s.value && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(s.value))}`} target="_blank" rel="noopener noreferrer" style={{fontSize:13,textDecoration:'none'}}>🗺️</a>}
-                    </div>
+                    <div style={{fontSize:13,fontWeight:500}}>{s.value}</div>
                   </div>
                 ))}
               </div>
             </div>
-
             {listing.make && (
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20,marginBottom:16}}>
                 <ModelChecklist make={listing.make} model={listing.model} year={listing.year} fuelType={listing.fuel_type} transmission={listing.transmission} />
               </div>
             )}
-
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20,marginBottom:16}}>
               <h2 style={{fontSize:15,margin:'0 0 4px'}}>🔐 VIN Provera vozila</h2>
               <p style={{fontSize:12,color:'var(--text3)',margin:'0 0 14px',lineHeight:1.5}}>
@@ -554,14 +543,12 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </p>
               <VinChecker listing={listing} />
             </div>
-
             {listing.description && (
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20,marginBottom:16}}>
                 <h2 style={{fontSize:15,marginBottom:10}}>Opis</h2>
                 <p style={{color:'var(--text2)',lineHeight:1.8,fontSize:14,whiteSpace:'pre-line',margin:0}}>{listing.description}</p>
               </div>
             )}
-
             {listing.features?.length > 0 && (
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20,marginBottom:16}}>
                 <h2 style={{fontSize:15,marginBottom:12}}>Oprema ({listing.features.length})</h2>
@@ -570,7 +557,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               </div>
             )}
-
             {similar.length > 0 && (
               <div>
                 <h2 style={{fontSize:15,marginBottom:12}}>Slični oglasi</h2>
@@ -606,12 +592,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   </div>
                 </div>
               )}
-              <a href={listing.url} target="_blank" rel="noopener" style={{display:'block',width:'100%',padding:'12px',textAlign:'center',background:'var(--accent)',color:'#fff',borderRadius:10,fontWeight:700,fontSize:14,marginBottom:8,textDecoration:'none'}}>Pogledaj oglas →</a>
+              {/* ✅ Pogledaj na portalu */}
+              <a href={listing.url} target="_blank" rel="noopener" style={{display:'block',width:'100%',padding:'12px',textAlign:'center',background:'var(--accent)',color:'#fff',borderRadius:10,fontWeight:700,fontSize:14,marginBottom:8,textDecoration:'none'}}>
+                Pogledaj na {portalName} →
+              </a>
               <button onClick={() => setShowContact(true)} style={{width:'100%',padding:'11px',marginBottom:8,background:'rgba(99,102,241,.1)',border:'1px solid rgba(99,102,241,.35)',color:'#818CF8',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}>
                 🤖 Kontaktiraj prodavca
                 <div style={{fontSize:11,fontWeight:400,color:'rgba(129,140,248,.7)',marginTop:2}}>AI generiše poruku na jeziku prodavca</div>
               </button>
-
               {enriched ? (
                 <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,padding:'9px 12px',marginBottom:8}}>
                   <span>✅</span>
@@ -626,7 +614,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   : <div>🔍 Proveri podatke oglasa<div style={{fontSize:11,fontWeight:400,color:'rgba(129,140,248,.7)',marginTop:2}}>Godište · km · Euro norma</div></div>}
                 </button>
               )}
-
               <div style={{display:'flex',gap:6}}>
                 <button onClick={() => { const u=window.location.href; if(navigator.share) navigator.share({title:`${listing.year} ${listing.make} ${listing.model}`,url:u}); else { navigator.clipboard.writeText(u); alert('Link kopiran!') } }} style={{flex:1,padding:'8px',background:'transparent',border:'1px solid var(--border)',color:'var(--text2)',borderRadius:9,fontSize:12,cursor:'pointer'}}>🔗 Podeli</button>
                 <button onClick={async () => { const t=localStorage.getItem('autoai_token'); if(!t){window.location.href='/login';return} try{const r=await fetch(`${API_BASE}/users/me/favorites`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},body:JSON.stringify({listing_id:listing.id})}); if(r.ok) setFavorited(true)}catch{} }} style={{flex:1,padding:'8px',background:'transparent',border:`1px solid ${favorited?'var(--accent)':'var(--border)'}`,color:favorited?'var(--accent)':'var(--text2)',borderRadius:9,fontSize:12,cursor:'pointer'}}>
@@ -634,7 +621,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </button>
               </div>
             </div>
-
             <div style={{background:`${trust.color}0d`,border:`1px solid ${trust.color}33`,borderRadius:'var(--radius)',padding:14,cursor:'pointer'}} onClick={() => setShowScoreSheet(true)}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7}}>
                 <span style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.07em'}}>AI PROCENA</span>
@@ -645,7 +631,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
               <div style={{fontSize:12,fontWeight:700,color:trust.color}}>{trust.label}</div>
             </div>
-
             <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:'var(--radius)',padding:14}}>
               <div style={{fontSize:10,color:'var(--text3)',letterSpacing:'.07em',fontWeight:600,marginBottom:5}}>UVOZ U SRBIJU</div>
               <div style={{fontSize:13,fontWeight:800,color:eligColor,marginBottom:2}}>{elig.emoji} {elig.label}</div>
@@ -655,7 +640,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 <div key={i} style={{fontSize:11,color:'var(--text3)',paddingLeft:8,borderLeft:`2px solid ${eligColor}55`,marginBottom:2,lineHeight:1.4}}>{w}</div>
               ))}
             </div>
-
             <div style={{background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.2)',borderRadius:'var(--radius)',overflow:'hidden'}}>
               <button onClick={() => setShowBd(!showBd)} style={{width:'100%',background:'none',border:'none',cursor:'pointer',padding:'12px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{textAlign:'left'}}>
@@ -685,7 +669,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               )}
             </div>
-
             {fraud && (
               <div style={{background:'var(--bg2)',border:`1px solid ${fraud.badge?.color+'40'||'var(--border)'}`,borderRadius:'var(--radius)',padding:14}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
@@ -700,16 +683,58 @@ export default function ListingPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      {/* ✅ STICKY BOTTOM BAR — mobile only */}
-      <div className="sticky-bar" style={{position:'fixed',bottom:0,left:0,right:0,zIndex:100,background:'rgba(13,13,18,.97)',borderTop:'1px solid var(--border)',backdropFilter:'blur(12px)',padding:'10px 14px',paddingBottom:'calc(10px + env(safe-area-inset-bottom,0px))',gap:8,alignItems:'center'}}>
-        <button onClick={() => setShowContact(true)} style={{flex:2,padding:'11px',background:'var(--accent)',border:'none',color:'#fff',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer'}}>
+      {/* ✅ STICKY BOTTOM BAR — 3 dugmeta */}
+      <div className="sticky-bar" style={{
+        position:'fixed', bottom:0, left:0, right:0, zIndex:100,
+        background:'rgba(13,13,18,.97)', borderTop:'1px solid var(--border)',
+        backdropFilter:'blur(12px)',
+        padding:'10px 12px',
+        paddingBottom:'calc(10px + env(safe-area-inset-bottom,0px))',
+        gap:8, alignItems:'center',
+      }}>
+        {/* Kontaktiraj */}
+        <button onClick={() => setShowContact(true)} style={{
+          flex:2, padding:'12px 8px',
+          background:'var(--accent)', border:'none',
+          color:'#fff', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer',
+        }}>
           🤖 Kontaktiraj
         </button>
-        <button onClick={async () => { const t=localStorage.getItem('autoai_token'); if(!t){window.location.href='/login';return} try{const r=await fetch(`${API_BASE}/users/me/favorites`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},body:JSON.stringify({listing_id:listing.id})}); if(r.ok) setFavorited(true)}catch{} }} style={{flex:1,padding:'11px',background:favorited?'rgba(255,107,0,.15)':'var(--bg2)',border:`1px solid ${favorited?'var(--accent)':'var(--border)'}`,color:favorited?'var(--accent)':'var(--text2)',borderRadius:10,fontSize:12,fontWeight:600,cursor:'pointer'}}>
-          {favorited?'❤️':'🤍 Sačuvaj'}
+
+        {/* Sačuvaj */}
+        <button onClick={async () => {
+          const t = localStorage.getItem('autoai_token')
+          if (!t) { window.location.href='/login'; return }
+          try {
+            const r = await fetch(`${API_BASE}/users/me/favorites`, {
+              method:'POST',
+              headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},
+              body:JSON.stringify({listing_id:listing.id})
+            })
+            if (r.ok) setFavorited(true)
+          } catch {}
+        }} style={{
+          flex:1, padding:'12px 6px',
+          background:favorited?'rgba(255,107,0,.15)':'var(--bg2)',
+          border:`1px solid ${favorited?'var(--accent)':'var(--border)'}`,
+          color:favorited?'var(--accent)':'var(--text2)',
+          borderRadius:10, fontSize:12, fontWeight:600, cursor:'pointer',
+          display:'flex', flexDirection:'column', alignItems:'center', gap:1,
+        }}>
+          <span style={{fontSize:16}}>{favorited?'❤️':'🤍'}</span>
+          <span style={{fontSize:10}}>{favorited?'Sačuvano':'Sačuvaj'}</span>
         </button>
-        <a href={listing.url} target="_blank" rel="noopener" style={{flex:1,padding:'11px',background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--text2)',borderRadius:10,fontSize:12,fontWeight:600,textDecoration:'none',textAlign:'center',display:'block'}}>
-          Oglas →
+
+        {/* ✅ Originalni oglas na portalu */}
+        <a href={listing.url} target="_blank" rel="noopener" style={{
+          flex:1, padding:'12px 6px',
+          background:'var(--bg2)', border:'1px solid var(--border)',
+          color:'var(--text2)', borderRadius:10,
+          fontSize:10, fontWeight:600, textDecoration:'none',
+          display:'flex', flexDirection:'column', alignItems:'center', gap:1,
+        }}>
+          <span style={{fontSize:16}}>🔗</span>
+          <span>{portalName}</span>
         </a>
       </div>
     </div>
