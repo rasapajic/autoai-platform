@@ -48,6 +48,9 @@ async def _run_scraper(portal: str):
         elif portal == "lacentrale":
             from app.scrapers.lacentrale import LaCentraleScraper
             scraper = LaCentraleScraper()
+            elif portal == "tutti":
+    from app.scrapers.tutti import TuttiScraper
+    scraper = TuttiScraper()
         else:
             from app.scrapers.mobile_de import MobileDeScraper
             scraper = MobileDeScraper()
