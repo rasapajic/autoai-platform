@@ -49,6 +49,9 @@ KNOWN_MAKES = [
     "Suzuki","Tesla","Toyota","Volkswagen","Volvo",
 ]
 
+# ✅ Rotacija zemalja — svaki run skuplja iz druge države
+COUNTRY_ROTATION = ["D", "A", "F", "B", "NL", "I", "E", "CH", "PL", "CZ", "H"]
+
 
 class AutoScout24Scraper:
     SOURCE_NAME = "autoscout24"
@@ -101,15 +104,36 @@ class AutoScout24Scraper:
             return None
         return page
 
-    def _build_url(self, filters: dict, page: int = 1) -> str:
-        params = {"atype": "C", "page": page, "sort": "age", "desc": 0, "fregfrom": 2008, "pricefrom": 3000}
-        mapping = {
-            "make": "mmvmk0", "model": "mmvmd0",
-            "min_price": "pricefrom", "max_price": "priceto",
-            "min_year": "fregfrom", "max_year": "fregto",
-            "max_km": "kmto",
+    def _build_url(self, filters: dict, page: int = 1, country: str = None) -> str:
+        params = {
+            "atype":    "C",
+            "page":     page,
+            "sort":     "age",
+            "desc":     0,
+            "fregfrom": 2008,
+            "pricefrom": 2000,
+            "ustate":   "N,U",
         }
-        fuel_map = {"petrol": "B", "diesel": "D", "electric": "E", "hybrid": "M", "lpg": "L", "cng": "C"}
+
+        # ✅ Zemlja — iz filtera ili argumenta
+        if country:
+            params["cy"] = country
+        elif filters.get("country"):
+            params["cy"] = filters["country"].upper()
+
+        mapping = {
+            "make":      "mmvmk0",
+            "model":     "mmvmd0",
+            "min_price": "pricefrom",
+            "max_price": "priceto",
+            "min_year":  "fregfrom",
+            "max_year":  "fregto",
+            "max_km":    "kmto",
+        }
+        fuel_map = {
+            "petrol": "B", "diesel": "D", "electric": "E",
+            "hybrid": "M", "lpg": "L", "cng": "C",
+        }
         for key, param in mapping.items():
             if filters.get(key):
                 params[param] = filters[key]
@@ -117,8 +141,7 @@ class AutoScout24Scraper:
             code = fuel_map.get(filters["fuel_type"])
             if code:
                 params["fuel"] = code
-        if filters.get("country"):
-            params["cy"] = filters["country"].upper()
+
         return f"{self.BASE_URL}/lst?{urlencode(params)}"
 
     async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list:
@@ -126,61 +149,79 @@ class AutoScout24Scraper:
         seen_ids = set()
         filter_fuel = filters.get("fuel_type")
 
-        async with self:
-            for page_num in range(1, max_pages + 1):
-                url = self._build_url(filters, page=page_num)
-                logger.info(f"[AutoScout24] Stranica {page_num}: {url}")
-                page = None
-                for attempt in range(3):
-                    try:
-                        page = await self.get_page(url, wait_for=None)
-                        if page: break
-                    except Exception as e:
-                        logger.warning(f"[AutoScout24] Pokušaj {attempt+1}: {e}")
-                        await asyncio.sleep(2 ** attempt)
-                if not page:
-                    continue
+        # ✅ Ako nema specifičnog filtera za zemlju, rotiraj po svim zemljama
+        countries = []
+        if filters.get("country"):
+            countries = [filters["country"].upper()]
+        else:
+            countries = COUNTRY_ROTATION
 
-                for selector in [
-                    'article[data-guid]',
-                    '[data-testid="regular-list-item"]',
-                    '[data-testid="result-list-item"]',
-                    'article.cldt-summary-full-item',
-                ]:
-                    try:
-                        await page.wait_for_selector(selector, timeout=8000)
-                        logger.info(f"[AutoScout24] Selector pronađen: {selector}")
-                        break
-                    except Exception:
+        async with self:
+            for country in countries:
+                country_count = 0
+                pages_per_country = max(1, max_pages // len(countries))
+
+                for page_num in range(1, pages_per_country + 1):
+                    url = self._build_url(filters, page=page_num, country=country)
+                    logger.info(f"[AutoScout24] {country} str.{page_num}: {url}")
+
+                    page = None
+                    for attempt in range(3):
+                        try:
+                            page = await self.get_page(url, wait_for=None)
+                            if page:
+                                break
+                        except Exception as e:
+                            logger.warning(f"[AutoScout24] Pokušaj {attempt+1}: {e}")
+                            await asyncio.sleep(2 ** attempt)
+
+                    if not page:
                         continue
 
-                await asyncio.sleep(2)
-
-                try:
-                    raw_items = await page.evaluate(self._listing_js())
-                except Exception as e:
-                    logger.error(f"[AutoScout24] JS greška: {e}")
-                    await page.close()
-                    continue
-
-                if not raw_items:
-                    await page.close()
-                    break
-
-                page_saved = 0
-                for raw in raw_items:
-                    try:
-                        parsed = self._parse_listing(raw, filter_fuel=filter_fuel)
-                        if not parsed or parsed["external_id"] in seen_ids:
+                    for selector in [
+                        'article[data-guid]',
+                        '[data-testid="regular-list-item"]',
+                        '[data-testid="result-list-item"]',
+                        'article.cldt-summary-full-item',
+                    ]:
+                        try:
+                            await page.wait_for_selector(selector, timeout=8000)
+                            break
+                        except Exception:
                             continue
-                        seen_ids.add(parsed["external_id"])
-                        all_listings.append(parsed)
-                        page_saved += 1
+
+                    await asyncio.sleep(2)
+
+                    try:
+                        raw_items = await page.evaluate(self._listing_js())
                     except Exception as e:
-                        logger.warning(f"[AutoScout24] Parse greška: {e}")
-                logger.info(f"[AutoScout24] Str {page_num}: +{page_saved} | Ukupno: {len(all_listings)}")
-                await page.close()
-                await asyncio.sleep(2)
+                        logger.error(f"[AutoScout24] JS greška: {e}")
+                        await page.close()
+                        continue
+
+                    if not raw_items:
+                        await page.close()
+                        break
+
+                    page_saved = 0
+                    for raw in raw_items:
+                        try:
+                            parsed = self._parse_listing(raw, filter_fuel=filter_fuel)
+                            if not parsed or parsed["external_id"] in seen_ids:
+                                continue
+                            seen_ids.add(parsed["external_id"])
+                            all_listings.append(parsed)
+                            page_saved += 1
+                            country_count += 1
+                        except Exception as e:
+                            logger.warning(f"[AutoScout24] Parse greška: {e}")
+
+                    logger.info(f"[AutoScout24] {country} str.{page_num}: +{page_saved} | Ukupno: {len(all_listings)}")
+                    await page.close()
+                    await asyncio.sleep(2)
+
+                logger.info(f"[AutoScout24] {country}: {country_count} oglasa")
+
         return all_listings
 
     async def scrape_detail(self, url: str) -> dict:
@@ -266,8 +307,10 @@ class AutoScout24Scraper:
     def _parse_listing(self, raw: dict, filter_fuel=None) -> dict | None:
         ext_id = raw.get("id", "").strip()
         url = raw.get("url", "").strip()
-        if "?" in url: url = url.split("?")[0]
-        if not ext_id or not url: return None
+        if "?" in url:
+            url = url.split("?")[0]
+        if not ext_id or not url:
+            return None
 
         title = raw.get("title", "").strip()
         make, model = self._parse_title(title)
@@ -275,13 +318,14 @@ class AutoScout24Scraper:
         price_raw = raw.get("price_raw", "")
         price_eur = self._parse_price_eur(price_raw)
 
-        if price_eur and price_eur < 3000:
+        if price_eur and price_eur < 2000:
             return None
 
         mileage_raw = year = fuel_type = transmission = power_str = body_type = None
 
         for d in details:
-            if not d: continue
+            if not d:
+                continue
             dl = d.lower()
             if dl in ("diesel", "petrol", "electric", "hybrid", "lpg", "cng"):
                 fuel_type = fuel_type or d
@@ -324,7 +368,8 @@ class AutoScout24Scraper:
         }
 
     def _parse_title(self, title: str) -> tuple:
-        if not title: return None, None
+        if not title:
+            return None, None
         for make in sorted(KNOWN_MAKES, key=len, reverse=True):
             if make.lower() in title.lower():
                 rest = re.sub(re.escape(make), "", title, flags=re.IGNORECASE).strip()
@@ -334,56 +379,67 @@ class AutoScout24Scraper:
         return (words[0] if words else None), (" ".join(words[1:3]) if len(words) > 1 else None)
 
     def _parse_price_eur(self, raw: str) -> int | None:
-        if not raw: return None
+        if not raw:
+            return None
         m = re.search(r'\d[\d.,]+\d', raw)
         if m:
             num = m.group(0).replace('.', '').replace(',', '')
             try:
                 val = int(num)
                 return val if val <= 2_000_000 else None
-            except ValueError: pass
+            except ValueError:
+                pass
         digits = re.sub(r'[^\d]', '', raw)
         return int(digits[:6]) if digits else None
 
     def _parse_mileage_km(self, raw: str) -> int | None:
-        if not raw: return None
+        if not raw:
+            return None
         m = re.search(r'\d[\d.,]+\d|\d+', raw)
         if m:
             num = m.group(0).replace('.', '').replace(',', '')
             try:
                 val = int(num)
                 return val if 1 <= val <= 999_999 else None
-            except ValueError: pass
+            except ValueError:
+                pass
         return None
 
     def _extract_year(self, text: str) -> int | None:
         m = re.search(r'\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b', text)
-        if m: return int(m.group(2))
+        if m:
+            return int(m.group(2))
         m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
         return int(m.group(1)) if m else None
 
     def _normalize_transmission(self, val: str) -> str | None:
         v = val.lower()
         for k, norm in TRANSMISSION_MAP.items():
-            if k in v: return norm
+            if k in v:
+                return norm
         return None
 
     def _normalize_body(self, val: str) -> str | None:
         v = val.lower()
         for k, norm in BODY_MAP.items():
-            if k in v: return norm
+            if k in v:
+                return norm
         return None
 
     def _parse_power_kw(self, raw: str) -> int | None:
-        if not raw: return None
+        if not raw:
+            return None
         kw = re.search(r'(\d+)\s*kw', raw.lower())
-        if kw: return int(kw.group(1))
+        if kw:
+            return int(kw.group(1))
         ps = re.search(r'(\d+)\s*(ps|hp)', raw.lower())
-        if ps: return round(int(ps.group(1)) * 0.7355)
+        if ps:
+            return round(int(ps.group(1)) * 0.7355)
         return None
 
     def _parse_location(self, raw: str) -> tuple:
-        if not raw: return None, None
+        if not raw:
+            return None, None
         raw = raw.split('\n')[0].strip()
         m = re.match(r'^([A-Z]{2})-\d+\s+(.+)', raw)
         if m:
