@@ -61,27 +61,33 @@ function groupModels(raw: { model: string; count: number }[]): { model: string; 
 // ✅ Normalizacija marki — ukloni duplikate (BMW + Bmw + bmw → BMW)
 // Poznate marke sa tačnim pisanjem
 const MAKE_CANONICAL: Record<string, string> = {
-  'bmw': 'BMW', 'vw': 'Volkswagen', 'volkswagen': 'Volkswagen',
-  'mercedes': 'Mercedes-Benz', 'mercedes-benz': 'Mercedes-Benz',
-  'audi': 'Audi', 'ford': 'Ford', 'opel': 'Opel',
-  'renault': 'Renault', 'peugeot': 'Peugeot', 'citroen': 'Citroën',
-  'citroën': 'Citroën', 'skoda': 'Škoda', 'škoda': 'Škoda',
-  'toyota': 'Toyota', 'honda': 'Honda', 'mazda': 'Mazda',
-  'nissan': 'Nissan', 'hyundai': 'Hyundai', 'kia': 'Kia',
-  'seat': 'SEAT', 'fiat': 'Fiat', 'volvo': 'Volvo',
-  'mini': 'MINI', 'porsche': 'Porsche', 'jaguar': 'Jaguar',
-  'land rover': 'Land Rover', 'jeep': 'Jeep', 'subaru': 'Subaru',
-  'mitsubishi': 'Mitsubishi', 'suzuki': 'Suzuki', 'tesla': 'Tesla',
-  'dacia': 'Dacia', 'alfa romeo': 'Alfa Romeo', 'alfa': 'Alfa Romeo',
-  'cupra': 'Cupra', 'lexus': 'Lexus', 'infiniti': 'Infiniti',
-  'dodge': 'Dodge', 'chevrolet': 'Chevrolet', 'cadillac': 'Cadillac',
-  'bentley': 'Bentley', 'maserati': 'Maserati', 'ferrari': 'Ferrari',
-  'lamborghini': 'Lamborghini', 'aston martin': 'Aston Martin',
-  'rolls-royce': 'Rolls-Royce', 'smart': 'Smart', 'saab': 'Saab',
+  // Volkswagen/VW
+  'vw': 'Volkswagen', 'volkswagen': 'Volkswagen',
+  // BMW
+  'bmw': 'BMW',
+  // Mercedes
+  'mercedes': 'Mercedes-Benz', 'mercedes-benz': 'Mercedes-Benz', 'mercedes benz': 'Mercedes-Benz',
+  // Ostale marke
+  'audi': 'Audi', 'ford': 'Ford', 'opel': 'Opel', 'renault': 'Renault',
+  'peugeot': 'Peugeot', 'citroen': 'Citroën', 'skoda': 'Škoda',
+  'toyota': 'Toyota', 'honda': 'Honda', 'mazda': 'Mazda', 'nissan': 'Nissan',
+  'hyundai': 'Hyundai', 'kia': 'Kia', 'seat': 'SEAT', 'fiat': 'Fiat',
+  'volvo': 'Volvo', 'mini': 'MINI', 'porsche': 'Porsche', 'jaguar': 'Jaguar',
+  'land rover': 'Land Rover', 'landrover': 'Land Rover', 'jeep': 'Jeep',
+  'subaru': 'Subaru', 'mitsubishi': 'Mitsubishi', 'suzuki': 'Suzuki',
+  'tesla': 'Tesla', 'dacia': 'Dacia', 'alfa romeo': 'Alfa Romeo', 'alfa': 'Alfa Romeo',
+  'cupra': 'Cupra', 'lexus': 'Lexus', 'dodge': 'Dodge', 'chevrolet': 'Chevrolet',
+  'cadillac': 'Cadillac', 'bentley': 'Bentley', 'maserati': 'Maserati',
+  'ferrari': 'Ferrari', 'lamborghini': 'Lamborghini', 'aston martin': 'Aston Martin',
+  'rolls-royce': 'Rolls-Royce', 'rolls royce': 'Rolls-Royce', 'smart': 'Smart',
+  'saab': 'Saab', 'ssangyong': 'SsangYong', 'lancia': 'Lancia',
 }
 
 function canonicalMake(make: string): string {
   const lower = make.toLowerCase().trim()
+    .replace(/ë/g, 'e').replace(/é/g, 'e').replace(/è/g, 'e')
+    .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u')
+    .replace(/š/g, 's').replace(/č/g, 'c').replace(/ž/g, 'z')
   return MAKE_CANONICAL[lower] || make.trim()
 }
 
