@@ -361,3 +361,70 @@ async def apply_ratings_to_all(secret: str, limit: int = 500):
         return {"status": "ok", "rated": count, "limit": limit}
     finally:
         db.close()
+
+
+@router.get("/cleanup/emoji-makes")
+async def cleanup_emoji_makes(secret: str):
+    """Uklanja emoji, specijalne znakove i junk iz make/model/title polja."""
+    check_secret(secret)
+    import re
+    from app.core.db import SessionLocal
+    from app.models import Listing
+
+    def strip_emoji(text: str) -> str:
+        if not text:
+            return text
+        # Ukloni emoji (Unicode ranges)
+        emoji_pattern = re.compile(
+            "["
+            u"\U0001F600-\U0001F64F"  # emoticons
+            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            u"\U0001F680-\U0001F6FF"  # transport & map
+            u"\U0001F1E0-\U0001F1FF"  # flags
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            u"\U0001f926-\U0001f937"
+            u"\U00010000-\U0010ffff"
+            u"\u2640-\u2642"
+            u"\u2600-\u2B55"
+            u"\u200d"
+            u"\u23cf"
+            u"\u23e9"
+            u"\u231a"
+            u"\ufe0f"
+            u"\u3030"
+            "]+",
+            flags=re.UNICODE
+        )
+        cleaned = emoji_pattern.sub('', text).strip()
+        # Ukloni višestruke razmake
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned if cleaned else text
+
+    db = SessionLocal()
+    try:
+        listings = db.query(Listing).filter(Listing.is_active == True).all()
+        count = 0
+        for l in listings:
+            changed = False
+            if l.make:
+                new_make = strip_emoji(l.make)
+                if new_make != l.make:
+                    l.make = new_make
+                    changed = True
+            if l.model:
+                new_model = strip_emoji(l.model)
+                if new_model != l.model:
+                    l.model = new_model
+                    changed = True
+            if l.title:
+                new_title = strip_emoji(l.title)
+                if new_title != l.title:
+                    l.title = new_title
+                    changed = True
+            if changed:
+                count += 1
+        db.commit()
+        return {"status": "ok", "cleaned": count, "total_checked": len(listings)}
+    finally:
+        db.close()
