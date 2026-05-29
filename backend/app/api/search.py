@@ -33,6 +33,72 @@ BODY_KEYWORDS = {
     "pickup":    ["Pickup", "Pick-up", "Amarok", "Ranger", "Navara", "Hilux"],
 }
 
+# ✅ Kanonska forma marke → lista svih varijanti u bazi
+MAKE_VARIANTS: dict[str, list[str]] = {
+    "Volkswagen":    ["Volkswagen", "VOLKSWAGEN", "volkswagen", "VW", "vw"],
+    "BMW":           ["BMW", "Bmw", "bmw"],
+    "Mercedes-Benz": ["Mercedes-Benz", "Mercedes", "mercedes-benz", "MERCEDES", "Mercedes Benz"],
+    "Citroën":       ["Citroën", "Citroen", "CITROEN", "citroen", "citroën"],
+    "Škoda":         ["Škoda", "Skoda", "SKODA", "skoda", "škoda"],
+    "Alfa Romeo":    ["Alfa Romeo", "Alfa", "alfa romeo", "ALFA ROMEO"],
+    "Fiat":          ["Fiat", "FIAT", "fiat"],
+    "Ford":          ["Ford", "FORD", "ford"],
+    "Opel":          ["Opel", "OPEL", "opel"],
+    "Mini":          ["Mini", "MINI", "mini"],
+    "Kia":           ["Kia", "KIA", "kia"],
+    "Cupra":         ["Cupra", "CUPRA", "cupra"],
+    "Audi":          ["Audi", "AUDI", "audi"],
+    "Renault":       ["Renault", "RENAULT", "renault"],
+    "Peugeot":       ["Peugeot", "PEUGEOT", "peugeot"],
+    "SEAT":          ["SEAT", "Seat", "seat"],
+    "Volvo":         ["Volvo", "VOLVO", "volvo"],
+    "Toyota":        ["Toyota", "TOYOTA", "toyota"],
+    "Hyundai":       ["Hyundai", "HYUNDAI", "hyundai"],
+    "Nissan":        ["Nissan", "NISSAN", "nissan"],
+    "Mazda":         ["Mazda", "MAZDA", "mazda"],
+    "Honda":         ["Honda", "HONDA", "honda"],
+    "Porsche":       ["Porsche", "PORSCHE", "porsche"],
+    "Jeep":          ["Jeep", "JEEP", "jeep"],
+    "Tesla":         ["Tesla", "TESLA", "tesla"],
+    "Dacia":         ["Dacia", "DACIA", "dacia"],
+    "Smart":         ["Smart", "SMART", "smart"],
+    "Saab":          ["Saab", "SAAB", "saab"],
+    "Subaru":        ["Subaru", "SUBARU", "subaru"],
+    "Mitsubishi":    ["Mitsubishi", "MITSUBISHI", "mitsubishi"],
+    "Suzuki":        ["Suzuki", "SUZUKI", "suzuki"],
+    "Land Rover":    ["Land Rover", "LAND ROVER", "land rover", "LandRover"],
+    "Jaguar":        ["Jaguar", "JAGUAR", "jaguar"],
+    "Lexus":         ["Lexus", "LEXUS", "lexus"],
+    "Ferrari":       ["Ferrari", "FERRARI", "ferrari"],
+    "Lamborghini":   ["Lamborghini", "LAMBORGHINI", "lamborghini"],
+    "Maserati":      ["Maserati", "MASERATI", "maserati"],
+    "Bentley":       ["Bentley", "BENTLEY", "bentley"],
+    "Rolls-Royce":   ["Rolls-Royce", "Rolls Royce", "ROLLS-ROYCE", "rolls-royce"],
+    "Dodge":         ["Dodge", "DODGE", "dodge"],
+    "Chevrolet":     ["Chevrolet", "CHEVROLET", "chevrolet"],
+    "Cadillac":      ["Cadillac", "CADILLAC", "cadillac"],
+}
+
+# ✅ Reverse mapa: varijanta → kanonska forma
+_VARIANT_TO_CANONICAL: dict[str, str] = {}
+for canonical, variants in MAKE_VARIANTS.items():
+    for v in variants:
+        _VARIANT_TO_CANONICAL[v.lower()] = canonical
+
+def get_canonical_make(make: str) -> str:
+    """Vrati kanonsku formu marke."""
+    return _VARIANT_TO_CANONICAL.get(make.lower(), make)
+
+def get_make_search_variants(make: str) -> list[str]:
+    """Vrati sve varijante za pretragu po marki."""
+    canonical = get_canonical_make(make)
+    variants = MAKE_VARIANTS.get(canonical)
+    if variants:
+        return variants
+    # Ako nema u mapi, koristi originalni naziv (case-insensitive)
+    return [make]
+
+
 @router.get("/", response_model=SearchResponse)
 def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
     q = db.query(Listing).filter(
@@ -41,8 +107,10 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
         Listing.price > 0,
     )
 
+    # ✅ Pretraži sve varijante marke
     if filters.make:
-        q = q.filter(Listing.make.ilike(f"%{filters.make}%"))
+        variants = get_make_search_variants(filters.make)
+        q = q.filter(or_(*[Listing.make.ilike(v) for v in variants]))
 
     if filters.model:
         q = q.filter(Listing.model.ilike(f"%{filters.model}%"))
@@ -66,8 +134,8 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
         q = q.filter(Listing.mileage <= filters.max_km)
 
     if filters.fuel_type:
-        variants = FUEL_MAP.get(filters.fuel_type.lower(), [filters.fuel_type.lower()])
-        q = q.filter(or_(*[Listing.fuel_type.ilike(v) for v in variants]))
+        fuel_variants = FUEL_MAP.get(filters.fuel_type.lower(), [filters.fuel_type.lower()])
+        q = q.filter(or_(*[Listing.fuel_type.ilike(v) for v in fuel_variants]))
 
     if filters.transmission:
         q = q.filter(Listing.transmission == filters.transmission)
@@ -159,29 +227,44 @@ def search_stats(db: Session = Depends(get_db)):
 
 @router.get("/makes")
 def get_makes(db: Session = Depends(get_db)):
-    makes = (
+    """Vraća listu marki — normalizovane i grupisane (bez duplikata)."""
+    raw = (
         db.query(Listing.make, func.count(Listing.id).label("count"))
         .filter(Listing.is_active == True, Listing.make != None)
         .group_by(Listing.make)
         .order_by(func.count(Listing.id).desc())
-        .limit(100)
+        .limit(200)
         .all()
     )
-    return [{"make": m, "count": c} for m, c in makes]
+
+    # ✅ Grupiši po kanonskoj formi
+    grouped: dict[str, int] = {}
+    for make, count in raw:
+        if not make or not make.strip():
+            continue
+        canonical = get_canonical_make(make)
+        grouped[canonical] = grouped.get(canonical, 0) + count
+
+    # Sortiraj abecedno
+    sorted_makes = sorted(grouped.items(), key=lambda x: x[0].lower())
+    return [{"make": m, "count": c} for m, c in sorted_makes]
 
 
 @router.get("/models")
 def get_models(make: str, db: Session = Depends(get_db)):
+    """Vraća modele za marku — pretražuje sve varijante naziva marke."""
+    variants = get_make_search_variants(make)
+
     models = (
         db.query(Listing.model, func.count(Listing.id).label("count"))
         .filter(
             Listing.is_active == True,
-            Listing.make.ilike(f"%{make}%"),
+            or_(*[Listing.make.ilike(v) for v in variants]),
             Listing.model != None,
         )
         .group_by(Listing.model)
         .order_by(func.count(Listing.id).desc())
-        .limit(50)
+        .limit(100)
         .all()
     )
     return [{"model": m, "count": c} for m, c in models]
