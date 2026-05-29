@@ -16,7 +16,8 @@ def check_secret(secret: Optional[str]):
 async def _run_scraper(portal: str):
     allowed = [
         "willhaben", "autoscout24", "marktplaats", "2dehands",
-        "subito", "leboncoin", "kleinanzeigen", "bilbasen", "mobile_de", "lacentrale",
+        "subito", "leboncoin", "kleinanzeigen", "bilbasen", "mobile_de",
+        "lacentrale", "tutti",
     ]
     if portal not in allowed:
         raise HTTPException(status_code=400, detail=f"Portal mora biti jedan od: {allowed}")
@@ -48,9 +49,9 @@ async def _run_scraper(portal: str):
         elif portal == "lacentrale":
             from app.scrapers.lacentrale import LaCentraleScraper
             scraper = LaCentraleScraper()
-            elif portal == "tutti":
-    from app.scrapers.tutti import TuttiScraper
-    scraper = TuttiScraper()
+        elif portal == "tutti":
+            from app.scrapers.tutti import TuttiScraper
+            scraper = TuttiScraper()
         else:
             from app.scrapers.mobile_de import MobileDeScraper
             scraper = MobileDeScraper()
