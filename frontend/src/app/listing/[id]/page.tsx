@@ -278,7 +278,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
       <BottomSheet open={showBdSheet} onClose={() => setShowBdSheet(false)} title="🇷🇸 Trošak uvoza u Srbiju">
         {bd && (
           <div>
-            <div style={{fontSize:28, fontWeight:800, color:'var(--accent)', marginBottom:16}}>{fmt(bd.total)} €</div>
+            <div className="mob-import-total" style={{fontSize:28, fontWeight:800, color:'var(--accent)', marginBottom:16}}>{fmt(bd.total)} €</div>
             {[
               {label:'EU cena', val:price!, note:''},
               {label:`Carina (${bd.carinaPct}%)`, val:bd.carina, note:bd.carinaPct===0?'oslobođeno':'srbija'},
@@ -315,6 +315,28 @@ export default function ListingPage({ params }: { params: { id: string } }) {
         .mobile-stack { display:block; }
         .sticky-bar { display:none; }
         .trust-bar { transition:width .6s ease; }
+
+        /* ✅ MOBILE FIRST — povećani fontovi za čitljivost */
+        @media(max-width:768px){
+          .mob-title    { font-size:20px !important; font-weight:700 !important; }
+          .mob-price    { font-size:38px !important; font-weight:800 !important; line-height:1 !important; }
+          .mob-price-rs { font-size:22px !important; font-weight:700 !important; }
+          .mob-status   { font-size:16px !important; font-weight:700 !important; }
+          .mob-status-sub { font-size:13px !important; }
+          .mob-spec-label { font-size:12px !important; }
+          .mob-spec-value { font-size:17px !important; font-weight:600 !important; }
+          .mob-ai-score { font-size:32px !important; font-weight:800 !important; }
+          .mob-ai-label { font-size:17px !important; font-weight:700 !important; }
+          .mob-ai-sub   { font-size:15px !important; }
+          .mob-section-title { font-size:16px !important; font-weight:700 !important; }
+          .mob-body-text { font-size:14px !important; line-height:1.7 !important; }
+          .mob-badge    { font-size:14px !important; font-weight:700 !important; }
+          .mob-btn      { font-size:15px !important; font-weight:700 !important; padding:14px !important; }
+          .mob-import-total { font-size:26px !important; font-weight:800 !important; }
+          .mob-import-row { font-size:14px !important; }
+          .mob-source-badge { font-size:13px !important; }
+          .mob-tiny { font-size:12px !important; }
+        }
         .score-btn:active { opacity:.7; transform:scale(.97); }
       `}</style>
 
@@ -403,7 +425,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
                 : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
               }
-              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
+              <span className="mob-source-badge" style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'4px 10px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
               {images.length > 1 && (
                 <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
                   {activeImg+1}/{images.length}
@@ -422,10 +444,10 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* 2. Cena */}
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:'12px 14px',marginBottom:8}}>
-              <div style={{fontSize:12,color:'var(--text3)',marginBottom:2}}>{listing.make} {listing.model}{listing.year?` · ${listing.year}`:''}</div>
+              <div className="mob-title" style={{fontSize:14,color:'var(--text3)',marginBottom:2}}>{listing.make} {listing.model}{listing.year?` · ${listing.year}`:''}</div>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
                 <div>
-                  <div style={{fontSize:26,fontWeight:800,color:'var(--accent)',lineHeight:1}}>{price?`${fmt(price)} €`:'Na upit'}</div>
+                  <div className="mob-price" style={{fontSize:26,fontWeight:800,color:'var(--accent)',lineHeight:1}}>{price?`${fmt(price)} €`:'Na upit'}</div>
                   {listing.price_estimated && (
                     <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',marginTop:3}}>
                       {deltaGood?'↓ ispod':'↑ iznad'} proseka za {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%
@@ -435,7 +457,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 {bd && (
                   <button onClick={() => setShowBdSheet(true)} style={{textAlign:'right',background:'none',border:'none',cursor:'pointer',padding:0}}>
                     <div style={{fontSize:11,color:'var(--text3)'}}>🇷🇸 za Srbiju</div>
-                    <div style={{fontSize:16,fontWeight:700,color:'var(--accent)'}}>{fmt(bd.total)} €</div>
+                    <div className="mob-price-rs" style={{fontSize:16,fontWeight:700,color:'var(--accent)'}}>{fmt(bd.total)} €</div>
                   </button>
                 )}
               </div>
@@ -444,14 +466,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             {/* 3. AI Score */}
             <button className="score-btn" onClick={() => setShowScoreSheet(true)} style={{width:'100%',background:'var(--bg2)',border:`1px solid ${trust.color}33`,borderRadius:14,padding:'11px 14px',marginBottom:8,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <div style={{flex:1}}>
-                <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:5}}>AI PROCENA OGLASA</div>
+                <div className="mob-ai-sub" style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:5}}>AI PROCENA OGLASA</div>
                 <div style={{height:4,background:'rgba(255,255,255,.06)',borderRadius:4,overflow:'hidden',marginBottom:5}}>
                   <div className="trust-bar" style={{height:'100%',borderRadius:4,width:`${trust.score}%`,background:trust.color}} />
                 </div>
-                <div style={{fontSize:12,fontWeight:600,color:trust.color}}>{trust.label}</div>
+                <div className="mob-ai-label" style={{fontSize:12,fontWeight:600,color:trust.color}}>{trust.label}</div>
               </div>
               <div style={{textAlign:'right',marginLeft:12,flexShrink:0}}>
-                <div style={{fontSize:24,fontWeight:800,color:trust.color,lineHeight:1}}>{trust.score}</div>
+                <div className="mob-ai-score" style={{fontSize:24,fontWeight:800,color:trust.color,lineHeight:1}}>{trust.score}</div>
                 <div style={{fontSize:10,color:'var(--text3)'}}>Tap za detalje</div>
               </div>
             </button>
@@ -467,8 +489,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:14,padding:'10px 14px',marginBottom:8}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
-                  <div style={{fontSize:13,fontWeight:700,color:eligColor}}>{elig.emoji} {elig.label}</div>
-                  {elig.sublabel && <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{elig.sublabel}</div>}
+                  <div className="mob-status" style={{fontSize:13,fontWeight:700,color:eligColor}}>{elig.emoji} {elig.label}</div>
+                  {elig.sublabel && <div className="mob-status-sub" style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{elig.sublabel}</div>}
                 </div>
                 {bd && <div style={{fontSize:11,color:'var(--text3)',textAlign:'right'}}>Carina: {bd.carinaPct}%</div>}
               </div>
@@ -479,8 +501,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,padding:'9px 14px',marginBottom:8}}>
                 <span style={{fontSize:16}}>✅</span>
                 <div>
-                  <div style={{fontSize:13,fontWeight:600,color:'#22C55E'}}>Podaci provereni</div>
-                  <div style={{fontSize:11,color:'var(--text3)'}}>AutoAI je ažurirao godište, km i Euro normu</div>
+                  <div className="mob-status" style={{fontSize:13,fontWeight:600,color:'#22C55E'}}>Podaci provereni</div>
+                  <div className="mob-body-text" style={{fontSize:11,color:'var(--text3)'}}>AutoAI je ažurirao godište, km i Euro normu</div>
                 </div>
               </div>
             ) : !enriching && listing.url && (
@@ -496,8 +518,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
                 {specs.map(s => (
                   <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'7px 10px'}}>
-                    <div style={{fontSize:9,color:'var(--text3)',marginBottom:2}}>{s.label.toUpperCase()}</div>
-                    <div style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.value}</div>
+                    <div className="mob-spec-label" style={{fontSize:9,color:'var(--text3)',marginBottom:2}}>{s.label.toUpperCase()}</div>
+                    <div className="mob-spec-value" style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.value}</div>
                   </div>
                 ))}
               </div>
@@ -616,7 +638,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   <div style={{fontSize:12,color:'var(--text3)'}}>Klikni za detalje</div>
                 </div>
                 <div style={{textAlign:'right',flexShrink:0}}>
-                  <div style={{fontSize:24,fontWeight:800,color:trust.color,lineHeight:1}}>{trust.score}</div>
+                  <div className="mob-ai-score" style={{fontSize:24,fontWeight:800,color:trust.color,lineHeight:1}}>{trust.score}</div>
                   <div style={{fontSize:10,color:'var(--text3)'}}>/100</div>
                 </div>
               </div>
@@ -800,7 +822,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
         gap:8, alignItems:'center',
       }}>
         {/* Kontaktiraj */}
-        <button onClick={() => setShowContact(true)} style={{
+        <button onClick={() => setShowContact(true)} className='mob-btn' style={{
           flex:2, padding:'12px 8px',
           background:'var(--accent)', border:'none',
           color:'#fff', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer',
