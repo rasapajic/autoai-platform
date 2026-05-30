@@ -303,72 +303,84 @@ WILLHABEN_JS = r"""
 """
 
 async def _scrape_willhaben(url: str) -> dict:
-    from app.scrapers.willhaben import WillhabenScraper
-    scraper = WillhabenScraper()
-    # Willhaben koristi aiohttp, ne Playwright — direktni API poziv
-    try:
-        listings = await scraper.scrape_listings({}, max_pages=1)
-        # Willhaben nema pojedinačni detail scrape, koristimo opšti pristup
-    except Exception:
-        pass
+    """Willhaben detail scrape — koristi JSON API sa listing ID-jem iz URL-a."""
+    import aiohttp
 
-    # Fallback — koristi AutoScout24 Playwright za Willhaben stranicu
-    from app.scrapers.autoscout24 import AutoScout24Scraper
-    async with AutoScout24Scraper() as scraper_pw:
-        page = await scraper_pw.get_page(url, wait_for=None)
-        if not page: raise RuntimeError("Stranica nije učitana")
-        await asyncio.sleep(3)
-        try: raw = await page.evaluate(WILLHABEN_JS)
-        finally: await page.close()
+    # Izvuci listing ID iz URL-a
+    # Format: /iad/gebrauchtwagen/d/auto/naziv-vozila-XXXXXXXXXX/
+    id_match = re.search(r'/(\d{8,12})(?:/|$)', url)
+    if not id_match:
+        id_match = re.search(r'-+(\d{8,12})(?:\?|$)', url)
 
-    specs = raw.get("specs", {}); page_text = raw.get("pageText", ""); ld = raw.get("ldData") or {}
-    title = raw.get("title", "") or ld.get("name", "")
-    price = _parse_price(raw.get("price_raw", ""))
-    if not price and ld.get("offers", {}).get("price"): price = _parse_price(str(ld["offers"]["price"]))
+    if not id_match:
+        raise RuntimeError("Nije moguće izvući ID iz Willhaben URL-a")
 
-    year = None
-    for k, v in specs.items():
-        if any(x in k.lower() for x in ["baujahr", "erstzulassung", "year", "jahrgang"]):
-            year = _parse_year(v)
-            if year: break
-    if not year:
-        m = re.search(r'\b(0[1-9]|1[0-2])/(19[5-9]\d|20[0-3]\d)\b', page_text)
-        if m: year = int(m.group(2))
-    if not year: year = _parse_year(page_text[:3000])
+    listing_id = id_match.group(1)
+    api_url = f"https://www.willhaben.at/webapi/iad/listings/{listing_id}"
 
-    mileage = None
-    for k, v in specs.items():
-        if any(x in k.lower() for x in ["km", "kilomet", "laufleist", "kilom"]):
-            mileage = _parse_mileage(v)
-            if mileage: break
-    if not mileage:
-        km_m = re.search(r"([\d.,]+)\s*km", page_text[:3000])
-        if km_m: mileage = _parse_mileage(km_m.group(1) + " km")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "de-AT,de;q=0.9",
+        "Referer": "https://www.willhaben.at/",
+        "x-wh-client": "api@willhaben.at;responsive_web;SERVER;v2",
+    }
 
-    fuel_type = None
-    for k, v in specs.items():
-        f = _normalize_fuel(v)
-        if f: fuel_type = f; break
-    if not fuel_type: fuel_type = _normalize_fuel(page_text[:2000])
+    async with aiohttp.ClientSession() as session:
+        async with session.get(api_url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"Willhaben API vratio {resp.status}")
+            data = await resp.json(content_type=None)
 
-    power_kw = None
-    for k, v in specs.items():
-        p = _parse_power_kw(v)
-        if p: power_kw = p; break
+    # Parsiraj Willhaben JSON odgovor
+    attrs = {}
+    for attr in (data.get("attributes", {}).get("attribute", []) or []):
+        name = attr.get("name", "")
+        vals = attr.get("values", [])
+        if name and vals:
+            attrs[name] = vals[0] if len(vals) == 1 else vals
 
-    city, country = None, "AT"
-    loc = raw.get("location_raw", "")
-    if loc:
-        parts = [p.strip() for p in loc.replace("\n", ",").split(",")]
-        parts = [p for p in parts if p]
-        if parts: city = parts[0]
+    title = data.get("description", "") or attrs.get("HEADING", "")
+    price_raw = attrs.get("PRICE", "") or attrs.get("PRICE_FOR_DISPLAY", "")
+    price = _parse_price(str(price_raw)) if price_raw else None
 
-    vat_raw = _detect_vat_status(title, raw.get("desc", ""), page_text)
+    year_raw = attrs.get("YEAR_MODEL", "") or attrs.get("YEAR", "")
+    year = _parse_year(str(year_raw)) if year_raw else None
+
+    mileage_raw = attrs.get("MILEAGE", "") or attrs.get("KILOMETRE", "")
+    mileage = _parse_mileage(str(mileage_raw)) if mileage_raw else None
+
+    fuel_raw = attrs.get("FUEL_TYPE", "") or attrs.get("MOTOR_TYPE", "")
+    fuel_type = _normalize_fuel(str(fuel_raw)) if fuel_raw else None
+
+    power_raw = attrs.get("POWER", "") or attrs.get("ENGINE_POWER", "")
+    power_kw = _parse_power_kw(str(power_raw)) if power_raw else None
+
+    location = data.get("location", {}) or {}
+    city    = location.get("city") or location.get("locality") or attrs.get("LOCATION", "")
+    country = "AT"
+
+    # Slike
+    images = []
+    for img_data in (data.get("advertImageList", {}).get("advertImage", []) or []):
+        ref = img_data.get("mainImageUrl") or img_data.get("thumbnailImageUrl") or ""
+        if ref and ref.startswith("http"):
+            images.append(ref)
+
+    desc = attrs.get("FREE_TEXT_EDITOR", "") or attrs.get("BODY", "") or data.get("text", "")
+
+    # Fallback — ako API ne vrati dovoljno podataka, pokušaj iz description
+    full_text = str(data)[:5000]
+    if not year:    year     = _parse_year(full_text)
+    if not mileage: mileage  = _parse_mileage(re.search(r'([\d.,]+)\s*km', full_text).group(1) + " km") if re.search(r'[\d.,]+\s*km', full_text) else None
+    if not fuel_type: fuel_type = _normalize_fuel(full_text)
+
+    vat_raw  = _detect_vat_status(title, str(desc), full_text)
     vat_info = _calc_vat_info(price, vat_raw["status"])
 
     return {"title": title, "price": price, "year": year, "mileage": mileage, "fuel_type": fuel_type,
-            "engine_power_kw": power_kw, "country": country, "city": city,
-            "images": raw.get("images", []), "description": raw.get("desc"),
+            "engine_power_kw": power_kw, "country": country, "city": str(city) if city else None,
+            "images": images[:12], "description": str(desc) if desc else None,
             "features": [], "vat_info": vat_info, "vat_keyword": vat_raw.get("keyword")}
 
 
