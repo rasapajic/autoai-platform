@@ -16,9 +16,10 @@ const ELIG_COLORS: Record<string, string> = {
 interface Props {
   listing?: any
   compact?: boolean
+  onVinResult?: (result: any) => void  // ✅ Callback za listing stranicu
 }
 
-export default function VinChecker({ listing, compact = false }: Props) {
+export default function VinChecker({ listing, compact = false, onVinResult }: Props) {
   const [vin,     setVin]     = useState('')
   const [loading, setLoading] = useState(false)
   const [result,  setResult]  = useState<any>(null)
@@ -41,7 +42,11 @@ export default function VinChecker({ listing, compact = false }: Props) {
       })
       const data = await res.json()
       if (!data.success) setError(data.error || 'Greška pri dekodiranju VIN-a.')
-      else setResult(data)
+      else {
+        setResult(data)
+        // ✅ Obavesti listing stranicu o VIN rezultatu
+        if (onVinResult) onVinResult(data)
+      }
     } catch {
       setError('Nije moguće povezati se sa serverom.')
     }
