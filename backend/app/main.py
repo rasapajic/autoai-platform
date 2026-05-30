@@ -4,8 +4,7 @@ from contextlib import asynccontextmanager
 import sentry_sdk
 from app.core.config import settings
 from app.core.db import engine, Base
-from app.api import inbox
-app.include_router(inbox.router, prefix="/api/v1/inbox", tags=["📬 Inbox"])
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,7 +50,7 @@ async def health():
 
 
 # ✅ Svi routeri — posle definicije app
-from app.api import search, listings, users, alerts, ai_chat, analyze, admin, vin
+from app.api import search, listings, users, alerts, ai_chat, analyze, admin, vin, inbox
 
 app.include_router(search.router,    prefix="/api/v1/search",   tags=["🔍 Pretraga"])
 app.include_router(listings.router,  prefix="/api/v1/listings", tags=["🚗 Oglasi"])
@@ -61,3 +60,4 @@ app.include_router(ai_chat.router,   prefix="/api/v1/ai",       tags=["🤖 AI"]
 app.include_router(analyze.router,   prefix="/api/v1/analyze",  tags=["🔍 Analiza oglasa"])
 app.include_router(admin.router,     prefix="/api/v1/admin",    tags=["⚙️ Admin"])
 app.include_router(vin.router,       prefix="/api/v1/vin",      tags=["🔐 VIN"])
+app.include_router(inbox.router,     prefix="/api/v1/inbox",    tags=["📬 Inbox"])
