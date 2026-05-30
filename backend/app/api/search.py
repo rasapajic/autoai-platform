@@ -100,7 +100,7 @@ def get_make_search_variants(make: str) -> list[str]:
 
 
 @router.get("/", response_model=SearchResponse)
-def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
+def search(filters: SearchFilters = Depends(), countries: str = '', db: Session = Depends(get_db)):
     q = db.query(Listing).filter(
         Listing.is_active == True,
         Listing.price != None,
@@ -150,6 +150,13 @@ def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
 
     if filters.country:
         q = q.filter(Listing.country.ilike(f"%{filters.country}%"))
+
+    # ✅ Multi-select countries filter
+    _countries = countries or getattr(filters, 'countries', '')
+    if _countries:
+        country_list = [c.strip() for c in _countries.split(',') if c.strip()]
+        if country_list:
+            q = q.filter(or_(*[Listing.country.ilike(f"%{c}%") for c in country_list]))
 
     if filters.price_rating:
         q = q.filter(Listing.price_rating == filters.price_rating)
