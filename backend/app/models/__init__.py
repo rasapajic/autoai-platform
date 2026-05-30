@@ -22,75 +22,78 @@ class User(Base):
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
     updated_at    = Column(DateTime(timezone=True), server_default=func.now())
 
-    favorites = relationship("Favorite", back_populates="user")
-    alerts    = relationship("Alert", back_populates="user")
+    favorites     = relationship("Favorite", back_populates="user")
+    alerts        = relationship("Alert", back_populates="user")
+    conversations = relationship("Conversation", back_populates="user")
 
 
 class Listing(Base):
     __tablename__ = "listings"
 
-    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    external_id       = Column(String(200), unique=True, nullable=False)
-    source            = Column(String(50), nullable=False)
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    external_id        = Column(String(200), unique=True, nullable=False)
+    source             = Column(String(50), nullable=False)
 
     # Vozilo
-    make              = Column(String(80))
-    model             = Column(String(120))
-    variant           = Column(String(120))
-    year              = Column(Integer)
+    make               = Column(String(80))
+    model              = Column(String(120))
+    variant            = Column(String(120))
+    year               = Column(Integer)
+    title              = Column(String(300))
 
     # Cena
-    price             = Column(DECIMAL(10, 2))
-    currency          = Column(String(3), default="EUR")
-    price_negotiable  = Column(Boolean, default=False)
+    price              = Column(DECIMAL(10, 2))
+    currency           = Column(String(3), default="EUR")
+    price_negotiable   = Column(Boolean, default=False)
 
     # Tehničke karakteristike
-    mileage           = Column(Integer)
-    fuel_type         = Column(String(30))
-    transmission      = Column(String(30))
-    engine_cc         = Column(Integer)
-    engine_power_kw   = Column(Integer)
-    body_type         = Column(String(40))
-    color             = Column(String(50))
-    doors             = Column(Integer)
-    seats             = Column(Integer)
+    mileage            = Column(Integer)
+    fuel_type          = Column(String(30))
+    transmission       = Column(String(30))
+    engine_cc          = Column(Integer)
+    engine_power_kw    = Column(Integer)
+    body_type          = Column(String(40))
+    color              = Column(String(50))
+    doors              = Column(Integer)
+    seats              = Column(Integer)
 
     # Lokacija
-    country           = Column(String(60))
-    city              = Column(String(100))
-    postal_code       = Column(String(20))
-    latitude          = Column(DECIMAL(9, 6))
-    longitude         = Column(DECIMAL(9, 6))
+    country            = Column(String(60))
+    city               = Column(String(100))
+    postal_code        = Column(String(20))
+    latitude           = Column(DECIMAL(9, 6))
+    longitude          = Column(DECIMAL(9, 6))
 
     # Stanje
-    condition         = Column(String(30))
+    condition          = Column(String(30))
     first_registration = Column(Date)
-    owners_count      = Column(Integer)
-    service_history   = Column(Boolean)
-    accident_free     = Column(Boolean)
+    owners_count       = Column(Integer)
+    service_history    = Column(Boolean)
+    accident_free      = Column(Boolean)
 
     # Sadržaj
-    description       = Column(Text)
-    images            = Column(JSONB, default=list)
-    features          = Column(JSONB, default=list)
+    description        = Column(Text)
+    images             = Column(JSONB, default=list)
+    features           = Column(JSONB, default=list)
 
     # Meta
-    url               = Column(Text, nullable=False)
-    dealer_id         = Column(UUID(as_uuid=True), ForeignKey("dealers.id"), nullable=True)
-    is_active         = Column(Boolean, default=True)
-    first_seen_at     = Column(DateTime(timezone=True), server_default=func.now())
-    last_seen_at      = Column(DateTime(timezone=True), server_default=func.now())
-    scraped_at        = Column(DateTime(timezone=True), server_default=func.now())
+    url                = Column(Text, nullable=False)
+    dealer_id          = Column(UUID(as_uuid=True), ForeignKey("dealers.id"), nullable=True)
+    is_active          = Column(Boolean, default=True)
+    first_seen_at      = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at       = Column(DateTime(timezone=True), server_default=func.now())
+    scraped_at         = Column(DateTime(timezone=True), server_default=func.now())
 
     # AI
-    price_estimated   = Column(DECIMAL(10, 2))
-    price_delta_pct   = Column(DECIMAL(6, 2))
-    price_rating      = Column(String(10))
-    embedding         = Column(Vector(1536))
+    price_estimated    = Column(DECIMAL(10, 2))
+    price_delta_pct    = Column(DECIMAL(6, 2))
+    price_rating       = Column(String(10))
+    embedding          = Column(Vector(1536))
 
     # Relacije
     price_history = relationship("PriceHistory", back_populates="listing")
     dealer        = relationship("Dealer", back_populates="listings")
+    conversations = relationship("Conversation", back_populates="listing")
 
 
 class PriceHistory(Base):
@@ -155,12 +158,101 @@ class Favorite(Base):
 class ScraperRun(Base):
     __tablename__ = "scraper_runs"
 
-    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    portal            = Column(String(50), nullable=False)
-    status            = Column(String(20), default="running")
-    listings_found    = Column(Integer, default=0)
-    listings_new      = Column(Integer, default=0)
-    listings_updated  = Column(Integer, default=0)
-    error_message     = Column(Text)
-    started_at        = Column(DateTime(timezone=True), server_default=func.now())
-    finished_at       = Column(DateTime(timezone=True))
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    portal           = Column(String(50), nullable=False)
+    status           = Column(String(20), default="running")
+    listings_found   = Column(Integer, default=0)
+    listings_new     = Column(Integer, default=0)
+    listings_updated = Column(Integer, default=0)
+    error_message    = Column(Text)
+    started_at       = Column(DateTime(timezone=True), server_default=func.now())
+    finished_at      = Column(DateTime(timezone=True))
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# AI INBOX — Conversation & Message modeli
+# ────────────────────────────────────────────────────────────────────────────────
+
+class Conversation(Base):
+    """
+    Jedna konverzacija = jedan korisnik + jedan oglas + prodavac.
+    Čuva celu istoriju komunikacije, VIN status i AI analizu odgovora.
+    """
+    __tablename__ = "conversations"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    listing_id = Column(UUID(as_uuid=True), ForeignKey("listings.id", ondelete="SET NULL"), nullable=True)
+
+    # Osnove
+    listing_title    = Column(String(300))          # Snapshot naziva oglasa
+    listing_url      = Column(Text)                  # Direktan link na oglas
+    listing_price    = Column(DECIMAL(10, 2))        # Snapshot cene
+    listing_source   = Column(String(50))            # Portal (autoscout24, willhaben...)
+    seller_language  = Column(String(20), default="Deutsch")
+    seller_country   = Column(String(10))
+
+    # Status konverzacije
+    # pending_send | sent | reply_received | vin_received | negotiating | closed | rejected
+    status       = Column(String(30), default="pending_send")
+
+    # VIN tracking
+    vin_requested  = Column(Boolean, default=False)
+    vin_received   = Column(String(17))              # VIN koji je prodavac poslao
+    vin_verified   = Column(Boolean)                 # Da li VIN odgovara oglasu
+    vin_data       = Column(JSONB)                   # Dekodovani VIN podaci
+
+    # Prikupljene informacije od prodavca
+    seller_confirmed_price     = Column(DECIMAL(10, 2))
+    seller_confirmed_mileage   = Column(Integer)
+    service_history_confirmed  = Column(Boolean)
+    coc_document_confirmed     = Column(Boolean)
+    export_possible_confirmed  = Column(Boolean)
+    damage_mentioned           = Column(Boolean)
+    damage_description         = Column(Text)
+
+    # AI analiza
+    ai_summary        = Column(Text)                 # AI sažetak konverzacije
+    ai_recommendation = Column(String(20))           # buy | skip | negotiate | verify
+    ai_score          = Column(Integer)              # 0-100 poverenje u ponudu
+
+    # Meta
+    created_at    = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at    = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_message_at = Column(DateTime(timezone=True))
+
+    # Relacije
+    user     = relationship("User", back_populates="conversations")
+    listing  = relationship("Listing", back_populates="conversations")
+    messages = relationship("Message", back_populates="conversation",
+                           order_by="Message.created_at", cascade="all, delete-orphan")
+
+
+class Message(Base):
+    """
+    Jedna poruka u konverzaciji.
+    direction: 'outbound' (naš upit) | 'inbound' (odgovor prodavca)
+    """
+    __tablename__ = "messages"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+
+    # Sadržaj
+    direction = Column(String(10), nullable=False)   # outbound | inbound
+    content   = Column(Text, nullable=False)
+    language  = Column(String(20))                   # Jezik poruke
+
+    # Pitanja koja su bila u poruci (outbound)
+    questions_asked = Column(JSONB, default=list)    # Lista pitanja
+    vin_requested   = Column(Boolean, default=False)
+
+    # AI analiza (za inbound poruke)
+    ai_extracted = Column(JSONB)  # Izvučeni podaci: {vin, price, mileage, service_history...}
+
+    # Meta
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    is_read     = Column(Boolean, default=False)
+    channel     = Column(String(20), default="manual")  # manual | gmail | whatsapp
+
+    conversation = relationship("Conversation", back_populates="messages")
