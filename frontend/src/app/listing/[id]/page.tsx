@@ -86,7 +86,6 @@ function calcTrustScore(listing: any, vinResult?: any) {
   else if (elig.confidence==='low')    { score += 4; explanations.push({text:'Nesigurnost pri uvozu', ok:false}) }
   else explanations.push({text:'Problematičan uvoz', ok:false})
 
-  // ✅ VIN verifikacija — najjači faktor
   if (vinResult) {
     const hasCritical = vinResult.mismatches?.some((m: any) => m.severity === 'critical')
     const hasWarning  = vinResult.mismatches?.some((m: any) => m.severity === 'warning')
@@ -107,7 +106,6 @@ function calcTrustScore(listing: any, vinResult?: any) {
 
   score = Math.min(100, Math.max(0, Math.round(score)))
   let label='', color=''
-  // ✅ Ako postoji kritično VIN neslaganje — override labele
   const hasCriticalVin = vinResult?.mismatches?.some((m: any) => m.severity === 'critical')
   if (hasCriticalVin) {
     label = '🚨 Kritično neslaganje podataka'; color = '#EF4444'
@@ -175,7 +173,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [fraud,          setFraud]          = useState<any>(null)
   const [activeImg,      setActiveImg]      = useState(0)
   const [favorited,      setFavorited]      = useState(false)
-  const [vinResult,      setVinResult]      = useState<any>(null)   // ✅ VIN rezultat
+  const [vinResult,      setVinResult]      = useState<any>(null)
   const [loading,        setLoading]        = useState(true)
   const [showContact,    setShowContact]    = useState(false)
   const [showBd,         setShowBd]         = useState(false)
@@ -247,10 +245,21 @@ export default function ListingPage({ params }: { params: { id: string } }) {
     {label:'Grad',       value:listing.city?listing.city.split(' - ')[0]:null},
   ].filter(s=>s.value)
 
-  const criticalChecks = trust.explanations.filter(e=>!e.ok).length
+  const handleSave = async () => {
+    const t = localStorage.getItem('autoai_token')
+    if (!t) { window.location.href='/login'; return }
+    try {
+      const r = await fetch(`${API_BASE}/users/me/favorites`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},
+        body:JSON.stringify({listing_id:listing.id})
+      })
+      if (r.ok) setFavorited(true)
+    } catch {}
+  }
 
   return (
-    <div style={{paddingBottom:90}}>
+    <div style={{paddingBottom:20}}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
 
       {/* AI Score Bottom Sheet */}
@@ -306,17 +315,13 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           .listing-grid { grid-template-columns:1fr !important; }
           .desktop-sidebar { display:none !important; }
           .desktop-section { display:none !important; }
-          .sticky-bar { display:flex !important; }
         }
         @media(min-width:769px){
           .mobile-stack { display:none !important; }
-          .sticky-bar { display:none !important; }
         }
         .mobile-stack { display:block; }
-        .sticky-bar { display:none; }
         .trust-bar { transition:width .6s ease; }
 
-        /* ✅ MOBILE FIRST — povećani fontovi za čitljivost */
         @media(max-width:768px){
           .mob-title    { font-size:20px !important; font-weight:700 !important; }
           .mob-price    { font-size:38px !important; font-weight:800 !important; line-height:1 !important; }
@@ -331,13 +336,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           .mob-section-title { font-size:16px !important; font-weight:700 !important; }
           .mob-body-text { font-size:14px !important; line-height:1.7 !important; }
           .mob-badge    { font-size:14px !important; font-weight:700 !important; }
-          .mob-btn      { font-size:15px !important; font-weight:700 !important; padding:14px !important; }
+          .mob-btn      { font-size:16px !important; font-weight:700 !important; padding:16px !important; }
           .mob-import-total { font-size:26px !important; font-weight:800 !important; }
           .mob-import-row { font-size:14px !important; }
           .mob-source-badge { font-size:13px !important; }
           .mob-tiny { font-size:12px !important; }
         }
         .score-btn:active { opacity:.7; transform:scale(.97); }
+        .action-btn:active { opacity:.8; transform:scale(.97); }
       `}</style>
 
       <div className="container" style={{padding:'12px 12px 0'}}>
@@ -355,7 +361,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           </div>
         )}
 
-        {/* ✅ KRITIČNI VIN ALERT — prikazuje se kada postoji neslaganje */}
+        {/* VIN KRITIČNI ALERT */}
         {vinResult?.mismatches?.some((m: any) => m.severity === 'critical') && (
           <div style={{
             background:'rgba(239,68,68,.08)', border:'2px solid rgba(239,68,68,.5)',
@@ -365,7 +371,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             <div style={{fontSize:16, fontWeight:800, color:'#EF4444', marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
               🚨 VIN SE NE POKLAPA SA OGLASOM
             </div>
-
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10}}>
               <div style={{background:'rgba(239,68,68,.08)', borderRadius:10, padding:'10px 12px'}}>
                 <div style={{fontSize:10, color:'#EF4444', fontWeight:700, marginBottom:6, letterSpacing:'.06em'}}>📋 VIN PODACI</div>
@@ -394,7 +399,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ))}
               </div>
             </div>
-
             {vinResult.mismatches.filter((m: any) => m.severity === 'critical').map((m: any, i: number) => (
               <div key={i} style={{
                 background:'rgba(239,68,68,.1)', borderLeft:'3px solid #EF4444',
@@ -404,7 +408,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 <div style={{fontSize:12, color:'var(--text2)', marginTop:2}}>{m.message}</div>
               </div>
             ))}
-
             <div style={{
               background:'rgba(239,68,68,.06)', borderRadius:8, padding:'10px 12px',
               marginTop:8, fontSize:12, color:'var(--text2)', lineHeight:1.6,
@@ -416,7 +419,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
         <div className="listing-grid" style={{display:'grid',gridTemplateColumns:'1fr 340px',gap:24,alignItems:'start'}}>
 
-          {/* MOBILE STACK — TAB LAYOUT */}
+          {/* MOBILE STACK */}
           <div className="mobile-stack">
 
             {/* Slika */}
@@ -464,21 +467,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               onVinResult={setVinResult} vinResult={vinResult}
               portalName={portalName}
               saved={favorited}
-              onSave={async () => {
-                const t = localStorage.getItem('autoai_token')
-                if (!t) { window.location.href='/login'; return }
-                try {
-                  const r = await fetch(`${API_BASE}/users/me/favorites`, {
-                    method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},
-                    body:JSON.stringify({listing_id:listing.id})
-                  })
-                  if (r.ok) setFavorited(true)
-                } catch {}
-              }}
+              onSave={handleSave}
             />
           </div>
 
-                    {/* DESKTOP LEVA KOLONA */}
+          {/* DESKTOP LEVA KOLONA */}
           <div className="desktop-section" style={{display:'block'}}>
             <div style={{height:380,background:'var(--bg3)',borderRadius:'var(--radius)',overflow:'hidden',marginBottom:8,position:'relative'}}>
               {images[activeImg]
@@ -586,7 +579,6 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   </div>
                 </div>
               )}
-              {/* ✅ Pogledaj na portalu */}
               <a href={listing.url} target="_blank" rel="noopener" style={{display:'block',width:'100%',padding:'12px',textAlign:'center',background:'var(--accent)',color:'#fff',borderRadius:10,fontWeight:700,fontSize:14,marginBottom:8,textDecoration:'none'}}>
                 Pogledaj na {portalName} →
               </a>
@@ -610,7 +602,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
               <div style={{display:'flex',gap:6}}>
                 <button onClick={() => { const u=window.location.href; if(navigator.share) navigator.share({title:`${listing.year} ${listing.make} ${listing.model}`,url:u}); else { navigator.clipboard.writeText(u); alert('Link kopiran!') } }} style={{flex:1,padding:'8px',background:'transparent',border:'1px solid var(--border)',color:'var(--text2)',borderRadius:9,fontSize:12,cursor:'pointer'}}>🔗 Podeli</button>
-                <button onClick={async () => { const t=localStorage.getItem('autoai_token'); if(!t){window.location.href='/login';return} try{const r=await fetch(`${API_BASE}/users/me/favorites`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},body:JSON.stringify({listing_id:listing.id})}); if(r.ok) setFavorited(true)}catch{} }} style={{flex:1,padding:'8px',background:'transparent',border:`1px solid ${favorited?'var(--accent)':'var(--border)'}`,color:favorited?'var(--accent)':'var(--text2)',borderRadius:9,fontSize:12,cursor:'pointer'}}>
+                <button onClick={handleSave} style={{flex:1,padding:'8px',background:'transparent',border:`1px solid ${favorited?'var(--accent)':'var(--border)'}`,color:favorited?'var(--accent)':'var(--text2)',borderRadius:9,fontSize:12,cursor:'pointer'}}>
                   {favorited?'❤️ Sačuvano':'🤍 Sačuvaj'}
                 </button>
               </div>
@@ -676,66 +668,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           </div>
         </div>
       </div>
-
-      {/* ✅ STICKY BOTTOM BAR — 3 dugmeta */}
-      <div className="sticky-bar" style={{
-        position:'fixed', bottom:0, left:0, right:0, zIndex:100,
-        background:'rgba(13,13,18,.97)', borderTop:'1px solid var(--border)',
-        backdropFilter:'blur(12px)',
-        padding:'10px 12px',
-        paddingBottom:'calc(10px + env(safe-area-inset-bottom,0px))',
-        gap:8, alignItems:'center',
-      }}>
-        {/* Kontaktiraj */}
-        <button onClick={() => setShowContact(true)} className='mob-btn' style={{
-          flex:2, padding:'12px 8px',
-          background:'var(--accent)', border:'none',
-          color:'#fff', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer',
-        }}>
-          🤖 Kontaktiraj
-        </button>
-
-        {/* Sačuvaj */}
-        <button onClick={async () => {
-          const t = localStorage.getItem('autoai_token')
-          if (!t) { window.location.href='/login'; return }
-          try {
-            const r = await fetch(`${API_BASE}/users/me/favorites`, {
-              method:'POST',
-              headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},
-              body:JSON.stringify({listing_id:listing.id})
-            })
-            if (r.ok) setFavorited(true)
-          } catch {}
-        }} style={{
-          flex:1, padding:'12px 6px',
-          background:favorited?'rgba(255,107,0,.15)':'var(--bg2)',
-          border:`1px solid ${favorited?'var(--accent)':'var(--border)'}`,
-          color:favorited?'var(--accent)':'var(--text2)',
-          borderRadius:10, fontSize:12, fontWeight:600, cursor:'pointer',
-          display:'flex', flexDirection:'column', alignItems:'center', gap:1,
-        }}>
-          <span style={{fontSize:16}}>{favorited?'❤️':'🤍'}</span>
-          <span style={{fontSize:10}}>{favorited?'Sačuvano':'Sačuvaj'}</span>
-        </button>
-
-        {/* ✅ Originalni oglas na portalu */}
-        <a href={listing.url} target="_blank" rel="noopener" style={{
-          flex:1, padding:'12px 6px',
-          background:'var(--bg2)', border:'1px solid var(--border)',
-          color:'var(--text2)', borderRadius:10,
-          fontSize:10, fontWeight:600, textDecoration:'none',
-          display:'flex', flexDirection:'column', alignItems:'center', gap:1,
-        }}>
-          <span style={{fontSize:16}}>🔗</span>
-          <span>{portalName}</span>
-        </a>
-      </div>
     </div>
   )
 }
 
-// ✅ MOBILE TAB KOMPONENTA
+// MOBILE TAB KOMPONENTA
 function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price, deltaGood,
   onContact, onShowScore, onShowBd, enriching, enriched, scanMsg, onEnrich, fraud, onVinResult, vinResult,
   onSave, saved, portalName }: any) {
@@ -831,10 +768,68 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
               </div>
             )}
 
+            {/* ===== AKCIONA DUGMAD — odmah ispod specifikacija, iznad sličnih oglasa ===== */}
+            <div style={{display:'flex', gap:8, marginTop:4}}>
+              {/* Kontaktiraj — najveće, najvažnije */}
+              <button
+                onClick={onContact}
+                className="action-btn"
+                style={{
+                  flex:2, padding:'18px 8px',
+                  background:'var(--accent)', border:'none',
+                  color:'#fff', borderRadius:14,
+                  fontSize:17, fontWeight:800, cursor:'pointer',
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+                  boxShadow:'0 4px 20px rgba(255,107,0,.35)',
+                }}
+              >
+                <span style={{fontSize:22}}>🤖</span>
+                <span>Kontaktiraj</span>
+              </button>
+
+              {/* Sačuvaj */}
+              <button
+                onClick={onSave}
+                className="action-btn"
+                style={{
+                  flex:1, padding:'18px 6px',
+                  background: saved ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
+                  border: `2px solid ${saved ? 'var(--accent)' : 'var(--border)'}`,
+                  color: saved ? 'var(--accent)' : 'var(--text2)',
+                  borderRadius:14,
+                  fontSize:14, fontWeight:700, cursor:'pointer',
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+                }}
+              >
+                <span style={{fontSize:22}}>{saved ? '❤️' : '🤍'}</span>
+                <span style={{fontSize:13}}>{saved ? 'Sačuvano' : 'Sačuvaj'}</span>
+              </button>
+
+              {/* Link na portal */}
+              <a
+                href={listing.url}
+                target="_blank"
+                rel="noopener"
+                className="action-btn"
+                style={{
+                  flex:1, padding:'18px 6px',
+                  background:'var(--bg2)',
+                  border:'2px solid var(--border)',
+                  color:'var(--text2)', borderRadius:14,
+                  fontSize:13, fontWeight:700, textDecoration:'none',
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+                }}
+              >
+                <span style={{fontSize:22}}>🔗</span>
+                <span style={{fontSize:12}}>{portalName}</span>
+              </a>
+            </div>
+            {/* ===== KRAJ AKCIONIH DUGMADI ===== */}
+
             {/* Slični oglasi */}
             {similar.length > 0 && (
-              <div>
-                <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Slični oglasi</div>
+              <div style={{marginTop:4}}>
+                <div style={{fontSize:14,fontWeight:700,marginBottom:8,color:'var(--text)'}}>Slični oglasi</div>
                 <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4}}>
                   {similar.slice(0,6).map((s:any) => (
                     <a key={s.id} href={`/listing/${s.id}`} style={{flexShrink:0,width:150,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',display:'block',textDecoration:'none'}}>
@@ -914,16 +909,12 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
         {/* TAB 2 — VIN + Docs */}
         {tab === 2 && (
           <div style={{display:'flex', flexDirection:'column', gap:8}}>
-
-            {/* Šta proveriti */}
             {listing.make && (
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
                 <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔧 Šta proveriti</div>
                 <ModelChecklist make={listing.make} model={listing.model} year={listing.year} fuelType={listing.fuel_type} transmission={listing.transmission} />
               </div>
             )}
-
-            {/* VIN Checker */}
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
               <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔐 VIN Provera vozila</div>
               <p style={{fontSize:13,color:'var(--text3)',margin:'0 0 12px',lineHeight:1.5}}>
@@ -940,7 +931,6 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
     </div>
   )
 }
-
 
 function PageSkeleton() {
   return (
