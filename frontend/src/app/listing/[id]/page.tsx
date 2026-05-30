@@ -736,7 +736,7 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
   const fmt = (n: any) => Number(n).toLocaleString('de-DE')
 
   return (
-    <div style={{display:'flex', flexDirection:'column', height:'calc(100vh - 340px)', minHeight:400}}>
+    <div style={{display:'flex', flexDirection:'column'}}>
 
       {/* Tab bar */}
       <div style={{display:'flex', gap:4, marginBottom:10, background:'var(--bg2)', borderRadius:12, padding:4, border:'1px solid var(--border)'}}>
@@ -755,7 +755,7 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
       </div>
 
       {/* Tab sadržaj */}
-      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' as any}}>
+      <div>
 
         {/* TAB 0 — Vozilo */}
         {tab === 0 && (
