@@ -462,6 +462,19 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               onShowBd={() => setShowBdSheet(true)} enriching={enriching} enriched={enriched}
               scanMsg={scanMsg} onEnrich={() => autoEnrich(listing.url)} fraud={fraud}
               onVinResult={setVinResult} vinResult={vinResult}
+              portalName={portalName}
+              saved={favorited}
+              onSave={async () => {
+                const t = localStorage.getItem('autoai_token')
+                if (!t) { window.location.href='/login'; return }
+                try {
+                  const r = await fetch(`${API_BASE}/users/me/favorites`, {
+                    method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},
+                    body:JSON.stringify({listing_id:listing.id})
+                  })
+                  if (r.ok) setFavorited(true)
+                } catch {}
+              }}
             />
           </div>
 
@@ -724,7 +737,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
 // ✅ MOBILE TAB KOMPONENTA
 function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price, deltaGood,
-  onContact, onShowScore, onShowBd, enriching, enriched, scanMsg, onEnrich, fraud, onVinResult, vinResult }: any) {
+  onContact, onShowScore, onShowBd, enriching, enriched, scanMsg, onEnrich, fraud, onVinResult, vinResult,
+  onSave, saved, portalName }: any) {
   const [tab, setTab] = useState(0)
 
   const TABS = [
