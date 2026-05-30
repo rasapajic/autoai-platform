@@ -417,11 +417,6 @@ async def cleanup_emoji_makes(secret: str):
                 if new_model != l.model:
                     l.model = new_model
                     changed = True
-            if l.title:
-                new_title = strip_emoji(l.title)
-                if new_title != l.title:
-                    l.title = new_title
-                    changed = True
             if changed:
                 count += 1
         db.commit()
