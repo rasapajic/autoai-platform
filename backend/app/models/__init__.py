@@ -39,8 +39,6 @@ class Listing(Base):
     model              = Column(String(120))
     variant            = Column(String(120))
     year               = Column(Integer)
-    title              = Column(String(300))
-
     # Cena
     price              = Column(DECIMAL(10, 2))
     currency           = Column(String(3), default="EUR")
