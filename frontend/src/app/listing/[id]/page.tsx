@@ -41,7 +41,7 @@ function getSerbiaEligibility(listing: any) {
   return { status:'not_recommended', emoji:'🔴', label:'Visok rizik pri uvozu', sublabel:`Prestara norma · ${year}.`, reason:`Ne ispunjava standarde za uvoz.`, warnings:['Registracija u Srbiji verovatno nije moguća.'], confidence:'none', carinaPct:5 }
 }
 
-function calcTrustScore(listing: any) {
+function calcTrustScore(listing: any, vinResult?: any) {
   let score = 0
   const explanations: {text:string; ok:boolean}[] = []
   const year    = listing.year ? Number(listing.year) : null
@@ -86,14 +86,35 @@ function calcTrustScore(listing: any) {
   else if (elig.confidence==='low')    { score += 4; explanations.push({text:'Nesigurnost pri uvozu', ok:false}) }
   else explanations.push({text:'Problematičan uvoz', ok:false})
 
-  explanations.push({text:'VIN broj nije verifikovan', ok:false})
+  // ✅ VIN verifikacija — najjači faktor
+  if (vinResult) {
+    const hasCritical = vinResult.mismatches?.some((m: any) => m.severity === 'critical')
+    const hasWarning  = vinResult.mismatches?.some((m: any) => m.severity === 'warning')
+    if (hasCritical) {
+      score = Math.max(0, score - 55)
+      const fields = vinResult.mismatches.filter((m: any) => m.severity === 'critical').map((m: any) => m.field).join(', ')
+      explanations.push({text:`🚨 VIN neslaganje: ${fields}`, ok:false})
+    } else if (hasWarning) {
+      score = Math.max(0, score - 25)
+      explanations.push({text:'⚠️ VIN delimično neslaganje', ok:false})
+    } else if (vinResult.match_status === 'ok') {
+      score = Math.min(100, score + 15)
+      explanations.push({text:'✅ VIN potvrđuje sve podatke oglasa', ok:true})
+    }
+  } else {
+    explanations.push({text:'VIN broj nije verifikovan', ok:false})
+  }
 
   score = Math.min(100, Math.max(0, Math.round(score)))
   let label='', color=''
-  if (score>=85)       { label='Veoma kvalitetan oglas'; color='#22C55E' }
-  else if (score>=70)  { label='Dobar oglas'; color='#22C55E' }
-  else if (score>=55)  { label='Delimično verifikovan'; color='#F97316' }
-  else                 { label='Oglas nije potpuno verifikovan'; color='#EF4444' }
+  // ✅ Ako postoji kritično VIN neslaganje — override labele
+  const hasCriticalVin = vinResult?.mismatches?.some((m: any) => m.severity === 'critical')
+  if (hasCriticalVin) {
+    label = '🚨 Kritično neslaganje podataka'; color = '#EF4444'
+  } else if (score>=85) { label='Veoma kvalitetan oglas'; color='#22C55E' }
+  else if (score>=70)   { label='Dobar oglas'; color='#22C55E' }
+  else if (score>=55)   { label='Delimično verifikovan'; color='#F97316' }
+  else                  { label='Oglas nije potpuno verifikovan'; color='#EF4444' }
 
   return { score, label, color, explanations }
 }
@@ -154,6 +175,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [fraud,          setFraud]          = useState<any>(null)
   const [activeImg,      setActiveImg]      = useState(0)
   const [favorited,      setFavorited]      = useState(false)
+  const [vinResult,      setVinResult]      = useState<any>(null)   // ✅ VIN rezultat
   const [loading,        setLoading]        = useState(true)
   const [showContact,    setShowContact]    = useState(false)
   const [showBd,         setShowBd]         = useState(false)
@@ -209,7 +231,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const price     = listing.price ? Number(listing.price) : null
   const bd        = price ? calcImport(price, elig.carinaPct) : null
   const deltaGood = listing.price_delta_pct && Number(listing.price_delta_pct) < 0
-  const trust     = calcTrustScore(listing)
+  const trust     = calcTrustScore(listing, vinResult)
   const portalName = SOURCE_LABELS[listing.source] || listing.source || 'Portal'
 
   const fuelLabel = (f: string) => ({diesel:'Dizel',petrol:'Benzin',electric:'Električni',hybrid:'Hibrid',lpg:'Plin',gasoline:'Benzin'} as any)[f]||f
@@ -311,6 +333,65 @@ export default function ListingPage({ params }: { params: { id: string } }) {
           </div>
         )}
 
+        {/* ✅ KRITIČNI VIN ALERT — prikazuje se kada postoji neslaganje */}
+        {vinResult?.mismatches?.some((m: any) => m.severity === 'critical') && (
+          <div style={{
+            background:'rgba(239,68,68,.08)', border:'2px solid rgba(239,68,68,.5)',
+            borderRadius:14, padding:'14px 16px', marginBottom:12,
+            boxShadow:'0 0 30px rgba(239,68,68,.15)',
+          }}>
+            <div style={{fontSize:16, fontWeight:800, color:'#EF4444', marginBottom:10, display:'flex', alignItems:'center', gap:8}}>
+              🚨 VIN SE NE POKLAPA SA OGLASOM
+            </div>
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10}}>
+              <div style={{background:'rgba(239,68,68,.08)', borderRadius:10, padding:'10px 12px'}}>
+                <div style={{fontSize:10, color:'#EF4444', fontWeight:700, marginBottom:6, letterSpacing:'.06em'}}>📋 VIN PODACI</div>
+                {[
+                  {label:'Marka', value: vinResult.make},
+                  {label:'Model', value: vinResult.model},
+                  {label:'Godište', value: vinResult.year},
+                ].filter(f => f.value).map(({label, value}) => (
+                  <div key={label} style={{fontSize:12, marginBottom:3}}>
+                    <span style={{color:'var(--text3)'}}>{label}: </span>
+                    <span style={{color:'#EF4444', fontWeight:700}}>{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{background:'rgba(255,255,255,.04)', borderRadius:10, padding:'10px 12px'}}>
+                <div style={{fontSize:10, color:'var(--text3)', fontWeight:700, marginBottom:6, letterSpacing:'.06em'}}>📝 OGLAS NAVODI</div>
+                {[
+                  {label:'Marka', value: listing.make},
+                  {label:'Model', value: listing.model},
+                  {label:'Godište', value: listing.year},
+                ].filter(f => f.value).map(({label, value}) => (
+                  <div key={label} style={{fontSize:12, marginBottom:3}}>
+                    <span style={{color:'var(--text3)'}}>{label}: </span>
+                    <span style={{fontWeight:600}}>{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {vinResult.mismatches.filter((m: any) => m.severity === 'critical').map((m: any, i: number) => (
+              <div key={i} style={{
+                background:'rgba(239,68,68,.1)', borderLeft:'3px solid #EF4444',
+                borderRadius:'0 8px 8px 0', padding:'8px 12px', marginBottom:6,
+              }}>
+                <div style={{fontSize:12, fontWeight:700, color:'#EF4444'}}>⚠ {m.field}</div>
+                <div style={{fontSize:12, color:'var(--text2)', marginTop:2}}>{m.message}</div>
+              </div>
+            ))}
+
+            <div style={{
+              background:'rgba(239,68,68,.06)', borderRadius:8, padding:'10px 12px',
+              marginTop:8, fontSize:12, color:'var(--text2)', lineHeight:1.6,
+            }}>
+              ⛔ <strong style={{color:'#EF4444'}}>Ne preporučujemo kupovinu</strong> dok prodavac ne objasni neslaganje podataka ili dostavi ispravnu dokumentaciju.
+            </div>
+          </div>
+        )}
+
         <div className="listing-grid" style={{display:'grid',gridTemplateColumns:'1fr 340px',gap:24,alignItems:'start'}}>
 
           {/* MOBILE STACK */}
@@ -375,7 +456,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             </button>
 
-            {/* 4. Uvoz status */}
+            {/* ✅ Uvoz upozorenje ako VIN nije verifikovan ili neslaganje */}
+        {vinResult?.mismatches?.some((m: any) => m.severity === 'critical') && (
+          <div style={{background:'rgba(239,68,68,.07)',border:'1px solid rgba(239,68,68,.3)',borderRadius:10,padding:'9px 12px',marginBottom:8,fontSize:12,color:'#EF4444'}}>
+            ⚠️ <strong>Uvozni trošak je informativan</strong> — podaci vozila nisu verifikovani (VIN neslaganje).
+          </div>
+        )}
+
+        {/* 4. Uvoz status */}
             <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:14,padding:'10px 14px',marginBottom:8}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
@@ -413,6 +501,25 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   </div>
                 ))}
               </div>
+
+              {/* ✅ Mapa lokacije */}
+              {(listing.city || listing.country) && (
+                <div style={{marginTop:8, borderRadius:10, overflow:'hidden', border:'1px solid var(--border)', position:'relative'}}>
+                  <iframe
+                    title="Lokacija vozila"
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}&z=10&output=embed`}
+                    width="100%" height="150"
+                    style={{display:'block', border:'none', filter:'invert(90%) hue-rotate(180deg)'}}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                  <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
+                    target="_blank" rel="noopener"
+                    style={{position:'absolute', bottom:8, right:8, fontSize:11, padding:'4px 9px', borderRadius:20, background:'rgba(0,0,0,.75)', color:'#fff', textDecoration:'none'}}>
+                    📍 Otvori mapu
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* 6. Checklist */}
@@ -442,7 +549,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   </button>
                   {' '}— AI automatski dodaje pitanje za VIN na jeziku prodavca.
                 </p>
-                <VinChecker listing={listing} compact />
+                <VinChecker listing={listing} compact onVinResult={setVinResult} />
               </div>
             </Accordion>
 
@@ -541,7 +648,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 <button onClick={() => setShowContact(true)} style={{background:'none',border:'none',color:'var(--accent)',cursor:'pointer',fontSize:12,fontWeight:600,padding:0,textDecoration:'underline'}}>Kontaktiraj prodavca</button>
                 {' '}— AI automatski dodaje pitanje na jeziku prodavca.
               </p>
-              <VinChecker listing={listing} />
+              <VinChecker listing={listing} onVinResult={setVinResult} />
             </div>
             {listing.description && (
               <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20,marginBottom:16}}>
