@@ -251,7 +251,7 @@ export default function SearchPage() {
       sessionStorage.setItem('autoai_filters', JSON.stringify(f))
       sessionStorage.setItem('autoai_search_url', window.location.href)
     } catch {}
-    try   { const data = await searchListings(f); setResults(data) }
+    try   { const fSend = { ...f, countries: (f.countries || []).join(',') }; const data = await searchListings(fSend); setResults(data) }
     catch { setResults(null) }
     finally { setLoading(false) }
   }, [filters])
