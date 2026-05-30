@@ -227,10 +227,15 @@ def search_stats(db: Session = Depends(get_db)):
 
 @router.get("/makes")
 def get_makes(db: Session = Depends(get_db)):
-    """Vraća listu marki — normalizovane i grupisane (bez duplikata)."""
+    """Vraća listu marki — normalizovane i grupisane (bez duplikata), samo oglasi sa cenom."""
     raw = (
         db.query(Listing.make, func.count(Listing.id).label("count"))
-        .filter(Listing.is_active == True, Listing.make != None)
+        .filter(
+            Listing.is_active == True,
+            Listing.make != None,
+            Listing.price != None,
+            Listing.price > 0,
+        )
         .group_by(Listing.make)
         .order_by(func.count(Listing.id).desc())
         .limit(200)
@@ -261,6 +266,8 @@ def get_models(make: str, db: Session = Depends(get_db)):
             Listing.is_active == True,
             or_(*[Listing.make.ilike(v) for v in variants]),
             Listing.model != None,
+            Listing.price != None,
+            Listing.price > 0,
         )
         .group_by(Listing.model)
         .order_by(func.count(Listing.id).desc())
