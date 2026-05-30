@@ -1,353 +1,365 @@
-"""
-inbox.py — AI Inbox API
-POST   /api/v1/inbox/conversations          — nova konverzacija + slanje poruke
-GET    /api/v1/inbox/conversations          — lista svih konverzacija korisnika
-GET    /api/v1/inbox/conversations/{id}     — detalji + poruke
-POST   /api/v1/inbox/conversations/{id}/reply — korisnik unosi odgovor prodavca
-PUT    /api/v1/inbox/conversations/{id}/status — promeni status
-DELETE /api/v1/inbox/conversations/{id}    — arhiviraj
-"""
+'use client'
+import { useEffect, useState } from 'react'
 
-import re
-import logging
-from uuid import UUID
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Header
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import Optional
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
-from app.core.db import get_db
-from app.models import Conversation, Message, Listing, User
+const STATUS_CONFIG: Record<string, {label:string; color:string; bg:string; emoji:string}> = {
+  pending_send:    { label:'Čeka slanje',     color:'#9CA3AF', bg:'rgba(156,163,175,.1)', emoji:'📝' },
+  sent:            { label:'Poslato',          color:'#818CF8', bg:'rgba(99,102,241,.1)',  emoji:'📤' },
+  reply_received:  { label:'Odgovor primljen', color:'#F97316', bg:'rgba(249,115,22,.1)',  emoji:'📩' },
+  vin_received:    { label:'VIN primljen',     color:'#22C55E', bg:'rgba(34,197,94,.1)',   emoji:'🔐' },
+  negotiating:     { label:'Pregovori',        color:'#EAB308', bg:'rgba(234,179,8,.1)',   emoji:'🤝' },
+  closed:          { label:'Zatvoreno',        color:'#22C55E', bg:'rgba(34,197,94,.1)',   emoji:'✅' },
+  rejected:        { label:'Odbijeno',         color:'#EF4444', bg:'rgba(239,68,68,.1)',   emoji:'❌' },
+}
 
-logger = logging.getLogger(__name__)
-router = APIRouter()
+const RECOM_CONFIG: Record<string, {label:string; color:string}> = {
+  buy:       { label:'🟢 Preporučuje se kupovina', color:'#22C55E' },
+  negotiate: { label:'🟡 Pregovaraj o ceni',        color:'#EAB308' },
+  verify:    { label:'🟠 Potrebna dodatna provera',  color:'#F97316' },
+  skip:      { label:'🔴 Preskoči oglas',            color:'#EF4444' },
+}
 
+function fmt(n: any) { return Number(n).toLocaleString('de-DE') }
 
-# ── Auth helper ────────────────────────────────────────────────────────────────
+function timeAgo(iso: string): string {
+  if (!iso) return ''
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000
+  if (diff < 60)   return 'Upravo'
+  if (diff < 3600) return `${Math.floor(diff/60)} min`
+  if (diff < 86400) return `${Math.floor(diff/3600)}h`
+  return `${Math.floor(diff/86400)}d`
+}
 
-def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> User:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Nije autorizovano")
-    token = authorization.replace("Bearer ", "")
-    try:
-        import jwt
-        from app.core.config import settings
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        user_id = payload.get("sub")
-    except Exception:
-        raise HTTPException(status_code=401, detail="Nevažeći token")
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Korisnik nije pronađen")
-    return user
+export default function InboxPage() {
+  const [convs,       setConvs]       = useState<any[]>([])
+  const [selected,    setSelected]    = useState<any>(null)
+  const [loading,     setLoading]     = useState(true)
+  const [replyText,   setReplyText]   = useState('')
+  const [replyLoading,setReplyLoading]= useState(false)
+  const [stats,       setStats]       = useState<any>(null)
+  const [filterStatus,setFilterStatus]= useState('')
+  const [error,       setError]       = useState('')
 
+  const token = typeof window !== 'undefined' ? localStorage.getItem('autoai_token') : null
 
-# ── Schemas ────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!token) { window.location.href = '/login'; return }
+    loadConvs()
+    loadStats()
+  }, [filterStatus])
 
-class CreateConversationRequest(BaseModel):
-    listing_id:       Optional[str]  = None
-    listing_title:    Optional[str]  = None
-    listing_url:      Optional[str]  = None
-    listing_price:    Optional[float] = None
-    listing_source:   Optional[str]  = None
-    seller_language:  Optional[str]  = "Deutsch"
-    seller_country:   Optional[str]  = None
-    message_content:  str             # Generisana AI poruka
-    questions_asked:  list[str]       = []
-    vin_requested:    bool            = False
+  const authHeaders = { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` }
 
+  async function loadConvs() {
+    setLoading(true)
+    try {
+      const url = `${API_BASE}/inbox/conversations${filterStatus ? `?status=${filterStatus}` : ''}`
+      const res = await fetch(url, { headers: authHeaders })
+      const data = await res.json()
+      setConvs(Array.isArray(data) ? data : [])
+    } catch { setError('Greška pri učitavanju.') }
+    setLoading(false)
+  }
 
-class AddReplyRequest(BaseModel):
-    content: str   # Tekst odgovora koji je prodavac poslao
+  async function loadStats() {
+    try {
+      const res = await fetch(`${API_BASE}/inbox/conversations/stats/summary`, { headers: authHeaders })
+      const data = await res.json()
+      setStats(data)
+    } catch {}
+  }
 
+  async function openConv(id: string) {
+    try {
+      const res = await fetch(`${API_BASE}/inbox/conversations/${id}`, { headers: authHeaders })
+      const data = await res.json()
+      setSelected(data)
+      // Označi poruke kao pročitane
+    } catch {}
+  }
 
-class UpdateStatusRequest(BaseModel):
-    status: str    # pending_send | sent | reply_received | vin_received | negotiating | closed | rejected
+  async function sendReply() {
+    if (!replyText.trim() || !selected) return
+    setReplyLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/inbox/conversations/${selected.id}/reply`, {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ content: replyText.trim() }),
+      })
+      const data = await res.json()
+      setSelected(data)
+      setReplyText('')
+      loadConvs()
+      loadStats()
+    } catch { setError('Greška pri slanju odgovora.') }
+    setReplyLoading(false)
+  }
 
+  async function updateStatus(id: string, status: string) {
+    try {
+      await fetch(`${API_BASE}/inbox/conversations/${id}/status`, {
+        method: 'PUT', headers: authHeaders,
+        body: JSON.stringify({ status }),
+      })
+      loadConvs()
+      if (selected?.id === id) setSelected((prev: any) => ({ ...prev, status }))
+    } catch {}
+  }
 
-# ── AI analiza odgovora prodavca ───────────────────────────────────────────────
+  async function deleteConv(id: string) {
+    if (!confirm('Obrisati konverzaciju?')) return
+    await fetch(`${API_BASE}/inbox/conversations/${id}`, { method: 'DELETE', headers: authHeaders })
+    if (selected?.id === id) setSelected(null)
+    loadConvs()
+    loadStats()
+  }
 
-async def _ai_analyze_reply(content: str, conversation: Conversation) -> dict:
-    """AI analizira odgovor prodavca i izvlači ključne informacije."""
-    try:
-        import anthropic
-        client = anthropic.AsyncAnthropic()
+  const unread = stats?.unread_replies || 0
 
-        prompt = f"""Analiziraj odgovor prodavca automobila i izvuci ključne informacije.
+  return (
+    <div style={{ minHeight:'100vh', background:'var(--bg)', paddingBottom:40 }}>
+      <style>{`
+        @media(max-width:768px){
+          .inbox-grid { grid-template-columns:1fr !important; }
+          .inbox-detail { display: ${selected ? 'block' : 'none'} !important; }
+          .inbox-list { display: ${selected ? 'none' : 'block'} !important; }
+        }
+      `}</style>
 
-Oglas: {conversation.listing_title or 'N/A'}
-Odgovor prodavca:
-{content}
+      <div className="container" style={{ padding:'20px 16px 0' }}>
 
-Vrati SAMO JSON:
-{{
-  "vin": "VIN broj ako je naveden, inače null",
-  "price": numerička cena ako je navedena, inače null,
-  "mileage": km ako je navedena, inače null,
-  "service_history": true/false/null,
-  "coc_document": true/false/null,
-  "export_possible": true/false/null,
-  "damage_mentioned": true/false,
-  "damage_description": "opis oštećenja ili null",
-  "still_available": true/false/null,
-  "summary": "kratki sažetak odgovora na srpskom (2-3 rečenice)",
-  "recommendation": "buy/skip/negotiate/verify",
-  "recommendation_reason": "razlog na srpskom"
-}}"""
+        {/* Header */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div>
+            <h1 style={{ fontSize:22, fontWeight:800, fontFamily:'Syne,sans-serif', margin:'0 0 4px' }}>
+              📬 AI Inbox
+              {unread > 0 && (
+                <span style={{ marginLeft:10, fontSize:13, background:'#EF4444', color:'#fff', borderRadius:20, padding:'2px 8px', fontWeight:700 }}>
+                  {unread} novo
+                </span>
+              )}
+            </h1>
+            <p style={{ fontSize:13, color:'var(--text3)', margin:0 }}>Komunikacija sa prodavcima vozila</p>
+          </div>
+        </div>
 
-        response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=600,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        text = response.content[0].text.strip()
-        text = re.sub(r"```json|```", "", text).strip()
-        import json
-        return json.loads(text)
-    except Exception as e:
-        logger.error(f"AI analiza odgovora greška: {e}")
-        return {}
+        {/* Stats */}
+        {stats && (
+          <div style={{ display:'flex', gap:8, marginBottom:16, overflowX:'auto', paddingBottom:4 }}>
+            {[
+              { key:'', label:'Sve', count:stats.total },
+              { key:'sent', label:'📤 Poslato', count:stats.sent },
+              { key:'reply_received', label:'📩 Odgovor', count:stats.reply_received },
+              { key:'vin_received', label:'🔐 VIN', count:stats.vin_received },
+              { key:'negotiating', label:'🤝 Pregovori', count:stats.negotiating },
+            ].map(({ key, label, count }) => (
+              <button key={key} onClick={() => setFilterStatus(key)} style={{
+                flexShrink:0, padding:'6px 12px', borderRadius:20, fontSize:12, cursor:'pointer',
+                background: filterStatus===key ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
+                border: `1px solid ${filterStatus===key ? 'var(--accent)' : 'var(--border)'}`,
+                color: filterStatus===key ? 'var(--accent)' : 'var(--text2)',
+                fontWeight: filterStatus===key ? 700 : 400,
+              }}>
+                {label} <span style={{ opacity:.6 }}>{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
+        {error && (
+          <div style={{ background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:10, padding:'10px 14px', marginBottom:12, color:'#EF4444', fontSize:13 }}>
+            ⚠️ {error}
+          </div>
+        )}
 
-# ── Rute ──────────────────────────────────────────────────────────────────────
+        <div className="inbox-grid" style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:16, alignItems:'start' }}>
 
-@router.post("/conversations")
-async def create_conversation(
-    req: CreateConversationRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Kreiraj novu konverzaciju i sačuvaj prvu poruku."""
+          {/* Lista konverzacija */}
+          <div className="inbox-list">
+            {loading ? (
+              [...Array(4)].map((_,i) => <div key={i} className="skeleton" style={{ height:80, borderRadius:12, marginBottom:8 }} />)
+            ) : convs.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'40px 20px', background:'var(--bg2)', borderRadius:16, border:'1px solid var(--border)' }}>
+                <div style={{ fontSize:40, marginBottom:10 }}>📭</div>
+                <p style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>Nema konverzacija</p>
+                <p style={{ fontSize:13, color:'var(--text3)' }}>
+                  Kontaktiraj prodavca sa listing stranice i poruka će se pojaviti ovde.
+                </p>
+              </div>
+            ) : (
+              convs.map(conv => {
+                const statusCfg = STATUS_CONFIG[conv.status] || STATUS_CONFIG.sent
+                const isSelected = selected?.id === conv.id
+                return (
+                  <div key={conv.id} onClick={() => openConv(conv.id)} style={{
+                    background: isSelected ? 'rgba(255,107,0,.06)' : 'var(--bg2)',
+                    border: `1px solid ${isSelected ? 'rgba(255,107,0,.4)' : 'var(--border)'}`,
+                    borderRadius:12, padding:'12px 14px', marginBottom:8, cursor:'pointer',
+                    transition:'all .15s',
+                  }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                      <div style={{ flex:1, overflow:'hidden' }}>
+                        <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {conv.listing_title || 'Nepoznato vozilo'}
+                        </div>
+                        <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
+                          {conv.listing_source && <span style={{ marginRight:6 }}>{conv.listing_source}</span>}
+                          {conv.listing_price && <span>{fmt(conv.listing_price)} €</span>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign:'right', flexShrink:0, marginLeft:8 }}>
+                        <span style={{ fontSize:10, padding:'2px 7px', borderRadius:20, background:statusCfg.bg, color:statusCfg.color, fontWeight:600 }}>
+                          {statusCfg.emoji} {statusCfg.label}
+                        </span>
+                        <div style={{ fontSize:10, color:'var(--text3)', marginTop:3 }}>{timeAgo(conv.last_message_at)}</div>
+                      </div>
+                    </div>
 
-    # Validacija listing_id
-    listing = None
-    if req.listing_id:
-        try:
-            listing = db.query(Listing).filter(Listing.id == req.listing_id).first()
-        except Exception:
-            pass
+                    {/* Indikatori */}
+                    <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+                      {conv.vin_received  && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(34,197,94,.1)', color:'#22C55E', border:'1px solid rgba(34,197,94,.2)' }}>🔐 VIN</span>}
+                      {conv.service_history_confirmed === true  && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(34,197,94,.1)', color:'#22C55E' }}>📋 Servis</span>}
+                      {conv.coc_document_confirmed === true     && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(34,197,94,.1)', color:'#22C55E' }}>📄 COC</span>}
+                      {conv.damage_mentioned === true            && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(239,68,68,.1)', color:'#EF4444' }}>⚠ Oštećenje</span>}
+                      {conv.status === 'reply_received'          && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(249,115,22,.15)', color:'#F97316', fontWeight:700 }}>● Novo</span>}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
 
-    conv = Conversation(
-        user_id         = user.id,
-        listing_id      = listing.id if listing else None,
-        listing_title   = req.listing_title or (f"{listing.make} {listing.model} {listing.year}" if listing else None),
-        listing_url     = req.listing_url or (listing.url if listing else None),
-        listing_price   = req.listing_price or (float(listing.price) if listing and listing.price else None),
-        listing_source  = req.listing_source or (listing.source if listing else None),
-        seller_language = req.seller_language,
-        seller_country  = req.seller_country,
-        status          = "sent",
-        vin_requested   = req.vin_requested,
-        last_message_at = datetime.utcnow(),
-    )
-    db.add(conv)
-    db.flush()
+          {/* Detalji konverzacije */}
+          <div className="inbox-detail">
+            {!selected ? (
+              <div style={{ textAlign:'center', padding:'80px 20px', background:'var(--bg2)', borderRadius:16, border:'1px solid var(--border)' }}>
+                <div style={{ fontSize:48, marginBottom:12 }}>💬</div>
+                <p style={{ fontSize:16, fontWeight:600, marginBottom:6 }}>Izaberi konverzaciju</p>
+                <p style={{ fontSize:13, color:'var(--text3)' }}>Klikni na konverzaciju iz liste da vidiš detalje</p>
+              </div>
+            ) : (
+              <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, overflow:'hidden' }}>
 
-    msg = Message(
-        conversation_id = conv.id,
-        direction       = "outbound",
-        content         = req.message_content,
-        language        = req.seller_language,
-        questions_asked = req.questions_asked,
-        vin_requested   = req.vin_requested,
-        channel         = "manual",
-    )
-    db.add(msg)
-    db.commit()
-    db.refresh(conv)
+                {/* Header konverzacije */}
+                <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                      <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:18, padding:0, display:'none' }} className="mobile-back">←</button>
+                      <h2 style={{ fontSize:15, fontWeight:700, margin:0 }}>{selected.listing_title}</h2>
+                    </div>
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                      {selected.listing_price && <span style={{ fontSize:13, color:'var(--accent)', fontWeight:700 }}>{fmt(selected.listing_price)} €</span>}
+                      {selected.listing_source && <span style={{ fontSize:11, color:'var(--text3)' }}>{selected.listing_source}</span>}
+                      <span style={{ fontSize:11, padding:'2px 7px', borderRadius:20, background:STATUS_CONFIG[selected.status]?.bg, color:STATUS_CONFIG[selected.status]?.color, fontWeight:600 }}>
+                        {STATUS_CONFIG[selected.status]?.emoji} {STATUS_CONFIG[selected.status]?.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    {selected.listing_url && (
+                      <a href={selected.listing_url} target="_blank" rel="noopener" style={{ fontSize:12, padding:'6px 10px', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)', borderRadius:8, textDecoration:'none' }}>Oglas →</a>
+                    )}
+                    <button onClick={() => deleteConv(selected.id)} style={{ fontSize:12, padding:'6px 10px', background:'transparent', border:'1px solid rgba(239,68,68,.3)', color:'#EF4444', borderRadius:8, cursor:'pointer' }}>🗑</button>
+                  </div>
+                </div>
 
-    return _conv_to_dict(conv)
+                {/* AI Analiza */}
+                {(selected.ai_summary || selected.ai_recommendation) && (
+                  <div style={{ margin:'12px 20px', background:'rgba(99,102,241,.07)', border:'1px solid rgba(99,102,241,.2)', borderRadius:12, padding:'12px 14px' }}>
+                    <div style={{ fontSize:11, color:'#818CF8', fontWeight:600, marginBottom:6 }}>🤖 AI ANALIZA</div>
+                    {selected.ai_recommendation && RECOM_CONFIG[selected.ai_recommendation] && (
+                      <div style={{ fontSize:13, fontWeight:700, color:RECOM_CONFIG[selected.ai_recommendation].color, marginBottom:4 }}>
+                        {RECOM_CONFIG[selected.ai_recommendation].label}
+                      </div>
+                    )}
+                    {selected.ai_summary && <p style={{ fontSize:12, color:'var(--text2)', margin:0, lineHeight:1.6 }}>{selected.ai_summary}</p>}
+                  </div>
+                )}
 
+                {/* Prikupljene informacije */}
+                {(selected.vin_received || selected.service_history_confirmed !== null || selected.coc_document_confirmed !== null) && (
+                  <div style={{ margin:'0 20px 12px', background:'var(--bg3)', borderRadius:12, padding:'12px 14px' }}>
+                    <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:8 }}>📊 PRIKUPLJENE INFORMACIJE</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+                      {[
+                        { label:'VIN', value:selected.vin_received ? '✅ Primljen' : '⏳ Čeka', ok:!!selected.vin_received },
+                        { label:'Servisna', value:selected.service_history_confirmed===true?'✅ Da':selected.service_history_confirmed===false?'❌ Ne':'⏳ N/A', ok:selected.service_history_confirmed===true },
+                        { label:'COC', value:selected.coc_document_confirmed===true?'✅ Da':selected.coc_document_confirmed===false?'❌ Ne':'⏳ N/A', ok:selected.coc_document_confirmed===true },
+                        { label:'Export', value:selected.export_possible_confirmed===true?'✅ Da':selected.export_possible_confirmed===false?'❌ Ne':'⏳ N/A', ok:selected.export_possible_confirmed===true },
+                        { label:'Cena', value:selected.seller_confirmed_price?`${fmt(selected.seller_confirmed_price)} €`:'⏳ N/A', ok:!!selected.seller_confirmed_price },
+                        { label:'Oštećenje', value:selected.damage_mentioned===true?`⚠️ ${selected.damage_description||'Da'}`:selected.damage_mentioned===false?'✅ Nema':'⏳ N/A', ok:selected.damage_mentioned===false },
+                      ].map(({ label, value, ok }) => (
+                        <div key={label} style={{ background:'var(--bg2)', borderRadius:8, padding:'7px 10px' }}>
+                          <div style={{ fontSize:10, color:'var(--text3)', marginBottom:2 }}>{label}</div>
+                          <div style={{ fontSize:11, fontWeight:600, color:ok?'#22C55E':'var(--text2)' }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-@router.get("/conversations")
-def list_conversations(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    status: Optional[str] = None,
-):
-    """Lista svih konverzacija korisnika."""
-    q = db.query(Conversation).filter(Conversation.user_id == user.id)
-    if status:
-        q = q.filter(Conversation.status == status)
-    convs = q.order_by(Conversation.last_message_at.desc().nullslast()).all()
-    return [_conv_to_dict(c, include_messages=False) for c in convs]
+                {/* Poruke */}
+                <div style={{ padding:'0 20px', maxHeight:400, overflowY:'auto', display:'flex', flexDirection:'column', gap:10, paddingTop:12 }}>
+                  {(selected.messages || []).map((msg: any) => (
+                    <div key={msg.id} style={{
+                      display:'flex', flexDirection:'column',
+                      alignItems: msg.direction==='outbound' ? 'flex-end' : 'flex-start',
+                    }}>
+                      <div style={{ fontSize:10, color:'var(--text3)', marginBottom:3 }}>
+                        {msg.direction==='outbound' ? '📤 Ti' : '📩 Prodavac'} · {timeAgo(msg.created_at)}
+                      </div>
+                      <div style={{
+                        maxWidth:'80%', padding:'10px 14px', borderRadius:12, fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap',
+                        background: msg.direction==='outbound' ? 'rgba(99,102,241,.15)' : 'var(--bg3)',
+                        border: `1px solid ${msg.direction==='outbound' ? 'rgba(99,102,241,.3)' : 'var(--border)'}`,
+                        color: 'var(--text2)',
+                        borderTopRightRadius: msg.direction==='outbound' ? 4 : 12,
+                        borderTopLeftRadius:  msg.direction==='inbound'  ? 4 : 12,
+                      }}>
+                        {msg.content}
+                      </div>
+                      {msg.ai_extracted && msg.direction==='inbound' && (
+                        <div style={{ fontSize:10, color:'#818CF8', marginTop:3, maxWidth:'80%' }}>
+                          🤖 AI izvukao: {Object.entries(msg.ai_extracted).filter(([k,v]) => v && !['summary','recommendation','recommendation_reason'].includes(k)).map(([k,v]) => `${k}: ${v}`).join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
-
-@router.get("/conversations/{conv_id}")
-def get_conversation(
-    conv_id: str,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Detalji konverzacije sa svim porukama."""
-    conv = _get_conv(conv_id, user, db)
-    return _conv_to_dict(conv, include_messages=True)
-
-
-@router.post("/conversations/{conv_id}/reply")
-async def add_reply(
-    conv_id: str,
-    req: AddReplyRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Dodaj odgovor prodavca i pokreni AI analizu."""
-    conv = _get_conv(conv_id, user, db)
-
-    # AI analiza odgovora
-    extracted = await _ai_analyze_reply(req.content, conv)
-
-    # Sačuvaj poruku
-    msg = Message(
-        conversation_id = conv.id,
-        direction       = "inbound",
-        content         = req.content,
-        ai_extracted    = extracted,
-        is_read         = False,
-    )
-    db.add(msg)
-
-    # Ažuriraj konverzaciju sa izvučenim podacima
-    if extracted.get("vin"):
-        conv.vin_received = extracted["vin"]
-        conv.status = "vin_received"
-    elif conv.status == "sent":
-        conv.status = "reply_received"
-
-    if extracted.get("price"):           conv.seller_confirmed_price    = extracted["price"]
-    if extracted.get("mileage"):         conv.seller_confirmed_mileage  = extracted["mileage"]
-    if extracted.get("service_history") is not None: conv.service_history_confirmed = extracted["service_history"]
-    if extracted.get("coc_document")    is not None: conv.coc_document_confirmed    = extracted["coc_document"]
-    if extracted.get("export_possible") is not None: conv.export_possible_confirmed = extracted["export_possible"]
-    if extracted.get("damage_mentioned"):
-        conv.damage_mentioned     = True
-        conv.damage_description   = extracted.get("damage_description")
-    if extracted.get("summary"):         conv.ai_summary        = extracted["summary"]
-    if extracted.get("recommendation"):  conv.ai_recommendation = extracted["recommendation"]
-
-    conv.last_message_at = datetime.utcnow()
-    db.commit()
-    db.refresh(conv)
-
-    return {**_conv_to_dict(conv, include_messages=True), "ai_extracted": extracted}
-
-
-@router.put("/conversations/{conv_id}/status")
-def update_status(
-    conv_id: str,
-    req: UpdateStatusRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    allowed = {"pending_send","sent","reply_received","vin_received","negotiating","closed","rejected"}
-    if req.status not in allowed:
-        raise HTTPException(400, detail=f"Status mora biti jedan od: {allowed}")
-    conv = _get_conv(conv_id, user, db)
-    conv.status = req.status
-    db.commit()
-    return {"ok": True, "status": conv.status}
-
-
-@router.delete("/conversations/{conv_id}")
-def delete_conversation(
-    conv_id: str,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    conv = _get_conv(conv_id, user, db)
-    db.delete(conv)
-    db.commit()
-    return {"ok": True}
-
-
-@router.get("/conversations/stats/summary")
-def inbox_stats(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    """Statistika inbox-a za dashboard."""
-    from sqlalchemy import func
-    counts = dict(
-        db.query(Conversation.status, func.count(Conversation.id))
-        .filter(Conversation.user_id == user.id)
-        .group_by(Conversation.status)
-        .all()
-    )
-    unread = db.query(func.count(Message.id)).join(Conversation).filter(
-        Conversation.user_id == user.id,
-        Message.direction == "inbound",
-        Message.is_read == False,
-    ).scalar()
-
-    return {
-        "total":          sum(counts.values()),
-        "sent":           counts.get("sent", 0),
-        "reply_received": counts.get("reply_received", 0),
-        "vin_received":   counts.get("vin_received", 0),
-        "negotiating":    counts.get("negotiating", 0),
-        "closed":         counts.get("closed", 0),
-        "unread_replies": unread or 0,
-        "by_status":      counts,
-    }
-
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
-def _get_conv(conv_id: str, user: User, db: Session) -> Conversation:
-    conv = db.query(Conversation).filter(
-        Conversation.id == conv_id,
-        Conversation.user_id == user.id,
-    ).first()
-    if not conv:
-        raise HTTPException(404, detail="Konverzacija nije pronađena")
-    return conv
-
-
-def _conv_to_dict(conv: Conversation, include_messages: bool = False) -> dict:
-    d = {
-        "id":              str(conv.id),
-        "listing_id":      str(conv.listing_id) if conv.listing_id else None,
-        "listing_title":   conv.listing_title,
-        "listing_url":     conv.listing_url,
-        "listing_price":   float(conv.listing_price) if conv.listing_price else None,
-        "listing_source":  conv.listing_source,
-        "seller_language": conv.seller_language,
-        "seller_country":  conv.seller_country,
-        "status":          conv.status,
-        "vin_requested":   conv.vin_received is not None or conv.vin_requested,
-        "vin_received":    conv.vin_received,
-        "vin_verified":    conv.vin_verified,
-        "seller_confirmed_price":    float(conv.seller_confirmed_price) if conv.seller_confirmed_price else None,
-        "seller_confirmed_mileage":  conv.seller_confirmed_mileage,
-        "service_history_confirmed": conv.service_history_confirmed,
-        "coc_document_confirmed":    conv.coc_document_confirmed,
-        "export_possible_confirmed": conv.export_possible_confirmed,
-        "damage_mentioned":          conv.damage_mentioned,
-        "damage_description":        conv.damage_description,
-        "ai_summary":        conv.ai_summary,
-        "ai_recommendation": conv.ai_recommendation,
-        "ai_score":          conv.ai_score,
-        "created_at":        conv.created_at.isoformat() if conv.created_at else None,
-        "updated_at":        conv.updated_at.isoformat() if conv.updated_at else None,
-        "last_message_at":   conv.last_message_at.isoformat() if conv.last_message_at else None,
-        "message_count":     len(conv.messages) if conv.messages else 0,
-    }
-    if include_messages:
-        d["messages"] = [_msg_to_dict(m) for m in (conv.messages or [])]
-    return d
-
-
-def _msg_to_dict(msg: Message) -> dict:
-    return {
-        "id":             str(msg.id),
-        "direction":      msg.direction,
-        "content":        msg.content,
-        "language":       msg.language,
-        "questions_asked": msg.questions_asked or [],
-        "vin_requested":  msg.vin_requested,
-        "ai_extracted":   msg.ai_extracted,
-        "created_at":     msg.created_at.isoformat() if msg.created_at else None,
-        "is_read":        msg.is_read,
-        "channel":        msg.channel,
-    }
+                {/* Unos odgovora prodavca */}
+                <div style={{ padding:'16px 20px', borderTop:'1px solid var(--border)', marginTop:12 }}>
+                  <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:8 }}>
+                    📩 ZALIJEPI ODGOVOR PRODAVCA
+                  </div>
+                  <textarea
+                    value={replyText}
+                    onChange={e => setReplyText(e.target.value)}
+                    placeholder="Kopiraj i zalijepi odgovor koji si dobio od prodavca — AI će automatski analizirati..."
+                    rows={4}
+                    style={{ width:'100%', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 13px', color:'var(--text)', fontSize:13, outline:'none', resize:'none', boxSizing:'border-box', fontFamily:'inherit', lineHeight:1.6, marginBottom:10 }}
+                  />
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={sendReply} disabled={replyLoading || !replyText.trim()} style={{
+                      flex:1, padding:'11px', borderRadius:10, border:'none', cursor:'pointer', fontSize:13, fontWeight:700,
+                      background: (!replyText.trim() || replyLoading) ? 'var(--bg3)' : 'var(--accent)',
+                      color: (!replyText.trim() || replyLoading) ? 'var(--text3)' : '#fff',
+                    }}>
+                      {replyLoading ? '⏳ AI analizira...' : '🤖 Dodaj odgovor i analiziraj'}
+                    </button>
+                    <select onChange={e => updateStatus(selected.id, e.target.value)} value={selected.status} style={{ padding:'0 12px', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)', borderRadius:10, fontSize:12, cursor:'pointer', outline:'none' }}>
+                      {Object.entries(STATUS_CONFIG).map(([k,v]) => (
+                        <option key={k} value={k}>{v.emoji} {v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
