@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 import sentry_sdk
 from app.core.config import settings
 from app.core.db import engine, Base
-
+from app.api import inbox
+app.include_router(inbox.router, prefix="/api/v1/inbox", tags=["📬 Inbox"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
