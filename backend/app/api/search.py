@@ -233,7 +233,7 @@ def search_stats(db: Session = Depends(get_db)):
 
 
 @router.get("/makes")
-def get_makes(db: Session = Depends(get_db)):
+def get_makes(db: Session = Depends(get_db), min_count: int = 3):
     """Vraća listu marki — normalizovane i grupisane (bez duplikata), samo oglasi sa cenom."""
     raw = (
         db.query(Listing.make, func.count(Listing.id).label("count"))
@@ -244,6 +244,7 @@ def get_makes(db: Session = Depends(get_db)):
             Listing.price > 0,
         )
         .group_by(Listing.make)
+        .having(func.count(Listing.id) >= min_count)
         .order_by(func.count(Listing.id).desc())
         .limit(200)
         .all()
