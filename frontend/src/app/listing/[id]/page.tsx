@@ -519,29 +519,20 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 {specs.map(s => (
                   <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'7px 10px'}}>
                     <div className="mob-spec-label" style={{fontSize:9,color:'var(--text3)',marginBottom:2}}>{s.label.toUpperCase()}</div>
-                    <div className="mob-spec-value" style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.value}</div>
+                    <div className="mob-spec-value" style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {s.label === 'Grad' && (listing.city || listing.country) ? (
+                        <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
+                          target="_blank" rel="noopener"
+                          style={{color:'inherit',textDecoration:'none',display:'flex',alignItems:'center',gap:3}}>
+                          {s.value} <span>📍</span>
+                        </a>
+                      ) : s.value}
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {/* ✅ Mapa lokacije */}
-              {(listing.city || listing.country) && (
-                <div style={{marginTop:8, borderRadius:10, overflow:'hidden', border:'1px solid var(--border)', position:'relative'}}>
-                  <iframe
-                    title="Lokacija vozila"
-                    src={`https://maps.google.com/maps?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}&z=10&output=embed`}
-                    width="100%" height="150"
-                    style={{display:'block', border:'none', filter:'invert(90%) hue-rotate(180deg)'}}
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  />
-                  <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
-                    target="_blank" rel="noopener"
-                    style={{position:'absolute', bottom:8, right:8, fontSize:11, padding:'4px 9px', borderRadius:20, background:'rgba(0,0,0,.75)', color:'#fff', textDecoration:'none'}}>
-                    📍 Otvori mapu
-                  </a>
-                </div>
-              )}
+
             </div>
 
             {/* 6. Checklist */}
