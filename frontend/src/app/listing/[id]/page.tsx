@@ -416,16 +416,16 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
         <div className="listing-grid" style={{display:'grid',gridTemplateColumns:'1fr 340px',gap:24,alignItems:'start'}}>
 
-          {/* MOBILE STACK */}
+          {/* MOBILE STACK — TAB LAYOUT */}
           <div className="mobile-stack">
 
-            {/* 1. Slika */}
-            <div style={{marginBottom:10,borderRadius:14,overflow:'hidden',position:'relative',height:240,background:'var(--bg3)'}}>
+            {/* Slika */}
+            <div style={{marginBottom:8,borderRadius:14,overflow:'hidden',position:'relative',height:220,background:'var(--bg3)'}}>
               {images[activeImg]
                 ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
                 : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
               }
-              <span className="mob-source-badge" style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'4px 10px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
+              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
               {images.length > 1 && (
                 <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
                   {activeImg+1}/{images.length}
@@ -433,178 +433,39 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
             {images.length > 1 && (
-              <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:10,paddingBottom:2}}>
+              <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:8,paddingBottom:2}}>
                 {images.slice(0,8).map((img:string,i:number) => (
-                  <div key={i} onClick={() => setActiveImg(i)} style={{width:60,height:44,flexShrink:0,borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`}}>
+                  <div key={i} onClick={() => setActiveImg(i)} style={{width:54,height:40,flexShrink:0,borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`}}>
                     <img src={img} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} />
                   </div>
                 ))}
               </div>
             )}
 
-            {/* 2. Cena */}
-            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:'12px 14px',marginBottom:8}}>
-              <div className="mob-title" style={{fontSize:14,color:'var(--text3)',marginBottom:2}}>{listing.make} {listing.model}{listing.year?` · ${listing.year}`:''}</div>
+            {/* Naziv + Cena */}
+            <div style={{marginBottom:8}}>
+              <div className="mob-title" style={{fontSize:16,color:'var(--text)',fontWeight:700,marginBottom:2}}>{listing.make} {listing.model}{listing.year?` · ${listing.year}`:''}</div>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
-                <div>
-                  <div className="mob-price" style={{fontSize:26,fontWeight:800,color:'var(--accent)',lineHeight:1}}>{price?`${fmt(price)} €`:'Na upit'}</div>
-                  {listing.price_estimated && (
-                    <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',marginTop:3}}>
-                      {deltaGood?'↓ ispod':'↑ iznad'} proseka za {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%
-                    </div>
-                  )}
-                </div>
-                {bd && (
-                  <button onClick={() => setShowBdSheet(true)} style={{textAlign:'right',background:'none',border:'none',cursor:'pointer',padding:0}}>
-                    <div style={{fontSize:11,color:'var(--text3)'}}>🇷🇸 za Srbiju</div>
-                    <div className="mob-price-rs" style={{fontSize:16,fontWeight:700,color:'var(--accent)'}}>{fmt(bd.total)} €</div>
-                  </button>
+                <div className="mob-price" style={{fontSize:32,fontWeight:800,color:'var(--accent)',lineHeight:1}}>{price?`${fmt(price)} €`:'Na upit'}</div>
+                {listing.price_estimated && (
+                  <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',textAlign:'right'}}>
+                    {deltaGood?'↓ ispod':'↑ iznad'} proseka za {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* 3. AI Score */}
-            <button className="score-btn" onClick={() => setShowScoreSheet(true)} style={{width:'100%',background:'var(--bg2)',border:`1px solid ${trust.color}33`,borderRadius:14,padding:'11px 14px',marginBottom:8,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-              <div style={{flex:1}}>
-                <div className="mob-ai-sub" style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:5}}>AI PROCENA OGLASA</div>
-                <div style={{height:4,background:'rgba(255,255,255,.06)',borderRadius:4,overflow:'hidden',marginBottom:5}}>
-                  <div className="trust-bar" style={{height:'100%',borderRadius:4,width:`${trust.score}%`,background:trust.color}} />
-                </div>
-                <div className="mob-ai-label" style={{fontSize:12,fontWeight:600,color:trust.color}}>{trust.label}</div>
-              </div>
-              <div style={{textAlign:'right',marginLeft:12,flexShrink:0}}>
-                <div className="mob-ai-score" style={{fontSize:24,fontWeight:800,color:trust.color,lineHeight:1}}>{trust.score}</div>
-                <div style={{fontSize:10,color:'var(--text3)'}}>Tap za detalje</div>
-              </div>
-            </button>
-
-            {/* ✅ Uvoz upozorenje ako VIN nije verifikovan ili neslaganje */}
-        {vinResult?.mismatches?.some((m: any) => m.severity === 'critical') && (
-          <div style={{background:'rgba(239,68,68,.07)',border:'1px solid rgba(239,68,68,.3)',borderRadius:10,padding:'9px 12px',marginBottom:8,fontSize:12,color:'#EF4444'}}>
-            ⚠️ <strong>Uvozni trošak je informativan</strong> — podaci vozila nisu verifikovani (VIN neslaganje).
-          </div>
-        )}
-
-        {/* 4. Uvoz status */}
-            <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:14,padding:'10px 14px',marginBottom:8}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <div>
-                  <div className="mob-status" style={{fontSize:13,fontWeight:700,color:eligColor}}>{elig.emoji} {elig.label}</div>
-                  {elig.sublabel && <div className="mob-status-sub" style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{elig.sublabel}</div>}
-                </div>
-                {bd && <div style={{fontSize:11,color:'var(--text3)',textAlign:'right'}}>Carina: {bd.carinaPct}%</div>}
-              </div>
-            </div>
-
-            {/* Podaci provereni badge */}
-            {enriched ? (
-              <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,padding:'9px 14px',marginBottom:8}}>
-                <span style={{fontSize:16}}>✅</span>
-                <div>
-                  <div className="mob-status" style={{fontSize:13,fontWeight:600,color:'#22C55E'}}>Podaci provereni</div>
-                  <div className="mob-body-text" style={{fontSize:11,color:'var(--text3)'}}>AutoAI je ažurirao godište, km i Euro normu</div>
-                </div>
-              </div>
-            ) : !enriching && listing.url && (
-              <button onClick={() => autoEnrich(listing.url)} style={{width:'100%',padding:'10px 14px',marginBottom:8,background:'linear-gradient(135deg,rgba(99,102,241,.12),rgba(99,102,241,.06))',border:'1px solid rgba(99,102,241,.3)',color:'#818CF8',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer',textAlign:'left'}}>
-                🔍 Proveri podatke oglasa
-                <span style={{fontSize:11,color:'rgba(129,140,248,.6)',display:'block',marginTop:1}}>Godište · km · Euro norma · uvoz</span>
-              </button>
-            )}
-
-            {/* 5. Specifikacije */}
-            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:'12px 14px',marginBottom:10}}>
-              <div style={{fontSize:12,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:8}}>SPECIFIKACIJE</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
-                {specs.map(s => (
-                  <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'7px 10px'}}>
-                    <div className="mob-spec-label" style={{fontSize:9,color:'var(--text3)',marginBottom:2}}>{s.label.toUpperCase()}</div>
-                    <div className="mob-spec-value" style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                      {s.label === 'Grad' && (listing.city || listing.country) ? (
-                        <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
-                          target="_blank" rel="noopener"
-                          style={{color:'inherit',textDecoration:'none',display:'flex',alignItems:'center',gap:3}}>
-                          {s.value} <span>📍</span>
-                        </a>
-                      ) : s.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-
-            </div>
-
-            {/* 6. Checklist */}
-            {listing.make && (
-              <Accordion title="Šta proveriti" icon="🔧" badge={criticalChecks > 0 ? `${criticalChecks}` : undefined}>
-                <ModelChecklist make={listing.make} model={listing.model} year={listing.year} fuelType={listing.fuel_type} transmission={listing.transmission} />
-              </Accordion>
-            )}
-
-            {/* 7. Bezbednosna provera */}
-            {fraud && (
-              <Accordion title="Bezbednosna provera" icon="🛡️">
-                <div style={{paddingTop:2}}>
-                  {fraud.red_flags?.map((f:string) => <div key={f} style={{fontSize:13,color:'#F87171',marginBottom:4}}>⚠ {f}</div>)}
-                  {fraud.safe_signals?.map((s:string) => <div key={s} style={{fontSize:13,color:'#22C55E',marginBottom:4}}>✓ {s}</div>)}
-                </div>
-              </Accordion>
-            )}
-
-            {/* 8. VIN */}
-            <Accordion title="VIN Provera vozila" icon="🔐">
-              <div style={{paddingTop:8}}>
-                <p style={{fontSize:12,color:'var(--text3)',margin:'0 0 12px',lineHeight:1.5}}>
-                  Zatraži VIN od prodavca koristeći{' '}
-                  <button onClick={() => setShowContact(true)} style={{background:'none',border:'none',color:'var(--accent)',cursor:'pointer',fontSize:12,fontWeight:600,padding:0,textDecoration:'underline'}}>
-                    Kontaktiraj prodavca
-                  </button>
-                  {' '}— AI automatski dodaje pitanje za VIN na jeziku prodavca.
-                </p>
-                <VinChecker listing={listing} compact onVinResult={setVinResult} />
-              </div>
-            </Accordion>
-
-            {/* 9. Slični oglasi */}
-            {similar.length > 0 && (
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:13,fontWeight:600,marginBottom:10,padding:'0 2px'}}>Slični oglasi</div>
-                <div style={{display:'flex',gap:10,overflowX:'auto',paddingBottom:4}}>
-                  {similar.slice(0,6).map((s:any) => (
-                    <a key={s.id} href={`/listing/${s.id}`} style={{flexShrink:0,width:160,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',display:'block',textDecoration:'none'}}>
-                      <div style={{height:100,background:'var(--bg3)',overflow:'hidden'}}>
-                        {s.images?.[0] ? <img src={fullImg(s.images[0])} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} /> : <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>🚗</div>}
-                      </div>
-                      <div style={{padding:'8px 10px'}}>
-                        <div style={{fontSize:12,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.year} {s.make} {s.model}</div>
-                        <div style={{fontSize:13,color:'var(--accent)',fontWeight:700,marginTop:2}}>{s.price?`${fmt(s.price)} €`:'—'}</div>
-                        {fmtKm(s.mileage) && <div style={{fontSize:10,color:'var(--text3)',marginTop:1}}>{fmtKm(s.mileage)}</div>}
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {listing.description && (
-              <Accordion title="Opis" icon="📄">
-                <p style={{color:'var(--text2)',lineHeight:1.7,fontSize:13,whiteSpace:'pre-line',margin:0}}>{listing.description}</p>
-              </Accordion>
-            )}
-
-            {listing.features?.length > 0 && (
-              <Accordion title={`Oprema (${listing.features.length})`} icon="⚙️">
-                <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                  {listing.features.map((f:string) => (
-                    <span key={f} style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:20,padding:'3px 10px',fontSize:11,color:'var(--text2)'}}>{f}</span>
-                  ))}
-                </div>
-              </Accordion>
-            )}
+            {/* TAB navigacija */}
+            <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust}
+              specs={specs} similar={similar} price={price} deltaGood={deltaGood}
+              onContact={() => setShowContact(true)} onShowScore={() => setShowScoreSheet(true)}
+              onShowBd={() => setShowBdSheet(true)} enriching={enriching} enriched={enriched}
+              scanMsg={scanMsg} onEnrich={() => autoEnrich(listing.url)} fraud={fraud}
+              onVinResult={setVinResult} vinResult={vinResult}
+            />
           </div>
 
-          {/* DESKTOP LEVA KOLONA */}
+                    {/* DESKTOP LEVA KOLONA */}
           <div className="desktop-section" style={{display:'block'}}>
             <div style={{height:380,background:'var(--bg3)',borderRadius:'var(--radius)',overflow:'hidden',marginBottom:8,position:'relative'}}>
               {images[activeImg]
@@ -860,6 +721,212 @@ export default function ListingPage({ params }: { params: { id: string } }) {
     </div>
   )
 }
+
+// ✅ MOBILE TAB KOMPONENTA
+function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price, deltaGood,
+  onContact, onShowScore, onShowBd, enriching, enriched, scanMsg, onEnrich, fraud, onVinResult, vinResult }: any) {
+  const [tab, setTab] = useState(0)
+
+  const TABS = [
+    { icon:'🚗', label:'Vozilo' },
+    { icon:'🤖', label:'AI + Uvoz' },
+    { icon:'🔐', label:'VIN + Docs' },
+  ]
+
+  const fmt = (n: any) => Number(n).toLocaleString('de-DE')
+
+  return (
+    <div style={{display:'flex', flexDirection:'column', height:'calc(100vh - 340px)', minHeight:400}}>
+
+      {/* Tab bar */}
+      <div style={{display:'flex', gap:4, marginBottom:10, background:'var(--bg2)', borderRadius:12, padding:4, border:'1px solid var(--border)'}}>
+        {TABS.map((t, i) => (
+          <button key={i} onClick={() => setTab(i)} style={{
+            flex:1, padding:'10px 6px', borderRadius:9, border:'none', cursor:'pointer',
+            background: tab===i ? 'var(--accent)' : 'transparent',
+            color: tab===i ? '#fff' : 'var(--text3)',
+            fontSize:13, fontWeight:700, transition:'all .15s',
+            display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+          }}>
+            <span style={{fontSize:16}}>{t.icon}</span>
+            <span style={{fontSize:11}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Tab sadržaj */}
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch' as any}}>
+
+        {/* TAB 0 — Vozilo */}
+        {tab === 0 && (
+          <div style={{display:'flex', flexDirection:'column', gap:8}}>
+
+            {/* Uvoz status */}
+            {elig && (
+              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:12,padding:'10px 14px'}}>
+                <div className="mob-status" style={{fontSize:14,fontWeight:700,color:eligColor}}>{elig.emoji} {elig.label}</div>
+                {elig.sublabel && <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{elig.sublabel}</div>}
+                {bd && (
+                  <button onClick={onShowBd} style={{marginTop:6,background:'none',border:'none',cursor:'pointer',padding:0,textAlign:'left'}}>
+                    <div style={{fontSize:11,color:'var(--text3)'}}>🇷🇸 za Srbiju</div>
+                    <div style={{fontSize:20,fontWeight:800,color:'var(--accent)'}}>{fmt(bd.total)} €</div>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Specs grid */}
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:8}}>SPECIFIKACIJE</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+                {specs.map((s: any) => (
+                  <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'8px 10px'}}>
+                    <div className="mob-spec-label" style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>{s.label.toUpperCase()}</div>
+                    <div className="mob-spec-value" style={{fontSize:14,fontWeight:700}}>
+                      {s.label === 'Grad' ? (
+                        <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
+                          target="_blank" rel="noopener" style={{color:'inherit',textDecoration:'none'}}>
+                          {s.value} 📍
+                        </a>
+                      ) : s.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Proveri podatke */}
+            {enriched ? (
+              <div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,padding:'10px 14px'}}>
+                <span style={{fontSize:16}}>✅</span>
+                <div>
+                  <div style={{fontSize:14,fontWeight:600,color:'#22C55E'}}>Podaci provereni</div>
+                  <div style={{fontSize:12,color:'var(--text3)'}}>AutoAI je ažurirao podatke</div>
+                </div>
+              </div>
+            ) : !enriching && listing.url && (
+              <button onClick={onEnrich} style={{width:'100%',padding:'11px 14px',background:'linear-gradient(135deg,rgba(99,102,241,.12),rgba(99,102,241,.06))',border:'1px solid rgba(99,102,241,.3)',color:'#818CF8',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer',textAlign:'left'}}>
+                🔍 Proveri podatke oglasa
+                <span style={{fontSize:12,color:'rgba(129,140,248,.6)',display:'block',marginTop:1}}>Godište · km · Euro norma · uvoz</span>
+              </button>
+            )}
+            {enriching && (
+              <div style={{background:'rgba(99,102,241,.08)',border:'1px solid rgba(99,102,241,.25)',borderRadius:10,padding:'9px 14px',display:'flex',alignItems:'center',gap:8}}>
+                <div style={{width:7,height:7,borderRadius:'50%',background:'#818CF8',animation:'pulse 1s infinite',flexShrink:0}} />
+                <span style={{fontSize:13,color:'#818CF8',fontWeight:600}}>{scanMsg}</span>
+              </div>
+            )}
+
+            {/* Slični oglasi */}
+            {similar.length > 0 && (
+              <div>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Slični oglasi</div>
+                <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4}}>
+                  {similar.slice(0,6).map((s:any) => (
+                    <a key={s.id} href={`/listing/${s.id}`} style={{flexShrink:0,width:150,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',display:'block',textDecoration:'none'}}>
+                      <div style={{height:90,background:'var(--bg3)',overflow:'hidden'}}>
+                        {s.images?.[0] ? <img src={s.images[0]} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} /> : <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>🚗</div>}
+                      </div>
+                      <div style={{padding:'7px 9px'}}>
+                        <div style={{fontSize:12,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.year} {s.make} {s.model}</div>
+                        <div style={{fontSize:13,color:'var(--accent)',fontWeight:700,marginTop:2}}>{s.price?`${fmt(s.price)} €`:'—'}</div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 1 — AI + Uvoz */}
+        {tab === 1 && (
+          <div style={{display:'flex', flexDirection:'column', gap:8}}>
+
+            {/* AI Score */}
+            <button onClick={onShowScore} style={{width:'100%',background:'var(--bg2)',border:`1px solid ${trust.color}33`,borderRadius:12,padding:'12px 14px',cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:5}}>AI PROCENA OGLASA</div>
+                <div style={{height:6,background:'rgba(255,255,255,.06)',borderRadius:4,overflow:'hidden',marginBottom:6}}>
+                  <div style={{height:'100%',borderRadius:4,width:`${trust.score}%`,background:trust.color,transition:'width .6s'}} />
+                </div>
+                <div className="mob-ai-label" style={{fontSize:14,fontWeight:700,color:trust.color}}>{trust.label}</div>
+              </div>
+              <div style={{textAlign:'right',marginLeft:12,flexShrink:0}}>
+                <div className="mob-ai-score" style={{fontSize:28,fontWeight:800,color:trust.color,lineHeight:1}}>{trust.score}</div>
+                <div style={{fontSize:11,color:'var(--text3)'}}>/ 100</div>
+              </div>
+            </button>
+
+            {/* Uvoz kalkulator */}
+            {bd && (
+              <div style={{background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.2)',borderRadius:12,padding:'12px 14px'}}>
+                <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>🇷🇸 TROŠAK UVOZA U SRBIJU</div>
+                <div style={{fontSize:26,fontWeight:800,color:'var(--accent)',marginBottom:10}}>{fmt(bd.total)} €</div>
+                {[
+                  {label:'EU cena', val:price!, note:''},
+                  {label:`Carina (${bd.carinaPct}%)`, val:bd.carina, note:bd.carinaPct===0?'0%':'srbija'},
+                  {label:'PDV (20%)', val:bd.pdv, note:'srbija'},
+                  {label:'Transport EU→RS', val:bd.transport, note:'procena'},
+                  {label:'Registracija', val:bd.reg, note:'procena'},
+                ].map(({label,val,note},i) => (
+                  <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderTop:i===0?'none':'1px solid rgba(255,255,255,.05)'}}>
+                    <span style={{fontSize:13,color:i===0?'var(--text2)':'var(--text3)'}}>{i>0&&'+ '}{label}</span>
+                    <span style={{fontSize:13,fontWeight:600,color:i===0?'var(--text2)':'#fb923c'}}>{fmt(val)} €</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Fraud check */}
+            {fraud && (
+              <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
+                <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>🛡️ Bezbednosna provera</div>
+                {fraud.red_flags?.map((f:string) => <div key={f} style={{fontSize:13,color:'#F87171',marginBottom:4}}>⚠ {f}</div>)}
+                {fraud.safe_signals?.map((s:string) => <div key={s} style={{fontSize:13,color:'#22C55E',marginBottom:4}}>✓ {s}</div>)}
+              </div>
+            )}
+
+            {/* Opis */}
+            {listing.description && (
+              <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>📄 Opis</div>
+                <p style={{color:'var(--text2)',lineHeight:1.7,fontSize:13,whiteSpace:'pre-line',margin:0}}>{listing.description.slice(0,600)}{listing.description.length>600?'...':''}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2 — VIN + Docs */}
+        {tab === 2 && (
+          <div style={{display:'flex', flexDirection:'column', gap:8}}>
+
+            {/* Šta proveriti */}
+            {listing.make && (
+              <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
+                <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔧 Šta proveriti</div>
+                <ModelChecklist make={listing.make} model={listing.model} year={listing.year} fuelType={listing.fuel_type} transmission={listing.transmission} />
+              </div>
+            )}
+
+            {/* VIN Checker */}
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
+              <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔐 VIN Provera vozila</div>
+              <p style={{fontSize:13,color:'var(--text3)',margin:'0 0 12px',lineHeight:1.5}}>
+                Zatraži VIN od prodavca koristeći{' '}
+                <button onClick={onContact} style={{background:'none',border:'none',color:'var(--accent)',cursor:'pointer',fontSize:13,fontWeight:600,padding:0,textDecoration:'underline'}}>
+                  Kontaktiraj prodavca
+                </button>
+              </p>
+              <VinChecker listing={listing} compact onVinResult={onVinResult} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 
 function PageSkeleton() {
   return (
