@@ -57,7 +57,7 @@ const TOOLTIPS = {
 // INFO IKONICA
 // =====================================================
 function InfoIcon({ id, text }: { id: string; text: string }) {
-  const [show, setShow]       = useState(false)
+  const [show, setShow]         = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
 
@@ -77,69 +77,35 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [show, isMobile])
 
-  if (isMobile) {
-    return (
-      <span style={{ display:'inline-flex', alignItems:'center', marginLeft:5, position:'relative' }}>
-        <button
-          onClick={e => { e.stopPropagation(); setShow(v => !v) }}
-          style={{
-            background: show ? 'rgba(255,107,0,.15)' : 'rgba(255,255,255,.07)',
-            border: `1px solid ${show ? 'rgba(255,107,0,.4)' : 'rgba(255,255,255,.12)'}`,
-            borderRadius: 20, width: 18, height: 18, cursor: 'pointer',
-            fontSize: 10, color: show ? 'var(--accent)' : 'var(--text3)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 700, lineHeight: 1, flexShrink: 0,
-          }}
-          aria-label="Info"
-        >ℹ</button>
-        {show && (
-          <span style={{
-            display: 'block', padding: '10px 12px',
-            background: 'var(--bg2)', border: '1px solid rgba(255,107,0,.25)',
-            borderRadius: 10, fontSize: 12, color: 'var(--text2)', lineHeight: 1.6,
-            position: 'fixed', left: 16, right: 16, zIndex: 999, top: '50%',
-            transform: 'translateY(-50%)',
-            boxShadow: '0 8px 40px rgba(0,0,0,.6)',
-          }}
-            onClick={e => { e.stopPropagation(); setShow(false) }}
-          >
-            <div style={{fontSize:11,color:'var(--text3)',marginBottom:6,fontWeight:600}}>ℹ INFO</div>
-            {text}
-            <div style={{marginTop:10,textAlign:'right'}}>
-              <button onClick={e => { e.stopPropagation(); setShow(false) }} style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 12px',fontSize:12,color:'var(--text2)',cursor:'pointer'}}>Zatvori</button>
-            </div>
-          </span>
-        )}
-      </span>
-    )
+  const btnStyle: React.CSSProperties = {
+    background: show ? 'rgba(255,107,0,.15)' : 'rgba(255,255,255,.07)',
+    border: `1px solid ${show ? 'rgba(255,107,0,.4)' : 'rgba(255,255,255,.12)'}`,
+    borderRadius: 20, width: 16, height: 16, cursor: 'pointer',
+    fontSize: 10, color: show ? 'var(--accent)' : 'var(--text3)',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
   }
 
   return (
     <span ref={ref} style={{ display:'inline-flex', alignItems:'center', marginLeft:5, position:'relative' }}>
       <button
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-        onClick={() => setShow(v => !v)}
-        style={{
-          background: show ? 'rgba(255,107,0,.15)' : 'rgba(255,255,255,.07)',
-          border: `1px solid ${show ? 'rgba(255,107,0,.4)' : 'rgba(255,255,255,.12)'}`,
-          borderRadius: 20, width: 16, height: 16, cursor: 'pointer',
-          fontSize: 10, color: show ? 'var(--accent)' : 'var(--text3)',
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
-        }}
+        onMouseEnter={() => !isMobile && setShow(true)}
+        onMouseLeave={() => !isMobile && setShow(false)}
+        onClick={e => { e.stopPropagation(); setShow(v => !v) }}
+        style={btnStyle}
         aria-label="Info"
       >ℹ</button>
-      {show && (
+
+      {/* Desktop tooltip */}
+      {show && !isMobile && (
         <span style={{
           position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
           transform: 'translateX(-50%)',
           background: 'var(--bg2)', border: '1px solid var(--border)',
           borderRadius: 10, padding: '10px 14px',
           fontSize: 12, color: 'var(--text2)', lineHeight: 1.6,
-          width: 240, zIndex: 1000,
+          width: 240, zIndex: 1000, pointerEvents: 'none',
           boxShadow: '0 8px 32px rgba(0,0,0,.5)',
-          pointerEvents: 'none',
         }}>
           {text}
           <span style={{
@@ -148,6 +114,38 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
             borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
             borderTop: '6px solid var(--border)',
           }} />
+        </span>
+      )}
+
+      {/* Mobilni modal overlay */}
+      {show && isMobile && (
+        <span
+          onClick={e => { e.stopPropagation(); setShow(false) }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(4px)',
+          }}
+        >
+          <span
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--bg2)', border: '1px solid rgba(255,107,0,.3)',
+              borderRadius: 16, padding: '20px 18px',
+              fontSize: 14, color: 'var(--text2)', lineHeight: 1.7,
+              maxWidth: 320, width: '88vw',
+              boxShadow: '0 16px 48px rgba(0,0,0,.6)',
+            }}
+          >
+            <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, marginBottom: 8, letterSpacing: '.06em' }}>ℹ VIŠE INFO</div>
+            {text}
+            <div style={{ marginTop: 14, textAlign: 'right' }}>
+              <button
+                onClick={e => { e.stopPropagation(); setShow(false) }}
+                style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >Zatvori</button>
+            </div>
+          </span>
         </span>
       )}
     </span>
