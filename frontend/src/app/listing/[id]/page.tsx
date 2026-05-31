@@ -644,6 +644,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
+
             {/* VIN Checker */}
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:20,marginBottom:16}}>
               <div style={{display:'flex',alignItems:'center',marginBottom:4}}>
@@ -826,11 +827,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </div>
             )}
           </div>
-          {/* END desktop-sidebar */}
         </div>
-        {/* END listing-grid */}
       </div>
-      {/* END container */}
     </div>
   )
 }
