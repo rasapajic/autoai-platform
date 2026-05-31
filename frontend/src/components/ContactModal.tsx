@@ -338,13 +338,13 @@ export default function ContactModal({ listing, onClose }: Props) {
                       color:'var(--accent)', fontSize:13, fontWeight:700, textDecoration:'none',
                       display:'flex', alignItems:'center', justifyContent:'center',
                     }}>
-                      🔗 Otvori oglas
+                      📋 Kopiraj i otvori oglas
                     </a>
                   )}
                 </div>
                 {!sellerEmail && (
                   <p style={{ fontSize:11, color:'var(--text3)', margin:'8px 0 0', lineHeight:1.5, opacity:.8 }}>
-                    💡 Email prodavca nađi na originalnom oglasu, pa ga upiši ovde za direktno slanje.
+                    💡 Klikni "Kopiraj i otvori oglas" — poruka se kopira u clipboard, a oglas otvori. Na oglasu klikni "Send Email" i zalijepi (Ctrl+V).
                   </p>
                 )}
               </div>
