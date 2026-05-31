@@ -78,10 +78,10 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
   }, [show, isMobile])
 
   const btnStyle: React.CSSProperties = {
-    background: show ? 'rgba(255,107,0,.15)' : 'rgba(255,255,255,.07)',
-    border: `1px solid ${show ? 'rgba(255,107,0,.4)' : 'rgba(255,255,255,.12)'}`,
+    background: show ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.1)',
+    border: `1px solid ${show ? 'rgba(239,68,68,.6)' : 'rgba(239,68,68,.35)'}`,
     borderRadius: 20, width: 16, height: 16, cursor: 'pointer',
-    fontSize: 10, color: show ? 'var(--accent)' : 'var(--text3)',
+    fontSize: 10, color: show ? '#EF4444' : '#EF4444',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
   }
@@ -155,6 +155,7 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
 const CDN = 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb'
 
 const MAKE_LOGOS: Record<string, string> = {
+  // Top 19 + grid
   'Volkswagen':    `${CDN}/volkswagen.png`,
   'BMW':           `${CDN}/bmw.png`,
   'Mercedes-Benz': `${CDN}/mercedes-benz.png`,
@@ -174,6 +175,7 @@ const MAKE_LOGOS: Record<string, string> = {
   'Nissan':        `${CDN}/nissan.png`,
   'Mazda':         `${CDN}/mazda.png`,
   'Honda':         `${CDN}/honda.png`,
+  // Ostale popularne marke
   'Tesla':         `${CDN}/tesla.png`,
   'Porsche':       `${CDN}/porsche.png`,
   'MINI':          `${CDN}/mini.png`,
@@ -194,6 +196,24 @@ const MAKE_LOGOS: Record<string, string> = {
   'Lamborghini':   `${CDN}/lamborghini.png`,
   'Maserati':      `${CDN}/maserati.png`,
   'Aston Martin':  `${CDN}/aston-martin.png`,
+  // Dodatne marke koje postoje u bazi
+  'Cadillac':      `${CDN}/cadillac.png`,
+  'Rolls-Royce':   `${CDN}/rolls-royce.png`,
+  'Smart':         `${CDN}/smart.png`,
+  'Saab':          `${CDN}/saab.png`,
+  'SsangYong':     `${CDN}/ssangyong.png`,
+  'Lancia':        `${CDN}/lancia.png`,
+  'Jaguar':        `${CDN}/jaguar.png`,
+  'Abarth':        `${CDN}/abarth.png`,
+  'Aixam':         `${CDN}/aixam.png`,
+  'BYD':           `${CDN}/byd.png`,
+  'DS':            `${CDN}/ds.png`,
+  'Chrysler':      `${CDN}/chrysler.png`,
+  'Isuzu':         `${CDN}/isuzu.png`,
+  'Infiniti':      `${CDN}/infiniti.png`,
+  'Genesis':       `${CDN}/genesis.png`,
+  'Lincoln':       `${CDN}/lincoln.png`,
+  'Buick':         `${CDN}/buick.png`,
 }
 
 const TOP_19_MAKES = [
