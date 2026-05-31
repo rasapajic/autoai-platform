@@ -92,11 +92,16 @@ export default function ContactModal({ listing, onClose }: Props) {
     return msg
       .replace(/\[Name\]/g, userName)
       .replace(/\[Ihr Name\]/g, userName)
-      .replace(/\[Vaše ime\]/g, userName)
+      .replace(/\[Buyer Name\]/g, userName)
       .replace(/\[Your Name\]/g, userName)
+      .replace(/\[Vaše ime\]/g, userName)
       .replace(/\[Naam\]/g, userName)
       .replace(/\[Votre nom\]/g, userName)
       .replace(/\[Suo nome\]/g, userName)
+      .replace(/\[Phone Number\]/g, '')
+      .replace(/\[Telefonnummer\]/g, '')
+      .replace(/\[Téléphone\]/g, '')
+      .trim()
   }
 
   const generate = async () => {
