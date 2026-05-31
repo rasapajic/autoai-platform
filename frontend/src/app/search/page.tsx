@@ -317,25 +317,25 @@ function MakeTile({ makeName, count, isSelected, onClick, logoFailed, onLogoErro
   return (
     <button onClick={onClick} className="make-tile" style={{
       display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-      gap:5, padding:'10px 4px', borderRadius:14, cursor:'pointer',
+      gap:4, padding:'10px 4px 8px', borderRadius:14, cursor:'pointer',
       background: isSelected ? 'rgba(255,107,0,.12)' : 'var(--bg2)',
       border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
       transition:'all .15s',
-      height: 94, width:'100%', boxSizing:'border-box' as any,
+      height: 100, width:'100%', boxSizing:'border-box' as any,
     }}>
       {/* Logo ili inicijali — fiksna veličina za sve */}
       <div style={{
-        width:44, height:44, flexShrink:0,
+        width:48, height:48, flexShrink:0,
         display:'flex', alignItems:'center', justifyContent:'center',
         borderRadius:10, overflow:'hidden',
-        background: hasBgLogo ? 'rgba(255,255,255,.95)' : (isSelected ? 'rgba(255,107,0,.18)' : 'rgba(255,255,255,.07)'),
+        background: hasBgLogo ? 'rgba(255,255,255,.97)' : (isSelected ? 'rgba(255,107,0,.18)' : 'rgba(255,255,255,.07)'),
+        padding: hasBgLogo ? 4 : 0,
         boxSizing:'border-box' as any,
-        padding: hasBgLogo ? 3 : 0,
       }}>
         {hasBgLogo ? (
           <img
             src={logoUrl} alt={makeName}
-            style={{ width:38, height:38, objectFit:'contain' }}
+            style={{ width:40, height:40, objectFit:'contain' }}
             onError={onLogoError}
           />
         ) : (
@@ -343,13 +343,15 @@ function MakeTile({ makeName, count, isSelected, onClick, logoFailed, onLogoErro
         )}
       </div>
 
-      {/* Naziv marke */}
+      {/* Naziv marke — 2 reda max, isti font za sve */}
       <div style={{
-        fontSize: 10, fontWeight: 600, lineHeight: 1.2,
+        fontSize: 10, fontWeight: 600, lineHeight: 1.25,
         color: isSelected ? 'var(--accent)' : 'var(--text2)',
         textAlign:'center', width:'100%',
-        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-        paddingLeft:4, paddingRight:4,
+        display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any,
+        overflow:'hidden',
+        paddingLeft:3, paddingRight:3,
+        minHeight:24,
       }}>{makeName}</div>
 
       {/* Broj oglasa */}
@@ -527,7 +529,7 @@ export default function SearchPage() {
               <div><h3 style={{fontSize:16,margin:0}}>Sve marke</h3><p style={{fontSize:12,color:'var(--text3)',margin:'4px 0 0'}}>{makes.length} marki — sortirano abecedno</p></div>
               <button onClick={()=>setShowMakeModal(false)} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
               {makes.map(({make:mkName,count:mkCount})=>(
                 <MakeTile key={mkName} makeName={mkName} count={mkCount} isSelected={filters.make===mkName}
                   logoFailed={!!logoErrors[mkName]} onLogoError={()=>setLogoErrors(prev=>({...prev,[mkName]:true}))}
@@ -603,7 +605,7 @@ export default function SearchPage() {
           <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.07em',marginBottom:10}}>
             MARKA {makesLoading&&<span style={{opacity:.5}}>učitavam...</span>}
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
             {gridMakes.map(({make:mkName,count:mkCount})=>(
               <MakeTile key={mkName} makeName={mkName} count={mkCount} isSelected={filters.make===mkName}
                 logoFailed={!!logoErrors[mkName]} onLogoError={()=>setLogoErrors(prev=>({...prev,[mkName]:true}))}
@@ -611,12 +613,13 @@ export default function SearchPage() {
             ))}
             <button onClick={()=>setShowMakeModal(true)} className="make-tile" style={{
               display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-              gap:6,padding:'12px 6px',borderRadius:14,cursor:'pointer',
-              background:'var(--bg2)',border:'2px dashed var(--border)',minHeight:80,
+              gap:4, padding:'10px 4px 8px', borderRadius:14, cursor:'pointer',
+              background:'var(--bg2)', border:'2px dashed var(--border)',
+              height:100, width:'100%', boxSizing:'border-box' as any,
             }}>
-              <div style={{width:36,height:36,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(255,107,0,.08)',fontSize:18}}>🔍</div>
-              <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',textAlign:'center',lineHeight:1.2}}>Sve marke</div>
-              <div style={{fontSize:10,color:'var(--text3)',opacity:.6}}>+{Math.max(0,makes.length-19)} više</div>
+              <div style={{width:48,height:48,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(255,107,0,.08)',fontSize:22,flexShrink:0}}>🔍</div>
+              <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',textAlign:'center',lineHeight:1.25,minHeight:24}}>Sve marke</div>
+              <div style={{fontSize:9,color:'var(--text3)',opacity:.6,lineHeight:1}}>+{Math.max(0,makes.length-19)}</div>
             </button>
           </div>
 
