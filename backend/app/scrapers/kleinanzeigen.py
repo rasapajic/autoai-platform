@@ -33,11 +33,11 @@ def _clean_text(text: str, max_len: int = 100) -> str:
 
 
 def _hq_image(url: str) -> str:
-    """Zameni thumbnail rule sa high-quality verzijom"""
+    """Zameni bilo koji rule sa $_57.AUTO (visoka rezolucija ~900px)"""
     if not url:
         return url
-    for rule in ["$_59.AUTO", "$_2.AUTO", "$_57.AUTO", "$_4.AUTO"]:
-        url = url.replace(rule, "$_14.AUTO")
+    # Zamijeni sve poznate rule-ove sa HQ verzijom
+    url = re.sub(r'\$_\w+\.AUTO', '$_57.AUTO', url)
     return url
 
 
@@ -105,7 +105,6 @@ def _parse_listings_from_html(html: str) -> list:
 
         ad_url = f"https://www.kleinanzeigen.de{ad_href}"
 
-        # LD+JSON — title, description, image
         title = ""
         description = ""
         img_url = ""
@@ -119,12 +118,10 @@ def _parse_listings_from_html(html: str) -> list:
                 ld = json.loads(ld_match.group(1))
                 title       = ld.get("title") or ld.get("name") or ""
                 description = ld.get("description") or ""
-                # ✅ HQ slika
                 img_url = _hq_image(ld.get("contentUrl") or "")
             except Exception:
                 pass
 
-        # Fallback naslov
         if not title:
             for pat in [
                 r'class="[^"]*text-module-begin[^"]*"[^>]*>(.*?)</a>',
@@ -135,7 +132,6 @@ def _parse_listings_from_html(html: str) -> list:
                     title = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 200)
                     break
 
-        # Cena iz ispravne CSS klase
         price = None
         m = re.search(
             r'class="aditem-main--middle--price-shipping--price"[^>]*>(.*?)</',
@@ -145,7 +141,6 @@ def _parse_listings_from_html(html: str) -> list:
             price_text = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50)
             price = _parse_price(price_text)
 
-        # Fallback cena
         if not price:
             all_prices = re.findall(r'([\d.,]+)\s*€', content)
             for p_str in all_prices:
@@ -157,13 +152,11 @@ def _parse_listings_from_html(html: str) -> list:
         if not price:
             continue
 
-        # Fallback slika — ✅ HQ
         if not img_url:
             m = re.search(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', content)
             if m:
                 img_url = _hq_image(m.group(1))
 
-        # Lokacija
         city = ""
         m = re.search(r'class="aditem-main--top--left"[^>]*>(.*?)</p>', content, re.DOTALL)
         if m:
