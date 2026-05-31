@@ -203,6 +203,52 @@ function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:s
   )
 }
 
+// ── Swipeable glavna slika ────────────────────────────────────────
+function SwipeableImage({ images, activeImg, setActiveImg, alt, portalName }: any) {
+  const touchStartX = useRef<number>(0)
+  const touchEndX = useRef<number>(0)
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.changedTouches[0].clientX
+  }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    touchEndX.current = e.changedTouches[0].clientX
+    const delta = touchStartX.current - touchEndX.current
+    if (Math.abs(delta) > 40) {
+      if (delta > 0) setActiveImg((i: number) => Math.min(i + 1, images.length - 1))
+      else           setActiveImg((i: number) => Math.max(i - 1, 0))
+    }
+  }
+
+  return (
+    <div
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      style={{marginBottom:8,borderRadius:14,overflow:'hidden',position:'relative',height:240,background:'#0a0a0a',touchAction:'pan-y'}}
+    >
+      {images[activeImg]
+        ? <img src={fullImg(images[activeImg])} alt={alt} style={{width:'100%',height:'100%',objectFit:'contain',userSelect:'none',background:'#0a0a0a'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
+        : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
+      }
+      <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
+      {images.length > 1 && (
+        <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
+          {activeImg+1}/{images.length}
+        </span>
+      )}
+      {images.length > 1 && activeImg > 0 && (
+        <div onClick={() => setActiveImg((i:number) => i-1)}
+          style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16,color:'#fff'}}>‹</div>
+      )}
+      {images.length > 1 && activeImg < images.length-1 && (
+        <div onClick={() => setActiveImg((i:number) => i+1)}
+          style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16,color:'#fff'}}>›</div>
+      )}
+    </div>
+  )
+}
+
+
 export default function ListingPage({ params }: { params: { id: string } }) {
   const [listing,        setListing]        = useState<any>(null)
   const [history,        setHistory]        = useState<any[]>([])
@@ -439,14 +485,13 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
           {/* MOBILE STACK */}
           <div className="mobile-stack">
-            <div style={{marginBottom:8,borderRadius:14,overflow:'hidden',position:'relative',height:200,background:'var(--bg3)'}}>
-              {images[activeImg]
-                ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
-                : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
-              }
-              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
-              {images.length > 1 && <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{activeImg+1}/{images.length}</span>}
-            </div>
+            <SwipeableImage
+              images={images}
+              activeImg={activeImg}
+              setActiveImg={setActiveImg}
+              alt={`${listing.make} ${listing.model}`}
+              portalName={portalName}
+            />
             {images.length > 1 && (
               <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,marginBottom:8}}>
                 {images.map((img:string,i:number) => (
