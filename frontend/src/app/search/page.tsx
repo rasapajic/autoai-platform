@@ -42,16 +42,63 @@ const DEFAULT_FILTERS = {
   country: '', countries: [] as string[], price_rating: '', sort_by: 'date', page: 1,
 }
 
-// ✅ Normalizacija modela — ukloni motorske oznake, zadrži prava imena
+// ✅ Logo URL-ovi za marke — Clearbit / CarLogos
+const MAKE_LOGOS: Record<string, string> = {
+  'Volkswagen':    'https://logo.clearbit.com/vw.com',
+  'BMW':           'https://logo.clearbit.com/bmw.com',
+  'Mercedes-Benz': 'https://logo.clearbit.com/mercedes-benz.com',
+  'Audi':          'https://logo.clearbit.com/audi.com',
+  'Ford':          'https://logo.clearbit.com/ford.com',
+  'Opel':          'https://logo.clearbit.com/opel.com',
+  'Renault':       'https://logo.clearbit.com/renault.com',
+  'Peugeot':       'https://logo.clearbit.com/peugeot.com',
+  'Citroën':       'https://logo.clearbit.com/citroen.com',
+  'Škoda':         'https://logo.clearbit.com/skoda-auto.com',
+  'Toyota':        'https://logo.clearbit.com/toyota.com',
+  'Hyundai':       'https://logo.clearbit.com/hyundai.com',
+  'Kia':           'https://logo.clearbit.com/kia.com',
+  'Volvo':         'https://logo.clearbit.com/volvocars.com',
+  'SEAT':          'https://logo.clearbit.com/seat.com',
+  'Fiat':          'https://logo.clearbit.com/fiat.com',
+  'Nissan':        'https://logo.clearbit.com/nissan.com',
+  'Mazda':         'https://logo.clearbit.com/mazda.com',
+  'Honda':         'https://logo.clearbit.com/honda.com',
+  'Tesla':         'https://logo.clearbit.com/tesla.com',
+  'Porsche':       'https://logo.clearbit.com/porsche.com',
+  'Mini':          'https://logo.clearbit.com/mini.com',
+  'MINI':          'https://logo.clearbit.com/mini.com',
+  'Mitsubishi':    'https://logo.clearbit.com/mitsubishi-motors.com',
+  'Suzuki':        'https://logo.clearbit.com/suzuki.com',
+  'Subaru':        'https://logo.clearbit.com/subaru.com',
+  'Dacia':         'https://logo.clearbit.com/dacia.com',
+  'Alfa Romeo':    'https://logo.clearbit.com/alfaromeo.com',
+  'Jeep':          'https://logo.clearbit.com/jeep.com',
+  'Land Rover':    'https://logo.clearbit.com/landrover.com',
+  'Cupra':         'https://logo.clearbit.com/cupraofficial.com',
+  'Lexus':         'https://logo.clearbit.com/lexus.com',
+  'Dodge':         'https://logo.clearbit.com/dodge.com',
+  'Chevrolet':     'https://logo.clearbit.com/chevrolet.com',
+  'Bentley':       'https://logo.clearbit.com/bentleymotors.com',
+  'Ferrari':       'https://logo.clearbit.com/ferrari.com',
+  'Lamborghini':   'https://logo.clearbit.com/lamborghini.com',
+  'Maserati':      'https://logo.clearbit.com/maserati.com',
+  'Aston Martin':  'https://logo.clearbit.com/astonmartin.com',
+}
+
+// ✅ 19 najpopularnijih marki u Evropi — fiksni redosled za grid
+const TOP_19_MAKES = [
+  'Volkswagen', 'BMW', 'Mercedes-Benz', 'Audi', 'Ford',
+  'Opel', 'Renault', 'Peugeot', 'Citroën', 'Škoda',
+  'Toyota', 'Hyundai', 'Kia', 'Volvo', 'SEAT',
+  'Fiat', 'Nissan', 'Mazda', 'Honda',
+]
+
 const ENGINE_SUFFIXES = /\s+(BlueHDI|BlueHDi|HDi|HDI|TDi|TDI|CDI|SDi|dCi|dci|TSI|TFSI|FSI|GTI|GTE|GTD|STI|MHEV|PHEV|HEV|EV|e-tron|4Motion|xDrive|sDrive|AWD|FWD|4WD|quattro|Hybrid|Electric)\b.*/i
 const ENGINE_DISPLACEMENT = /\s+\d+[.,]\d+\s*(L|l|T|D)?\s*.*$/
 
 function normalizeModel(model: string): string {
   if (!model) return model
-  return model
-    .replace(ENGINE_SUFFIXES, '')
-    .replace(ENGINE_DISPLACEMENT, '')
-    .trim()
+  return model.replace(ENGINE_SUFFIXES, '').replace(ENGINE_DISPLACEMENT, '').trim()
 }
 
 function groupModels(raw: { model: string; count: number }[]): { model: string; count: number; raw: string[] }[] {
@@ -60,28 +107,18 @@ function groupModels(raw: { model: string; count: number }[]): { model: string; 
     const norm = normalizeModel(model)
     if (!norm) continue
     const existing = map.get(norm)
-    if (existing) {
-      existing.count += count
-      existing.raw.push(model)
-    } else {
-      map.set(norm, { count, raw: [model] })
-    }
+    if (existing) { existing.count += count; existing.raw.push(model) }
+    else map.set(norm, { count, raw: [model] })
   }
   return Array.from(map.entries())
     .map(([model, { count, raw }]) => ({ model, count, raw }))
     .sort((a, b) => b.count - a.count)
 }
 
-// ✅ Normalizacija marki — ukloni duplikate (BMW + Bmw + bmw → BMW)
-// Poznate marke sa tačnim pisanjem
 const MAKE_CANONICAL: Record<string, string> = {
-  // Volkswagen/VW
   'vw': 'Volkswagen', 'volkswagen': 'Volkswagen',
-  // BMW
   'bmw': 'BMW',
-  // Mercedes
   'mercedes': 'Mercedes-Benz', 'mercedes-benz': 'Mercedes-Benz', 'mercedes benz': 'Mercedes-Benz',
-  // Ostale marke
   'audi': 'Audi', 'ford': 'Ford', 'opel': 'Opel', 'renault': 'Renault',
   'peugeot': 'Peugeot', 'citroen': 'Citroën', 'skoda': 'Škoda',
   'toyota': 'Toyota', 'honda': 'Honda', 'mazda': 'Mazda', 'nissan': 'Nissan',
@@ -116,7 +153,6 @@ function groupMakes(raw: { make: string; count: number }[]): { make: string; cou
     .map(([make, count]) => ({ make, count }))
     .sort((a, b) => a.make.localeCompare(b.make))
 }
-
 
 function calcBreakdown(price: number, carinaPct: number) {
   const carina = Math.round(price * (carinaPct / 100))
@@ -164,6 +200,56 @@ function getSerbiaEligibility(listing: any) {
   if (year >= 2006) return { status:'eligible', emoji:'🟢', label: fuel==='diesel' ? 'Može uvoz — proveri Euro 4' : 'Može uvoz u Srbiju', tooltip:'Euro 4 je minimalni standard.', carinaPct:5 }
   if (year >= 2001) return { status:'needs_check', emoji:'🟠', label:'Potrebna provera Euro norme', tooltip:'Moguće uz dodatnu dokumentaciju.', carinaPct:5 }
   return { status:'not_recommended', emoji:'🔴', label:'Uvoz nije preporučljiv', tooltip:'Stara emisiona norma.', carinaPct:5 }
+}
+
+// ✅ Komponenta jednog polja u Make Gridu
+function MakeTile({ makeName, count, isSelected, onClick, logoFailed, onLogoError }: {
+  makeName: string; count: number; isSelected: boolean;
+  onClick: () => void; logoFailed: boolean; onLogoError: () => void
+}) {
+  const logoUrl = MAKE_LOGOS[makeName]
+  const initials = makeName.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase()
+
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 6, padding: '12px 6px', borderRadius: 14, cursor: 'pointer',
+        background: isSelected ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
+        border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+        transition: 'all .15s', minHeight: 80,
+      }}
+    >
+      {/* Logo ili inicijali */}
+      <div style={{
+        width: 36, height: 36, borderRadius: 8, overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: isSelected ? 'rgba(255,107,0,.1)' : 'rgba(255,255,255,.06)',
+        flexShrink: 0,
+      }}>
+        {logoUrl && !logoFailed ? (
+          <img
+            src={logoUrl}
+            alt={makeName}
+            style={{ width: 28, height: 28, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: isSelected ? 1 : 0.7 }}
+            onError={onLogoError}
+          />
+        ) : (
+          <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--accent)' : 'var(--text3)' }}>{initials}</span>
+        )}
+      </div>
+      {/* Naziv */}
+      <div style={{
+        fontSize: 11, fontWeight: 600, color: isSelected ? 'var(--accent)' : 'var(--text2)',
+        textAlign: 'center', lineHeight: 1.2,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        maxWidth: '100%', paddingLeft: 2, paddingRight: 2,
+      }}>{makeName}</div>
+      {/* Broj */}
+      <div style={{ fontSize: 10, color: 'var(--text3)', opacity: .7 }}>{count}</div>
+    </button>
+  )
 }
 
 export default function SearchPage() {
@@ -215,22 +301,21 @@ export default function SearchPage() {
   const [makesLoading,   setMakesLoading]   = useState(false)
   const [modelSearch,    setModelSearch]    = useState('')
   const [filters,        setFilters]        = useState(getInitialFilters)
+  // ✅ Praćenje grešaka logoa
+  const [logoErrors,     setLogoErrors]     = useState<Record<string, boolean>>({})
 
-  // ✅ Učitaj marke — sortirane abecedno
   useEffect(() => {
     setMakesLoading(true)
     fetch(`${API_BASE}/search/makes`)
       .then(r => r.json())
       .then(data => {
         const filtered = (data || []).filter((m: any) => m.make && m.make.trim())
-        // Normalizuj i grupiši duplikate, sortiraj abecedno
         setMakes(groupMakes(filtered))
       })
       .catch(() => {})
       .finally(() => setMakesLoading(false))
   }, [])
 
-  // Učitaj modele kad se promeni marka
   useEffect(() => {
     if (!filters.make) { setRawModels([]); return }
     fetch(`${API_BASE}/search/models?make=${encodeURIComponent(filters.make)}`)
@@ -239,7 +324,6 @@ export default function SearchPage() {
       .catch(() => setRawModels([]))
   }, [filters.make])
 
-  // ✅ Normalizovani i grupisani modeli
   const groupedModels = groupModels(rawModels)
   const filteredModels = groupedModels.filter(m =>
     !modelSearch || m.model.toLowerCase().includes(modelSearch.toLowerCase())
@@ -271,7 +355,6 @@ export default function SearchPage() {
     doSearch(next)
   }
 
-  // Kad korisnik bira normalizovani model, šalji sve raw varijante OR samo normalizovano
   const handleModelSelect = (normalizedModel: string, rawVariants: string[]) => {
     const isDeselect = filters.model === normalizedModel
     const next: any = { ...filters, model: isDeselect ? '' : normalizedModel, page: 1 }
@@ -321,7 +404,21 @@ export default function SearchPage() {
     ...(filters.countries || []),
   ].filter(Boolean).length
 
-  const topMakes = makes.slice(0, 20)
+  // ✅ Gradi 4x5 grid: 19 najpopularnijih + "Sve marke"
+  // Uzima fiksnih TOP_19 ako postoje u bazi, inače prvih 19 po popularnosti
+  const makesCountMap = new Map(makes.map(m => [m.make, m.count]))
+  const gridMakes: { make: string; count: number }[] = TOP_19_MAKES
+    .filter(m => makesCountMap.has(m))
+    .map(m => ({ make: m, count: makesCountMap.get(m)! }))
+
+  // Ako nekih nema u bazi, dopuni iz baze po popularnosti
+  const inGrid = new Set(gridMakes.map(m => m.make))
+  const fallback = makes
+    .sort((a, b) => b.count - a.count)
+    .filter(m => !inGrid.has(m.make))
+  while (gridMakes.length < 19 && fallback.length > 0) {
+    gridMakes.push(fallback.shift()!)
+  }
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
@@ -335,7 +432,6 @@ export default function SearchPage() {
           .ai-btn{width:100%!important;margin-top:6px!important}
           .pagination-desktop{display:none!important}
           .pagination-mobile{display:flex!important}
-          .makes-grid{grid-template-columns:repeat(3,1fr)!important}
         }
         @media(min-width:769px){
           .mfb{display:none!important}
@@ -348,6 +444,8 @@ export default function SearchPage() {
         .cb:hover{opacity:.82!important}
         .mkbtn{transition:all .15s!important}
         .mkbtn:hover{border-color:var(--accent)!important;color:var(--accent)!important}
+        .make-tile:hover{border-color:var(--accent)!important;background:rgba(255,107,0,.08)!important;transform:translateY(-2px)!important;box-shadow:0 8px 24px rgba(0,0,0,.3)!important}
+        .make-tile{transition:all .15s ease!important}
       `}} />
 
       {contactListing && <ContactModal listing={contactListing} onClose={() => setContactListing(null)} />}
@@ -369,7 +467,7 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Make modal — abecedno */}
+      {/* Make modal — sve marke abecedno */}
       {showMakeModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:1000, display:'flex', alignItems:'flex-end' }}
           onClick={() => setShowMakeModal(false)}>
@@ -377,25 +475,25 @@ export default function SearchPage() {
             onClick={e => e.stopPropagation()}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <div>
-                <h3 style={{ fontSize:16, margin:0 }}>Izaberi marku</h3>
+                <h3 style={{ fontSize:16, margin:0 }}>Sve marke</h3>
                 <p style={{ fontSize:12, color:'var(--text3)', margin:'4px 0 0' }}>{makes.length} marki — sortirano abecedno</p>
               </div>
               <button onClick={() => setShowMakeModal(false)} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:20, cursor:'pointer' }}>✕</button>
             </div>
-            <div className="makes-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
               {makes.map(({ make: mkName, count: mkCount }) => (
-                <button key={mkName} className="mkbtn cb"
-                  onClick={() => { setFilter('make', filters.make === mkName ? '' : mkName); setShowMakeModal(false) }}
-                  style={{
-                    padding:'8px 6px', borderRadius:10, fontSize:12, fontWeight:500, cursor:'pointer',
-                    background: filters.make === mkName ? 'rgba(255,107,0,.15)' : 'var(--bg3)',
-                    border: `1px solid ${filters.make === mkName ? 'var(--accent)' : 'var(--border)'}`,
-                    color: filters.make === mkName ? 'var(--accent)' : 'var(--text2)',
-                    textAlign:'center',
-                  }}>
-                  <div style={{ fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{mkName}</div>
-                  <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{mkCount}</div>
-                </button>
+                <MakeTile
+                  key={mkName}
+                  makeName={mkName}
+                  count={mkCount}
+                  isSelected={filters.make === mkName}
+                  logoFailed={!!logoErrors[mkName]}
+                  onLogoError={() => setLogoErrors(prev => ({ ...prev, [mkName]: true }))}
+                  onClick={() => {
+                    setFilter('make', filters.make === mkName ? '' : mkName)
+                    setShowMakeModal(false)
+                  }}
+                />
               ))}
             </div>
           </div>
@@ -475,38 +573,61 @@ export default function SearchPage() {
           </div>
         )}
 
-        {/* ✅ Brzi izbor marke — abecedno */}
+        {/* ✅ MAKE GRID — 4x5, amblemi marki */}
         <div style={{ marginBottom:12 }}>
-          <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
+          <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:10 }}>
             MARKA {makesLoading && <span style={{ opacity:.5 }}>učitavam...</span>}
           </div>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
-            {topMakes.map(({ make: mkName, count: mkCount }) => (
-              <button key={mkName} className="mkbtn cb"
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 8,
+          }}>
+            {/* 19 najpopularnijih marki */}
+            {gridMakes.map(({ make: mkName, count: mkCount }) => (
+              <MakeTile
+                key={mkName}
+                makeName={mkName}
+                count={mkCount}
+                isSelected={filters.make === mkName}
+                logoFailed={!!logoErrors[mkName]}
+                onLogoError={() => setLogoErrors(prev => ({ ...prev, [mkName]: true }))}
                 onClick={() => setFilter('make', filters.make === mkName ? '' : mkName)}
-                style={{
-                  padding:'6px 12px', borderRadius:20, fontSize:12, fontWeight:500, cursor:'pointer',
-                  background: filters.make === mkName ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
-                  border: `1px solid ${filters.make === mkName ? 'var(--accent)' : 'var(--border)'}`,
-                  color: filters.make === mkName ? 'var(--accent)' : 'var(--text2)',
-                  display:'flex', gap:5, alignItems:'center',
-                }}>
-                {mkName}
-                <span style={{ fontSize:10, opacity:.6 }}>{mkCount}</span>
-              </button>
+              />
             ))}
-            {makes.length > 20 && (
-              <button className="mkbtn cb" onClick={() => setShowMakeModal(true)} style={{
-                padding:'6px 12px', borderRadius:20, fontSize:12,
-                background:'var(--bg2)', border:'1px dashed var(--border)',
-                color:'var(--text3)', cursor:'pointer',
-              }}>+ {makes.length - 20} više →</button>
-            )}
+
+            {/* 20. polje — "Sve marke" */}
+            <button
+              onClick={() => setShowMakeModal(true)}
+              className="make-tile"
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 6, padding: '12px 6px', borderRadius: 14, cursor: 'pointer',
+                background: 'var(--bg2)',
+                border: '2px dashed var(--border)',
+                minHeight: 80,
+              }}
+            >
+              <div style={{
+                width: 36, height: 36, borderRadius: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,107,0,.08)', fontSize: 18,
+              }}>
+                🔍
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text3)', textAlign: 'center', lineHeight: 1.2 }}>
+                Sve marke
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', opacity: .6 }}>
+                +{Math.max(0, makes.length - 19)} više
+              </div>
+            </button>
           </div>
 
-          {/* ✅ Normalizovani modeli */}
+          {/* Modeli */}
           {filters.make && (
-            <div style={{ marginTop:8, padding:'12px 14px', background:'var(--bg2)', borderRadius:12, border:'1px solid var(--border)' }}>
+            <div style={{ marginTop:10, padding:'12px 14px', background:'var(--bg2)', borderRadius:12, border:'1px solid var(--border)' }}>
               <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em', marginBottom:8 }}>
                 MODEL — {filters.make.toUpperCase()}
                 {groupedModels.length > 0 && <span style={{ fontWeight:400, opacity:.6, marginLeft:6 }}>({groupedModels.length} modela)</span>}
@@ -597,7 +718,6 @@ export default function SearchPage() {
               </select>
             </div>
 
-            {/* ✅ Brzi country filteri */}
             {(filters.countries?.length > 0) && (
               <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:12 }}>
                 <span style={{ fontSize:12, color:'var(--text3)', alignSelf:'center' }}>📍</span>
@@ -658,7 +778,6 @@ export default function SearchPage() {
         </div>
       </div>
 
-      {/* Compare traka */}
       {compareList.length > 0 && (
         <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:200, background:'rgba(17,17,20,.97)', borderTop:'1px solid rgba(99,102,241,.4)', backdropFilter:'blur(12px)', padding:'12px 16px' }}>
           <div className="container" style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
@@ -685,7 +804,6 @@ export default function SearchPage() {
   )
 }
 
-// ✅ Pagination komponenta — DRY
 function Pagination({ pages, current, onPage }: { pages: number; current: number; onPage: (p: number) => void }) {
   const total = Math.min(pages, 74)
   const pageNums: number[] = []
