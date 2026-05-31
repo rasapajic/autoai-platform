@@ -1,364 +1,433 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
-const STATUS_CONFIG: Record<string, {label:string; color:string; bg:string; emoji:string}> = {
-  pending_send:    { label:'Čeka slanje',     color:'#9CA3AF', bg:'rgba(156,163,175,.1)', emoji:'📝' },
-  sent:            { label:'Poslato',          color:'#818CF8', bg:'rgba(99,102,241,.1)',  emoji:'📤' },
-  reply_received:  { label:'Odgovor primljen', color:'#F97316', bg:'rgba(249,115,22,.1)',  emoji:'📩' },
-  vin_received:    { label:'VIN primljen',     color:'#22C55E', bg:'rgba(34,197,94,.1)',   emoji:'🔐' },
-  negotiating:     { label:'Pregovori',        color:'#EAB308', bg:'rgba(234,179,8,.1)',   emoji:'🤝' },
-  closed:          { label:'Zatvoreno',        color:'#22C55E', bg:'rgba(34,197,94,.1)',   emoji:'✅' },
-  rejected:        { label:'Odbijeno',         color:'#EF4444', bg:'rgba(239,68,68,.1)',   emoji:'❌' },
+// ── Tipovi ────────────────────────────────────────────────────────
+interface AnalysisResult {
+  translation:    string
+  keyInfo:        KeyInfo
+  aiConclusion:   string
+  nextReplyDE:    string
+  nextReplySR:    string
+  nextReplyEN:    string
 }
 
-const RECOM_CONFIG: Record<string, {label:string; color:string}> = {
-  buy:       { label:'🟢 Preporučuje se kupovina', color:'#22C55E' },
-  negotiate: { label:'🟡 Pregovaraj o ceni',        color:'#EAB308' },
-  verify:    { label:'🟠 Potrebna dodatna provera',  color:'#F97316' },
-  skip:      { label:'🔴 Preskoči oglas',            color:'#EF4444' },
+interface KeyInfo {
+  available:       boolean | null
+  vin:             string | null
+  price:           string | null
+  mileage:         string | null
+  serviceHistory:  boolean | null
+  coc:             boolean | null
+  damage:          string | null
+  exportPossible:  boolean | null
 }
 
-function fmt(n: any) { return Number(n).toLocaleString('de-DE') }
+const CONVERSATION_STATUSES = [
+  { key:'new',          label:'Novo vozilo',               color:'#9CA3AF' },
+  { key:'contacted',    label:'Kontaktiran prodavac',       color:'#818CF8' },
+  { key:'waiting',      label:'Čeka odgovor',               color:'#F97316' },
+  { key:'vin_received', label:'VIN primljen',               color:'#22C55E' },
+  { key:'negotiating',  label:'U pregovorima',              color:'#EAB308' },
+  { key:'purchased',    label:'Kupljeno',                   color:'#10B981' },
+  { key:'rejected',     label:'Odbijeno',                   color:'#EF4444' },
+]
 
-function timeAgo(iso: string): string {
-  if (!iso) return ''
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60)   return 'Upravo'
-  if (diff < 3600) return `${Math.floor(diff/60)} min`
-  if (diff < 86400) return `${Math.floor(diff/3600)}h`
-  return `${Math.floor(diff/86400)}d`
+// ── Helpers ───────────────────────────────────────────────────────
+function StatusBadge({ status }: { status: string }) {
+  const s = CONVERSATION_STATUSES.find(x => x.key === status) || CONVERSATION_STATUSES[0]
+  return (
+    <span style={{ fontSize:11, padding:'2px 9px', borderRadius:20, fontWeight:700,
+      background: s.color+'20', color: s.color, border:`1px solid ${s.color}40` }}>
+      {s.label}
+    </span>
+  )
 }
 
+function InfoRow({ label, value, ok }: { label: string; value: string | null; ok: boolean | null }) {
+  const icon = ok === null ? '—' : ok ? '✅' : '❌'
+  const color = ok === null ? 'var(--text3)' : ok ? '#22C55E' : '#EF4444'
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+      padding:'7px 0', borderBottom:'1px solid var(--border)' }}>
+      <span style={{ fontSize:13, color:'var(--text3)' }}>{label}</span>
+      <span style={{ fontSize:13, fontWeight:600, color, textAlign:'right', maxWidth:'55%' }}>
+        {icon} {value || (ok === null ? 'nije navedeno' : ok ? 'da' : 'ne')}
+      </span>
+    </div>
+  )
+}
+
+// ── Glavni Inbox ──────────────────────────────────────────────────
 export default function InboxPage() {
-  const [convs,       setConvs]       = useState<any[]>([])
-  const [selected,    setSelected]    = useState<any>(null)
-  const [loading,     setLoading]     = useState(true)
-  const [replyText,   setReplyText]   = useState('')
-  const [replyLoading,setReplyLoading]= useState(false)
-  const [stats,       setStats]       = useState<any>(null)
-  const [filterStatus,setFilterStatus]= useState('')
-  const [error,       setError]       = useState('')
+  const [conversations, setConversations] = useState<any[]>([])
+  const [selected,      setSelected]      = useState<any>(null)
+  const [loading,       setLoading]       = useState(true)
+  const [pasteText,     setPasteText]     = useState('')
+  const [analyzing,     setAnalyzing]     = useState(false)
+  const [analysis,      setAnalysis]      = useState<AnalysisResult | null>(null)
+  const [analysisError, setAnalysisError] = useState('')
+  const [replyLang,     setReplyLang]     = useState<'DE'|'SR'|'EN'>('DE')
+  const [replyCopied,   setReplyCopied]   = useState(false)
+  const [view,          setView]          = useState<'list'|'detail'>('list')
+  const [statusUpdating, setStatusUpdating] = useState(false)
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('autoai_token') : null
+  useEffect(() => { fetchConversations() }, [])
 
-  useEffect(() => {
-    if (!token) { window.location.href = '/login'; return }
-    loadConvs()
-    loadStats()
-  }, [filterStatus])
-
-  const authHeaders = { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` }
-
-  async function loadConvs() {
-    setLoading(true)
+  const fetchConversations = async () => {
+    const token = localStorage.getItem('autoai_token')
+    if (!token) { setLoading(false); return }
     try {
-      const url = `${API_BASE}/inbox/conversations${filterStatus ? `?status=${filterStatus}` : ''}`
-      const res = await fetch(url, { headers: authHeaders })
-      const data = await res.json()
-      setConvs(Array.isArray(data) ? data : [])
-    } catch { setError('Greška pri učitavanju.') }
+      const res = await fetch(`${API_BASE}/inbox/conversations`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setConversations(data.conversations || data || [])
+      }
+    } catch {}
     setLoading(false)
   }
 
-  async function loadStats() {
-    try {
-      const res = await fetch(`${API_BASE}/inbox/conversations/stats/summary`, { headers: authHeaders })
-      const data = await res.json()
-      setStats(data)
-    } catch {}
+  const openConversation = (conv: any) => {
+    setSelected(conv)
+    setPasteText('')
+    setAnalysis(null)
+    setAnalysisError('')
+    setView('detail')
   }
 
-  async function openConv(id: string) {
+  const analyzeReply = async () => {
+    if (!pasteText.trim()) return
+    setAnalyzing(true); setAnalysis(null); setAnalysisError('')
     try {
-      const res = await fetch(`${API_BASE}/inbox/conversations/${id}`, { headers: authHeaders })
-      const data = await res.json()
-      setSelected(data)
-      // Označi poruke kao pročitane
-    } catch {}
-  }
-
-  async function sendReply() {
-    if (!replyText.trim() || !selected) return
-    setReplyLoading(true)
-    try {
-      const res = await fetch(`${API_BASE}/inbox/conversations/${selected.id}/reply`, {
-        method: 'POST', headers: authHeaders,
-        body: JSON.stringify({ content: replyText.trim() }),
+      const res = await fetch(`${API_BASE}/inbox/analyze-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('autoai_token')}` },
+        body: JSON.stringify({
+          reply_text:      pasteText,
+          conversation_id: selected?.id || null,
+          listing_title:   selected?.listing_title || '',
+          seller_language: selected?.seller_language || 'German',
+        }),
       })
+      if (!res.ok) throw new Error()
       const data = await res.json()
-      setSelected(data)
-      setReplyText('')
-      loadConvs()
-      loadStats()
-    } catch { setError('Greška pri slanju odgovora.') }
-    setReplyLoading(false)
+      setAnalysis(data)
+      // Refresh conversations
+      fetchConversations()
+    } catch {
+      setAnalysisError('Greška pri analizi. Pokušaj ponovo.')
+    }
+    setAnalyzing(false)
   }
 
-  async function updateStatus(id: string, status: string) {
+  const updateStatus = async (newStatus: string) => {
+    if (!selected) return
+    const token = localStorage.getItem('autoai_token')
+    setStatusUpdating(true)
     try {
-      await fetch(`${API_BASE}/inbox/conversations/${id}/status`, {
-        method: 'PUT', headers: authHeaders,
-        body: JSON.stringify({ status }),
+      const res = await fetch(`${API_BASE}/inbox/conversations/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus }),
       })
-      loadConvs()
-      if (selected?.id === id) setSelected((prev: any) => ({ ...prev, status }))
+      if (res.ok) {
+        setSelected({ ...selected, status: newStatus })
+        fetchConversations()
+      }
     } catch {}
+    setStatusUpdating(false)
   }
 
-  async function deleteConv(id: string) {
-    if (!confirm('Obrisati konverzaciju?')) return
-    await fetch(`${API_BASE}/inbox/conversations/${id}`, { method: 'DELETE', headers: authHeaders })
-    if (selected?.id === id) setSelected(null)
-    loadConvs()
-    loadStats()
+  const copyReply = () => {
+    const reply = replyLang === 'DE' ? analysis?.nextReplyDE
+                : replyLang === 'SR' ? analysis?.nextReplySR
+                : analysis?.nextReplyEN
+    if (reply) {
+      navigator.clipboard.writeText(reply)
+      setReplyCopied(true)
+      setTimeout(() => setReplyCopied(false), 2000)
+    }
   }
 
-  const unread = stats?.unread_replies || 0
+  const currentReply = replyLang === 'DE' ? analysis?.nextReplyDE
+                     : replyLang === 'SR' ? analysis?.nextReplySR
+                     : analysis?.nextReplyEN
 
-  return (
-    <div style={{ minHeight:'100vh', background:'var(--bg)', paddingBottom:40 }}>
-      <style>{`
-        @media(max-width:768px){
-          .inbox-grid { grid-template-columns:1fr !important; }
-          .inbox-detail { display: ${selected ? 'block' : 'none'} !important; }
-          .inbox-list { display: ${selected ? 'none' : 'block'} !important; }
-        }
-      `}</style>
-
-      <div className="container" style={{ padding:'20px 16px 0' }}>
-
-        {/* Header */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <div>
-            <h1 style={{ fontSize:22, fontWeight:800, fontFamily:'Syne,sans-serif', margin:'0 0 4px' }}>
-              📬 AI Inbox
-              {unread > 0 && (
-                <span style={{ marginLeft:10, fontSize:13, background:'#EF4444', color:'#fff', borderRadius:20, padding:'2px 8px', fontWeight:700 }}>
-                  {unread} novo
-                </span>
-              )}
-            </h1>
-            <p style={{ fontSize:13, color:'var(--text3)', margin:0 }}>Komunikacija sa prodavcima vozila</p>
-          </div>
+  // ── MOBILE: Lista konverzacija ─────────────────────────────────
+  if (view === 'list' || !selected) {
+    return (
+      <div style={{ minHeight:'100vh', background:'var(--bg)', padding:'16px 16px 80px' }}>
+        <div style={{ marginBottom:20 }}>
+          <h1 style={{ fontSize:22, fontWeight:800, fontFamily:'Syne,sans-serif', margin:'0 0 4px' }}>
+            📥 AutoAI Inbox
+          </h1>
+          <p style={{ fontSize:13, color:'var(--text3)', margin:0 }}>
+            Komunikacija sa prodavcima · AI analiza odgovora
+          </p>
         </div>
 
-        {/* Stats */}
-        {stats && (
-          <div style={{ display:'flex', gap:8, marginBottom:16, overflowX:'auto', paddingBottom:4 }}>
-            {[
-              { key:'', label:'Sve', count:stats.total },
-              { key:'sent', label:'📤 Poslato', count:stats.sent },
-              { key:'reply_received', label:'📩 Odgovor', count:stats.reply_received },
-              { key:'vin_received', label:'🔐 VIN', count:stats.vin_received },
-              { key:'negotiating', label:'🤝 Pregovori', count:stats.negotiating },
-            ].map(({ key, label, count }) => (
-              <button key={key} onClick={() => setFilterStatus(key)} style={{
-                flexShrink:0, padding:'6px 12px', borderRadius:20, fontSize:12, cursor:'pointer',
-                background: filterStatus===key ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
-                border: `1px solid ${filterStatus===key ? 'var(--accent)' : 'var(--border)'}`,
-                color: filterStatus===key ? 'var(--accent)' : 'var(--text2)',
-                fontWeight: filterStatus===key ? 700 : 400,
-              }}>
-                {label} <span style={{ opacity:.6 }}>{count}</span>
+        {/* Empty state */}
+        {!loading && conversations.length === 0 && (
+          <div style={{ textAlign:'center', padding:'60px 20px', background:'var(--bg2)',
+            borderRadius:16, border:'1px solid var(--border)' }}>
+            <div style={{ fontSize:48, marginBottom:16 }}>📭</div>
+            <p style={{ fontSize:16, fontWeight:600, marginBottom:8 }}>Nema sačuvanih konverzacija</p>
+            <p style={{ color:'var(--text3)', fontSize:14, marginBottom:20, lineHeight:1.6 }}>
+              Kada kontaktiraš prodavca i klikneš<br />
+              "Sačuvaj u Inbox", konverzacija se pojavi ovde.
+            </p>
+            <a href="/search" style={{ display:'inline-block', padding:'11px 22px',
+              background:'var(--accent)', color:'#fff', borderRadius:10,
+              fontWeight:700, fontSize:14, textDecoration:'none' }}>
+              🔍 Pretraži vozila
+            </a>
+          </div>
+        )}
+
+        {/* Lista konverzacija */}
+        {loading ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {[1,2,3].map(i => (
+              <div key={i} className="skeleton" style={{ height:90, borderRadius:14 }} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {conversations.map(conv => (
+              <button key={conv.id} onClick={() => openConversation(conv)}
+                style={{ background:'var(--bg2)', border:'1px solid var(--border)',
+                  borderRadius:14, padding:'14px 16px', textAlign:'left', cursor:'pointer',
+                  width:'100%', transition:'all .15s' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', flex:1, marginRight:8 }}>
+                    {conv.listing_title || 'Vozilo'}
+                  </div>
+                  <StatusBadge status={conv.status || 'new'} />
+                </div>
+                <div style={{ display:'flex', gap:12, fontSize:12, color:'var(--text3)' }}>
+                  {conv.listing_price && (
+                    <span>💶 {Number(conv.listing_price).toLocaleString('de-DE')} €</span>
+                  )}
+                  {conv.seller_country && <span>📍 {conv.seller_country}</span>}
+                  <span>🌐 {conv.seller_language?.split(' ')[0] || 'DE'}</span>
+                </div>
+                {conv.last_message_at && (
+                  <div style={{ fontSize:11, color:'var(--text3)', marginTop:4, opacity:.6 }}>
+                    {new Date(conv.last_message_at).toLocaleDateString('sr-RS')}
+                  </div>
+                )}
               </button>
             ))}
           </div>
         )}
+      </div>
+    )
+  }
 
-        {error && (
-          <div style={{ background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:10, padding:'10px 14px', marginBottom:12, color:'#EF4444', fontSize:13 }}>
-            ⚠️ {error}
+  // ── DETAIL VIEW ────────────────────────────────────────────────
+  return (
+    <div style={{ minHeight:'100vh', background:'var(--bg)', padding:'0 0 80px' }}>
+
+      {/* Header */}
+      <div style={{ padding:'14px 16px', borderBottom:'1px solid var(--border)',
+        background:'var(--bg2)', display:'flex', alignItems:'center', gap:12, position:'sticky', top:0, zIndex:10 }}>
+        <button onClick={() => { setView('list'); setSelected(null) }}
+          style={{ background:'none', border:'none', color:'var(--text2)', fontSize:20, cursor:'pointer', padding:0 }}>
+          ←
+        </button>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)' }}>
+            {selected.listing_title || 'Konverzacija'}
+          </div>
+          <StatusBadge status={selected.status || 'new'} />
+        </div>
+        {selected.listing_url && (
+          <a href={selected.listing_url} target="_blank" rel="noopener"
+            style={{ fontSize:12, color:'var(--accent)', textDecoration:'none', fontWeight:600 }}>
+            Oglas →
+          </a>
+        )}
+      </div>
+
+      <div style={{ padding:'16px' }}>
+
+        {/* Status promjena */}
+        <div style={{ background:'var(--bg2)', border:'1px solid var(--border)',
+          borderRadius:14, padding:'12px 14px', marginBottom:16 }}>
+          <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600,
+            letterSpacing:'.07em', marginBottom:10 }}>PROMIJENI STATUS</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {CONVERSATION_STATUSES.map(s => (
+              <button key={s.key} onClick={() => updateStatus(s.key)}
+                disabled={statusUpdating}
+                style={{ padding:'5px 10px', borderRadius:20, fontSize:11, cursor:'pointer',
+                  fontWeight:600, transition:'all .15s',
+                  background: selected.status === s.key ? s.color+'20' : 'transparent',
+                  border: `1px solid ${selected.status === s.key ? s.color : 'var(--border)'}`,
+                  color: selected.status === s.key ? s.color : 'var(--text3)' }}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Paste area */}
+        <div style={{ background:'var(--bg2)', border:'1px solid var(--border)',
+          borderRadius:14, padding:'14px', marginBottom:16 }}>
+          <div style={{ fontSize:13, fontWeight:700, marginBottom:10, display:'flex', alignItems:'center', gap:8 }}>
+            <span>📨</span> Nalepi odgovor prodavca
+          </div>
+          <textarea
+            value={pasteText}
+            onChange={e => setPasteText(e.target.value)}
+            placeholder="Kopiraj email od prodavca i nalepi ovde (Ctrl+V)...
+
+Beispiel / Örnek:
+Guten Tag,
+vielen Dank für Ihre Anfrage. Das Fahrzeug ist noch verfügbar.
+Die FIN/VIN lautet: WBA3A510X0F123456
+..."
+            rows={7}
+            style={{ width:'100%', background:'var(--bg3)', border:'1px solid var(--border)',
+              borderRadius:10, padding:'12px 14px', color:'var(--text)', fontSize:13,
+              outline:'none', resize:'vertical', boxSizing:'border-box' as any,
+              fontFamily:'inherit', lineHeight:1.6 }}
+          />
+          <button onClick={analyzeReply} disabled={analyzing || !pasteText.trim()}
+            style={{ width:'100%', marginTop:10, padding:'13px', borderRadius:10, border:'none',
+              background: (!pasteText.trim() || analyzing) ? 'var(--bg3)' : 'var(--accent)',
+              color: (!pasteText.trim() || analyzing) ? 'var(--text3)' : '#fff',
+              fontSize:14, fontWeight:700,
+              cursor: (!pasteText.trim() || analyzing) ? 'default' : 'pointer' }}>
+            {analyzing ? '🔍 Analiziram odgovor...' : '🔍 Analiziraj odgovor'}
+          </button>
+          {analysisError && (
+            <p style={{ color:'#EF4444', fontSize:13, margin:'8px 0 0', textAlign:'center' }}>
+              {analysisError}
+            </p>
+          )}
+        </div>
+
+        {/* Rezultat analize */}
+        {analysis && (
+          <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+
+            {/* Prevod */}
+            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)',
+              borderRadius:14, padding:'14px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'var(--text3)',
+                letterSpacing:'.07em', marginBottom:10 }}>🌐 PREVOD NA SRPSKI</div>
+              <p style={{ fontSize:13, color:'var(--text2)', lineHeight:1.7,
+                margin:0, whiteSpace:'pre-wrap' }}>
+                {analysis.translation}
+              </p>
+            </div>
+
+            {/* Ključne informacije */}
+            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)',
+              borderRadius:14, padding:'14px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'var(--text3)',
+                letterSpacing:'.07em', marginBottom:10 }}>📋 KLJUČNE INFORMACIJE</div>
+              <InfoRow label="Vozilo dostupno"    value={null}                        ok={analysis.keyInfo.available} />
+              <InfoRow label="VIN broj"           value={analysis.keyInfo.vin}        ok={!!analysis.keyInfo.vin} />
+              <InfoRow label="Poslednja cena"     value={analysis.keyInfo.price}      ok={!!analysis.keyInfo.price} />
+              <InfoRow label="Kilometraža"        value={analysis.keyInfo.mileage}    ok={!!analysis.keyInfo.mileage} />
+              <InfoRow label="Servisna istorija"  value={null}                        ok={analysis.keyInfo.serviceHistory} />
+              <InfoRow label="COC dokument"       value={null}                        ok={analysis.keyInfo.coc} />
+              <InfoRow label="Oštećenja"          value={analysis.keyInfo.damage}     ok={analysis.keyInfo.damage === null ? null : false} />
+              <InfoRow label="Izvoz moguć"        value={null}                        ok={analysis.keyInfo.exportPossible} />
+            </div>
+
+            {/* AI zaključak */}
+            <div style={{ background:'rgba(99,102,241,.07)', border:'1px solid rgba(99,102,241,.3)',
+              borderRadius:14, padding:'14px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#818CF8',
+                letterSpacing:'.07em', marginBottom:8 }}>🤖 AI ZAKLJUČAK</div>
+              <p style={{ fontSize:13, color:'var(--text2)', lineHeight:1.7, margin:0 }}>
+                {analysis.aiConclusion}
+              </p>
+            </div>
+
+            {/* Predlog sledećeg odgovora */}
+            <div style={{ background:'var(--bg2)', border:'1px solid var(--border)',
+              borderRadius:14, padding:'14px' }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'var(--text3)',
+                letterSpacing:'.07em', marginBottom:10 }}>✍️ PREDLOG SLEDEĆEG ODGOVORA</div>
+
+              {/* Izbor jezika */}
+              <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+                {[
+                  { key:'DE', flag:'🇩🇪', label:'Nemački' },
+                  { key:'SR', flag:'🇷🇸', label:'Srpski' },
+                  { key:'EN', flag:'🇬🇧', label:'Engleski' },
+                ].map(l => (
+                  <button key={l.key} onClick={() => setReplyLang(l.key as any)}
+                    style={{ flex:1, padding:'7px', borderRadius:8, fontSize:12, fontWeight:600,
+                      cursor:'pointer', transition:'all .15s',
+                      background: replyLang === l.key ? 'rgba(255,107,0,.15)' : 'var(--bg3)',
+                      border: `1px solid ${replyLang === l.key ? 'var(--accent)' : 'var(--border)'}`,
+                      color: replyLang === l.key ? 'var(--accent)' : 'var(--text3)' }}>
+                    {l.flag} {l.label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ background:'var(--bg3)', border:'1px solid var(--border)',
+                borderRadius:10, padding:'12px 14px', fontSize:13, lineHeight:1.75,
+                color:'var(--text2)', whiteSpace:'pre-wrap', marginBottom:10,
+                maxHeight:200, overflowY:'auto' }}>
+                {currentReply}
+              </div>
+
+              <button onClick={copyReply} style={{
+                width:'100%', padding:'11px', borderRadius:10, fontSize:13, fontWeight:700,
+                cursor:'pointer', transition:'all .2s',
+                background: replyCopied ? 'rgba(34,197,94,.12)' : 'rgba(255,107,0,.1)',
+                border: `1px solid ${replyCopied ? '#22C55E' : 'rgba(255,107,0,.3)'}`,
+                color: replyCopied ? '#22C55E' : 'var(--accent)',
+              }}>
+                {replyCopied ? '✓ Kopirano!' : '📋 Kopiraj odgovor'}
+              </button>
+            </div>
+
           </div>
         )}
 
-        <div className="inbox-grid" style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:16, alignItems:'start' }}>
-
-          {/* Lista konverzacija */}
-          <div className="inbox-list">
-            {loading ? (
-              [...Array(4)].map((_,i) => <div key={i} className="skeleton" style={{ height:80, borderRadius:12, marginBottom:8 }} />)
-            ) : convs.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'40px 20px', background:'var(--bg2)', borderRadius:16, border:'1px solid var(--border)' }}>
-                <div style={{ fontSize:40, marginBottom:10 }}>📭</div>
-                <p style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>Nema konverzacija</p>
-                <p style={{ fontSize:13, color:'var(--text3)' }}>
-                  Kontaktiraj prodavca sa listing stranice i poruka će se pojaviti ovde.
-                </p>
-              </div>
-            ) : (
-              convs.map(conv => {
-                const statusCfg = STATUS_CONFIG[conv.status] || STATUS_CONFIG.sent
-                const isSelected = selected?.id === conv.id
-                return (
-                  <div key={conv.id} onClick={() => openConv(conv.id)} style={{
-                    background: isSelected ? 'rgba(255,107,0,.06)' : 'var(--bg2)',
-                    border: `1px solid ${isSelected ? 'rgba(255,107,0,.4)' : 'var(--border)'}`,
-                    borderRadius:12, padding:'12px 14px', marginBottom:8, cursor:'pointer',
-                    transition:'all .15s',
-                  }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
-                      <div style={{ flex:1, overflow:'hidden' }}>
-                        <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {conv.listing_title || 'Nepoznato vozilo'}
-                        </div>
-                        <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
-                          {conv.listing_source && <span style={{ marginRight:6 }}>{conv.listing_source}</span>}
-                          {conv.listing_price && <span>{fmt(conv.listing_price)} €</span>}
-                        </div>
-                      </div>
-                      <div style={{ textAlign:'right', flexShrink:0, marginLeft:8 }}>
-                        <span style={{ fontSize:10, padding:'2px 7px', borderRadius:20, background:statusCfg.bg, color:statusCfg.color, fontWeight:600 }}>
-                          {statusCfg.emoji} {statusCfg.label}
-                        </span>
-                        <div style={{ fontSize:10, color:'var(--text3)', marginTop:3 }}>{timeAgo(conv.last_message_at)}</div>
-                      </div>
-                    </div>
-
-                    {/* Indikatori */}
-                    <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
-                      {conv.vin_received  && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(34,197,94,.1)', color:'#22C55E', border:'1px solid rgba(34,197,94,.2)' }}>🔐 VIN</span>}
-                      {conv.service_history_confirmed === true  && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(34,197,94,.1)', color:'#22C55E' }}>📋 Servis</span>}
-                      {conv.coc_document_confirmed === true     && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(34,197,94,.1)', color:'#22C55E' }}>📄 COC</span>}
-                      {conv.damage_mentioned === true            && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(239,68,68,.1)', color:'#EF4444' }}>⚠ Oštećenje</span>}
-                      {conv.status === 'reply_received'          && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:20, background:'rgba(249,115,22,.15)', color:'#F97316', fontWeight:700 }}>● Novo</span>}
-                    </div>
+        {/* Istorija poruka */}
+        {selected.messages && selected.messages.length > 0 && (
+          <div style={{ marginTop:16 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'var(--text3)',
+              letterSpacing:'.07em', marginBottom:10 }}>📜 ISTORIJA KOMUNIKACIJE</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {selected.messages.map((msg: any) => (
+                <div key={msg.id} style={{
+                  background: msg.direction === 'outbound' ? 'rgba(99,102,241,.08)' : 'var(--bg2)',
+                  border: `1px solid ${msg.direction === 'outbound' ? 'rgba(99,102,241,.3)' : 'var(--border)'}`,
+                  borderRadius:12, padding:'10px 14px',
+                }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                    <span style={{ fontSize:11, fontWeight:700,
+                      color: msg.direction === 'outbound' ? '#818CF8' : '#22C55E' }}>
+                      {msg.direction === 'outbound' ? '📤 Tvoja poruka' : '📥 Odgovor prodavca'}
+                    </span>
+                    <span style={{ fontSize:11, color:'var(--text3)' }}>
+                      {new Date(msg.created_at).toLocaleDateString('sr-RS')}
+                    </span>
                   </div>
-                )
-              })
-            )}
+                  <p style={{ fontSize:12, color:'var(--text2)', margin:0, lineHeight:1.6,
+                    maxHeight:80, overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {msg.content?.slice(0, 200)}{msg.content?.length > 200 ? '...' : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
 
-          {/* Detalji konverzacije */}
-          <div className="inbox-detail">
-            {!selected ? (
-              <div style={{ textAlign:'center', padding:'80px 20px', background:'var(--bg2)', borderRadius:16, border:'1px solid var(--border)' }}>
-                <div style={{ fontSize:48, marginBottom:12 }}>💬</div>
-                <p style={{ fontSize:16, fontWeight:600, marginBottom:6 }}>Izaberi konverzaciju</p>
-                <p style={{ fontSize:13, color:'var(--text3)' }}>Klikni na konverzaciju iz liste da vidiš detalje</p>
-              </div>
-            ) : (
-              <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, overflow:'hidden' }}>
-
-                {/* Header konverzacije */}
-                <div style={{ padding:'16px 20px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                      <button onClick={() => setSelected(null)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:18, padding:0, display:'none' }} className="mobile-back">←</button>
-                      <h2 style={{ fontSize:15, fontWeight:700, margin:0 }}>{selected.listing_title}</h2>
-                    </div>
-                    <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-                      {selected.listing_price && <span style={{ fontSize:13, color:'var(--accent)', fontWeight:700 }}>{fmt(selected.listing_price)} €</span>}
-                      {selected.listing_source && <span style={{ fontSize:11, color:'var(--text3)' }}>{selected.listing_source}</span>}
-                      <span style={{ fontSize:11, padding:'2px 7px', borderRadius:20, background:STATUS_CONFIG[selected.status]?.bg, color:STATUS_CONFIG[selected.status]?.color, fontWeight:600 }}>
-                        {STATUS_CONFIG[selected.status]?.emoji} {STATUS_CONFIG[selected.status]?.label}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ display:'flex', gap:6 }}>
-                    {selected.listing_url && (
-                      <a href={selected.listing_url} target="_blank" rel="noopener" style={{ fontSize:12, padding:'6px 10px', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)', borderRadius:8, textDecoration:'none' }}>Oglas →</a>
-                    )}
-                    <button onClick={() => deleteConv(selected.id)} style={{ fontSize:12, padding:'6px 10px', background:'transparent', border:'1px solid rgba(239,68,68,.3)', color:'#EF4444', borderRadius:8, cursor:'pointer' }}>🗑</button>
-                  </div>
-                </div>
-
-                {/* AI Analiza */}
-                {(selected.ai_summary || selected.ai_recommendation) && (
-                  <div style={{ margin:'12px 20px', background:'rgba(99,102,241,.07)', border:'1px solid rgba(99,102,241,.2)', borderRadius:12, padding:'12px 14px' }}>
-                    <div style={{ fontSize:11, color:'#818CF8', fontWeight:600, marginBottom:6 }}>🤖 AI ANALIZA</div>
-                    {selected.ai_recommendation && RECOM_CONFIG[selected.ai_recommendation] && (
-                      <div style={{ fontSize:13, fontWeight:700, color:RECOM_CONFIG[selected.ai_recommendation].color, marginBottom:4 }}>
-                        {RECOM_CONFIG[selected.ai_recommendation].label}
-                      </div>
-                    )}
-                    {selected.ai_summary && <p style={{ fontSize:12, color:'var(--text2)', margin:0, lineHeight:1.6 }}>{selected.ai_summary}</p>}
-                  </div>
-                )}
-
-                {/* Prikupljene informacije */}
-                {(selected.vin_received || selected.service_history_confirmed !== null || selected.coc_document_confirmed !== null) && (
-                  <div style={{ margin:'0 20px 12px', background:'var(--bg3)', borderRadius:12, padding:'12px 14px' }}>
-                    <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:8 }}>📊 PRIKUPLJENE INFORMACIJE</div>
-                    <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
-                      {[
-                        { label:'VIN', value:selected.vin_received ? '✅ Primljen' : '⏳ Čeka', ok:!!selected.vin_received },
-                        { label:'Servisna', value:selected.service_history_confirmed===true?'✅ Da':selected.service_history_confirmed===false?'❌ Ne':'⏳ N/A', ok:selected.service_history_confirmed===true },
-                        { label:'COC', value:selected.coc_document_confirmed===true?'✅ Da':selected.coc_document_confirmed===false?'❌ Ne':'⏳ N/A', ok:selected.coc_document_confirmed===true },
-                        { label:'Export', value:selected.export_possible_confirmed===true?'✅ Da':selected.export_possible_confirmed===false?'❌ Ne':'⏳ N/A', ok:selected.export_possible_confirmed===true },
-                        { label:'Cena', value:selected.seller_confirmed_price?`${fmt(selected.seller_confirmed_price)} €`:'⏳ N/A', ok:!!selected.seller_confirmed_price },
-                        { label:'Oštećenje', value:selected.damage_mentioned===true?`⚠️ ${selected.damage_description||'Da'}`:selected.damage_mentioned===false?'✅ Nema':'⏳ N/A', ok:selected.damage_mentioned===false },
-                      ].map(({ label, value, ok }) => (
-                        <div key={label} style={{ background:'var(--bg2)', borderRadius:8, padding:'7px 10px' }}>
-                          <div style={{ fontSize:10, color:'var(--text3)', marginBottom:2 }}>{label}</div>
-                          <div style={{ fontSize:11, fontWeight:600, color:ok?'#22C55E':'var(--text2)' }}>{value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Poruke */}
-                <div style={{ padding:'0 20px', maxHeight:400, overflowY:'auto', display:'flex', flexDirection:'column', gap:10, paddingTop:12 }}>
-                  {(selected.messages || []).map((msg: any) => (
-                    <div key={msg.id} style={{
-                      display:'flex', flexDirection:'column',
-                      alignItems: msg.direction==='outbound' ? 'flex-end' : 'flex-start',
-                    }}>
-                      <div style={{ fontSize:10, color:'var(--text3)', marginBottom:3 }}>
-                        {msg.direction==='outbound' ? '📤 Ti' : '📩 Prodavac'} · {timeAgo(msg.created_at)}
-                      </div>
-                      <div style={{
-                        maxWidth:'80%', padding:'10px 14px', borderRadius:12, fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap',
-                        background: msg.direction==='outbound' ? 'rgba(99,102,241,.15)' : 'var(--bg3)',
-                        border: `1px solid ${msg.direction==='outbound' ? 'rgba(99,102,241,.3)' : 'var(--border)'}`,
-                        color: 'var(--text2)',
-                        borderTopRightRadius: msg.direction==='outbound' ? 4 : 12,
-                        borderTopLeftRadius:  msg.direction==='inbound'  ? 4 : 12,
-                      }}>
-                        {msg.content}
-                      </div>
-                      {msg.ai_extracted && msg.direction==='inbound' && (
-                        <div style={{ fontSize:10, color:'#818CF8', marginTop:3, maxWidth:'80%' }}>
-                          🤖 AI izvukao: {Object.entries(msg.ai_extracted).filter(([k,v]) => v && !['summary','recommendation','recommendation_reason'].includes(k)).map(([k,v]) => `${k}: ${v}`).join(' · ')}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Unos odgovora prodavca */}
-                <div style={{ padding:'16px 20px', borderTop:'1px solid var(--border)', marginTop:12 }}>
-                  <div style={{ fontSize:11, color:'var(--text3)', fontWeight:600, marginBottom:8 }}>
-                    📩 ZALIJEPI ODGOVOR PRODAVCA
-                  </div>
-                  <textarea
-                    value={replyText}
-                    onChange={e => setReplyText(e.target.value)}
-                    placeholder="Kopiraj i zalijepi odgovor koji si dobio od prodavca — AI će automatski analizirati..."
-                    rows={4}
-                    style={{ width:'100%', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 13px', color:'var(--text)', fontSize:13, outline:'none', resize:'none', boxSizing:'border-box', fontFamily:'inherit', lineHeight:1.6, marginBottom:10 }}
-                  />
-                  <div style={{ display:'flex', gap:8 }}>
-                    <button onClick={sendReply} disabled={replyLoading || !replyText.trim()} style={{
-                      flex:1, padding:'11px', borderRadius:10, border:'none', cursor:'pointer', fontSize:13, fontWeight:700,
-                      background: (!replyText.trim() || replyLoading) ? 'var(--bg3)' : 'var(--accent)',
-                      color: (!replyText.trim() || replyLoading) ? 'var(--text3)' : '#fff',
-                    }}>
-                      {replyLoading ? '⏳ AI analizira...' : '🤖 Dodaj odgovor i analiziraj'}
-                    </button>
-                    <select onChange={e => updateStatus(selected.id, e.target.value)} value={selected.status} style={{ padding:'0 12px', background:'var(--bg3)', border:'1px solid var(--border)', color:'var(--text2)', borderRadius:10, fontSize:12, cursor:'pointer', outline:'none' }}>
-                      {Object.entries(STATUS_CONFIG).map(([k,v]) => (
-                        <option key={k} value={k}>{v.emoji} {v.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   )
