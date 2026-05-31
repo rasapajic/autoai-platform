@@ -36,7 +36,6 @@ def _hq_image(url: str) -> str:
     """Zameni bilo koji rule sa $_57.AUTO (visoka rezolucija ~900px)"""
     if not url:
         return url
-    # Zamijeni sve poznate rule-ove sa HQ verzijom
     url = re.sub(r'\$_\w+\.AUTO', '$_57.AUTO', url)
     return url
 
@@ -105,10 +104,11 @@ def _parse_listings_from_html(html: str) -> list:
 
         ad_url = f"https://www.kleinanzeigen.de{ad_href}"
 
-        title = ""
+        title       = ""
         description = ""
-        img_url = ""
+        all_images  = []
 
+        # LD+JSON — naslov, opis, slike
         ld_match = re.search(
             r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
             content, re.DOTALL
@@ -118,10 +118,16 @@ def _parse_listings_from_html(html: str) -> list:
                 ld = json.loads(ld_match.group(1))
                 title       = ld.get("title") or ld.get("name") or ""
                 description = ld.get("description") or ""
-                img_url = _hq_image(ld.get("contentUrl") or "")
+                # Skupi sve slike iz LD+JSON
+                if ld.get("image"):
+                    imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
+                    all_images = [_hq_image(i) for i in imgs if i]
+                elif ld.get("contentUrl"):
+                    all_images = [_hq_image(ld["contentUrl"])]
             except Exception:
                 pass
 
+        # Fallback naslov
         if not title:
             for pat in [
                 r'class="[^"]*text-module-begin[^"]*"[^>]*>(.*?)</a>',
@@ -132,6 +138,7 @@ def _parse_listings_from_html(html: str) -> list:
                     title = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 200)
                     break
 
+        # Cena
         price = None
         m = re.search(
             r'class="aditem-main--middle--price-shipping--price"[^>]*>(.*?)</',
@@ -152,19 +159,28 @@ def _parse_listings_from_html(html: str) -> list:
         if not price:
             continue
 
-        if not img_url:
-            m = re.search(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', content)
-            if m:
-                img_url = _hq_image(m.group(1))
+        # Fallback slike iz img tagova
+        if not all_images:
+            for img_m in re.finditer(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', content):
+                all_images.append(_hq_image(img_m.group(1)))
 
+        # Grad — pokušaj više CSS selektora
         city = ""
-        m = re.search(r'class="aditem-main--top--left"[^>]*>(.*?)</p>', content, re.DOTALL)
-        if m:
-            raw = re.sub(r'<[^>]+>', ' ', m.group(1))
-            city = _clean_text(raw, 100)
-            city = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', city).strip()[:100]
+        for city_pat in [
+            r'class="aditem-main--top--left"[^>]*>(.*?)</(?:p|div)>',
+            r'class="[^"]*location[^"]*"[^>]*>(.*?)</',
+            r'<span[^>]*itemprop="addressLocality"[^>]*>(.*?)</span>',
+        ]:
+            m = re.search(city_pat, content, re.DOTALL)
+            if m:
+                raw = re.sub(r'<[^>]+>', ' ', m.group(1))
+                city = _clean_text(raw, 100)
+                city = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', city).strip()[:100]
+                if city:
+                    break
 
-        year_m = re.search(r'\b(20[0-2]\d|199\d)\b', title + " " + description)
+        # Godište — traži 1970-2024, ignoriši tekuću godinu
+        year_m = re.search(r'\b(19[789]\d|200\d|201\d|202[0-4])\b', title + " " + description)
         km_m   = re.search(r'([\d.]+)\s*km', title + " " + description, re.IGNORECASE)
 
         listings.append({
@@ -172,7 +188,8 @@ def _parse_listings_from_html(html: str) -> list:
             "title":   _clean_text(title, 200),
             "price":   price,
             "city":    city,
-            "image":   img_url,
+            "images":  all_images,
+            "image":   all_images[0] if all_images else "",
             "url":     ad_url,
             "year":    _parse_int(year_m.group(1)) if year_m else None,
             "mileage": _parse_int(km_m.group(1).replace(".", "")) if km_m else None,
@@ -196,14 +213,18 @@ def _parse_listing(item: dict) -> dict | None:
 
         make, model = _extract_make_model(title)
         year = item.get("year")
-        if year and year < 2000:
+        if year and year < 1970:
             return None
 
         city = _clean_text(item.get("city") or "", 100)
-        images = []
-        img = item.get("image", "")
-        if img and img.startswith("http"):
-            images.append(img)
+
+        # Uzmi sve slike, osiguraj HQ
+        images = item.get("images") or []
+        if not images:
+            img = item.get("image", "")
+            if img and img.startswith("http"):
+                images = [img]
+        images = [_hq_image(i) for i in images if i and i.startswith("http")]
 
         return {
             "external_id":  f"ka_{item_id}",
