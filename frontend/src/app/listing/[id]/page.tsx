@@ -5,6 +5,36 @@ import ContactModal from '@/components/ContactModal'
 import VinChecker from '@/components/VinChecker'
 import ModelChecklist from '@/components/ModelChecklist'
 
+// ── Tooltip tekstovi ─────────────────────────────────────────────
+const TOOLTIPS: Record<string, string> = {
+  aiScore:            "AI Score je automatska ocena oglasa od 0 do 100. Racuna se na osnovu kompletnosti podataka, realnosti cene u odnosu na trziste, kilometraze i podobnosti vozila za uvoz u Srbiju. Sto je score visi, oglas je pouzdaniji.",
+  uvozSrbija:         "Pokazuje da li vozilo moze da se uveze u Srbiju. Srbija zahteva minimum Euro 4 normu (benzinci 2006+, dizeli posebno). Elektricna vozila su oslobodjena carine i nemaju ogranicenja.",
+  ukupnoSrbija:       "Procena ukupnog troska: EU cena + carina (0-5%) + PDV 20% + transport ~420 EUR + registracija ~280 EUR. Ovo je procena - tacni iznosi mogu varirati.",
+  podaciProvereni:    "AutoAI je posjetio originalni oglas i azurirao podatke o vozilu - godiste, kilometrazu, gorivo i Euro normu. Ovo smanjuje greske koje nastaju pogresnim unosom prodavaca.",
+  bezbednosnaProvera: "Automatska analiza oglasa na znakove prevare. AI trazi tipicne obrasce laznih oglasa: sumnjivo niska cena, nekonzistentni podaci, nedostatak fotografija. Zeleni signali znace da oglas izgleda legitimno.",
+  vinProvera:         "VIN je jedinstveni 17-cifreni broj svakog vozila. Unosenjem VIN broja mozes da proveris da li se podaci iz oglasa poklapaju sa zvanicnim podacima iz fabrike. Neslaganje moze biti znak prevare.",
+  staProveriti:       "Lista specificnih stvari koje treba proveriti kod ovog modela na fizickom pregledu. Svaki model ima poznate slabosti - ovde su tipicni problemi za ovu marku i model.",
+  kontaktirajProdavca:"AI automatski generise profesionalnu poruku prodavcu na njegovom jeziku (nemacki, holandski, francuski...). Poruka pita za VIN broj, servisnu istoriju i razlog prodaje.",
+  sacuvajPretragu:    "Sacuvaj filtere i dobijaj email obavjestenje cim se pojavi novo vozilo koje odgovara tvojim kriterijumima. Nema potrebe da svakodnevno pretrazujes rucno.",
+}
+
+// ── Info ikonica ─────────────────────────────────────────────────
+function InfoIcon({ id, text }: { id: string; text: string }) {
+  return (
+    <span
+      title={text}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        marginLeft: 5, width: 15, height: 15, borderRadius: 20,
+        background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.4)",
+        fontSize: 9, color: "#EF4444", fontWeight: 700,
+        cursor: "help", flexShrink: 0, lineHeight: 1, verticalAlign: "middle",
+      }}
+    >i</span>
+  )
+}
+
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
 const ELIGIBILITY_COLORS: Record<string, string> = {
@@ -643,7 +673,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <button onClick={() => setShowBd(!showBd)} style={{width:'100%',background:'none',border:'none',cursor:'pointer',padding:'12px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{textAlign:'left'}}>
                   <div style={{display:'flex',alignItems:'center',gap:0}}>
-                    <div style={{fontSize:11,color:'var(--text3)',marginBottom:1}}>🇷🇸 Ukupno za Srbiju</div>
+                    <div style={{fontSize:11,color:'var(--text3)',marginBottom:1}}>🇷🇸 Ukupno za Srbiju <InfoIcon id="ukupnoSrbija" text={TOOLTIPS.ukupnoSrbija} /></div>
                   </div>
                   {bd && <div style={{fontSize:20,fontWeight:800,color:'var(--accent)'}}>{fmt(bd.total)} €</div>}
                 </div>
@@ -676,7 +706,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <div style={{background:'var(--bg2)',border:`1px solid ${fraud.badge?.color+'40'||'var(--border)'}`,borderRadius:'var(--radius)',padding:14}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                   <div style={{display:'flex',alignItems:'center'}}>
-                    <h3 style={{fontSize:12,fontWeight:600,margin:0}}>🛡️ Bezbednosna provera</h3>
+                    <h3 style={{fontSize:12,fontWeight:600,margin:0}}>🛡️ Bezbednosna provera <InfoIcon id="bezbednosnaProvera" text={TOOLTIPS.bezbednosnaProvera} /></h3>
                   </div>
                   <span style={{fontSize:11,padding:'2px 8px',borderRadius:20,background:fraud.badge?.color+'20',color:fraud.badge?.color,border:`1px solid ${fraud.badge?.color+'40'}`}}>{fraud.badge?.text}</span>
                 </div>
