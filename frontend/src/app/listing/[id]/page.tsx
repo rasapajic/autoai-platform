@@ -54,100 +54,20 @@ const TOOLTIPS = {
 // INFO IKONICA — desktop tooltip + mobilni modal
 // =====================================================
 function InfoIcon({ id, text }: { id: string; text: string }) {
-  const [show, setShow]         = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 769)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
-
-  useEffect(() => {
-    if (!show || isMobile) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setShow(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [show, isMobile])
-
-  const btnStyle = {
-    background: show ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.1)',
-    border: `1px solid ${show ? 'rgba(239,68,68,.6)' : 'rgba(239,68,68,.35)'}`,
-    borderRadius: 20, width: 18, height: 18, cursor: 'pointer',
-    fontSize: 10, color: show ? '#EF4444' : '#EF4444',
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
-  }
-
   return (
-    <span ref={ref} style={{ display:'inline-flex', alignItems:'center', marginLeft:6, position:'relative' }}>
-      <button
-        onMouseEnter={() => !isMobile && setShow(true)}
-        onMouseLeave={() => !isMobile && setShow(false)}
-        onClick={e => { e.stopPropagation(); setShow(v => !v) }}
-        style={btnStyle}
-        aria-label="Info"
-      >ℹ</button>
-
-      {/* Desktop tooltip */}
-      {show && !isMobile && (
-        <span style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--bg2)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: '10px 14px',
-          fontSize: 12, color: 'var(--text2)', lineHeight: 1.6,
-          width: 260, zIndex: 1000, pointerEvents: 'none',
-          boxShadow: '0 8px 32px rgba(0,0,0,.5)',
-        }}>
-          {text}
-          <span style={{
-            position: 'absolute', top: '100%', left: '50%',
-            transform: 'translateX(-50%)',
-            borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
-            borderTop: '6px solid var(--border)',
-          }} />
-        </span>
-      )}
-
-      {/* Mobilni modal overlay */}
-      {show && isMobile && (
-        <span
-          onClick={e => { e.stopPropagation(); setShow(false) }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(4px)',
-          }}
-        >
-          <span
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'var(--bg2)', border: '1px solid rgba(255,107,0,.3)',
-              borderRadius: 16, padding: '20px 18px',
-              fontSize: 14, color: 'var(--text2)', lineHeight: 1.7,
-              maxWidth: 320, width: '88vw',
-              boxShadow: '0 16px 48px rgba(0,0,0,.6)',
-            }}
-          >
-            <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, marginBottom: 8, letterSpacing: '.06em' }}>ℹ VIŠE INFO</div>
-            {text}
-            <div style={{ marginTop: 14, textAlign: 'right' }}>
-              <button
-                onClick={e => { e.stopPropagation(); setShow(false) }}
-                style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >Zatvori</button>
-            </div>
-          </span>
-        </span>
-      )}
-    </span>
+    <span
+      title={text}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        marginLeft: 6, width: 16, height: 16, borderRadius: 20,
+        background: 'rgba(239,68,68,.15)', border: '1px solid rgba(239,68,68,.4)',
+        fontSize: 10, color: '#EF4444', fontWeight: 700,
+        cursor: 'help', flexShrink: 0, lineHeight: 1,
+      }}
+    >ℹ</span>
   )
 }
+
 
 function getSerbiaEligibility(listing: any) {
   const year = listing.year ? Number(listing.year) : null
@@ -256,7 +176,7 @@ function fullImg(url: string) {
   return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
 }
 
-function BottomSheet({ open, onClose, title, children }: {open:boolean; onClose:()=>void; title:string; children:React.ReactNode}) {
+function BottomSheet({ open, onClose, title, children }: {open:boolean; onClose:()=>void; title:string; children:any}) {
   if (!open) return null
   return (
     <div style={{ position:'fixed', inset:0, zIndex:2000, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
@@ -272,7 +192,7 @@ function BottomSheet({ open, onClose, title, children }: {open:boolean; onClose:
   )
 }
 
-function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:string; icon:string; children:React.ReactNode; defaultOpen?:boolean; badge?:string}) {
+function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:string; icon:string; children:any; defaultOpen?:boolean; badge?:string}) {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden', marginBottom:10 }}>
