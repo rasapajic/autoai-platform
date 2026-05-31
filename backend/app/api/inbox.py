@@ -351,3 +351,49 @@ def _msg_to_dict(msg: Message) -> dict:
         "is_read":        msg.is_read,
         "channel":        msg.channel,
     }
+class AnalyzeReplyRequest(BaseModel):
+    reply_text:      str
+    conversation_id: Optional[str] = None
+    listing_title:   Optional[str] = ''
+    seller_language: Optional[str] = 'German'
+
+@router.post("/analyze-reply")
+async def analyze_reply(req: AnalyzeReplyRequest):
+    import anthropic, os, re, json
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    
+    prompt = f"""Analiziraj odgovor prodavca automobila i vrati JSON.
+Jezik prodavca: {req.seller_language}
+Vozilo: {req.listing_title}
+
+ODGOVOR PRODAVCA:
+{req.reply_text}
+
+Vrati SAMO validan JSON:
+{{
+  "translation": "kompletan prevod na srpski",
+  "keyInfo": {{
+    "available": true/false/null,
+    "vin": "VIN ili null",
+    "price": "cena ili null",
+    "mileage": "km ili null",
+    "serviceHistory": true/false/null,
+    "coc": true/false/null,
+    "damage": "opis ili null",
+    "exportPossible": true/false/null
+  }},
+  "aiConclusion": "kratak rezime na srpskom",
+  "nextReplyDE": "predlog odgovora na nemačkom",
+  "nextReplySR": "predlog odgovora na srpskom",
+  "nextReplyEN": "predlog odgovora na engleskom"
+}}"""
+
+    message = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    raw = message.content[0].text.strip()
+    raw = re.sub(r'^```json\s*', '', raw)
+    raw = re.sub(r'\s*```$', '', raw)
+    return json.loads(raw)
