@@ -168,6 +168,11 @@ function fmtKm(km: any) {
 }
 function fullImg(url: string) {
   if (!url) return url
+  // Kleinanzeigen: zamijeni malu rezoluciju sa velikom
+  if (url.includes('img.kleinanzeigen.de')) {
+    return url.replace(/rule=\$_\w+/, 'rule=$_57.AUTO')
+  }
+  // AutoScout24, Willhaben, ostali
   return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
 }
 
