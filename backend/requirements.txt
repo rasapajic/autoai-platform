@@ -4,6 +4,9 @@ sqlalchemy==2.0.25
 psycopg2-binary==2.9.9
 pgvector==0.2.4
 redis==5.0.1
+celery==5.3.6
+celery[redis]==5.3.6
+flower==2.0.1
 anthropic==0.18.1
 python-jose[cryptography]==3.3.0
 passlib==1.7.4
