@@ -33,7 +33,7 @@ const COUNTRY_LANG: Record<string, { name: string; code: string }> = {
 const VIN_MESSAGES: Record<string, string> = {
   German:    'Könnten Sie mir bitte die Fahrgestellnummer (VIN/Chassisnummer) mitteilen, damit ich das Fahrzeug und die Importbedingungen überprüfen kann?',
   Dutch:     'Kunt u mij alstublieft het VIN/chassisnummer sturen zodat ik het voertuig en de importvoorwaarden kan controleren?',
-  French:    'Pourriez-vous me communiquer le numéro de châssis (VIN) afin que je puisse vérifier le véhicule et les conditions d\'importation?',
+  French:    "Pourriez-vous me communiquer le numéro de châssis (VIN) afin que je puisse vérifier le véhicule et les conditions d'importation?",
   Italian:   'Potrebbe fornirmi il numero di telaio (VIN) per poter verificare il veicolo e le condizioni di importazione?',
   Spanish:   '¿Podría proporcionarme el número de bastidor (VIN) para verificar el vehículo y las condiciones de importación?',
   Danish:    'Må jeg bede om køretøjets stelnummer (VIN), så jeg kan verificere køretøjet og importbetingelserne?',
@@ -59,7 +59,6 @@ export default function ContactModal({ listing, onClose }: Props) {
   const [savedToInbox, setSavedToInbox] = useState(false)
   const [savingInbox,  setSavingInbox]  = useState(false)
 
-  // ✅ Učitaj ime korisnika iz localStorage
   useEffect(() => {
     const name = localStorage.getItem('autoai_name') || ''
     setUserName(name)
@@ -88,7 +87,6 @@ export default function ContactModal({ listing, onClose }: Props) {
 
   const canGenerate = vinRequested || selected.length > 0 || custom.trim().length > 0
 
-  // ✅ Zamijeni [Name]/[Ihr Name] sa pravim imenom korisnika
   const injectName = (msg: string): string => {
     if (!userName) return msg
     return msg
@@ -104,7 +102,7 @@ export default function ContactModal({ listing, onClose }: Props) {
   const generate = async () => {
     if (!canGenerate) return
     setLoading(true); setMessage(''); setError('')
-    const vinQuestion  = vinRequested ? \`[VIN] \${vinMsg}\` : null
+    const vinQuestion  = vinRequested ? `[VIN] ${vinMsg}` : null
     const allQuestions = [...(vinQuestion ? [vinQuestion] : []), ...selected]
     try {
       const res = await fetch('/api/contact-message', {
@@ -120,7 +118,6 @@ export default function ContactModal({ listing, onClose }: Props) {
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
-      // ✅ Ubaci pravo ime ako API nije automatski zamenio
       setMessage(injectName(data.message || ''))
     } catch {
       setError('Greška pri generisanju. Pokušaj ponovo.')
@@ -133,12 +130,12 @@ export default function ContactModal({ listing, onClose }: Props) {
     if (!token) { window.location.href = '/login'; return }
     setSavingInbox(true)
     try {
-      const res = await fetch(\`\${API_BASE}/inbox/conversations\`, {
+      const res = await fetch(`${API_BASE}/inbox/conversations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${token}\` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           listing_id:      listing.id || null,
-          listing_title:   \`\${listing.year || ''} \${listing.make || ''} \${listing.model || ''}\`.trim(),
+          listing_title:   `${listing.year || ''} ${listing.make || ''} ${listing.model || ''}`.trim(),
           listing_url:     listing.url || null,
           listing_price:   listing.price ? Number(listing.price) : null,
           listing_source:  listing.source || null,
@@ -160,12 +157,12 @@ export default function ContactModal({ listing, onClose }: Props) {
   }
 
   const openWhatsApp = () =>
-    window.open(\`https://wa.me/?text=\${encodeURIComponent(message)}\`, '_blank')
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank')
 
   const openGmail = () => {
-    const sub  = encodeURIComponent(\`Inquiry: \${listing.year || ''} \${listing.make || ''} \${listing.model || ''}\`)
+    const sub  = encodeURIComponent(`Inquiry: ${listing.year || ''} ${listing.make || ''} ${listing.model || ''}`)
     const body = encodeURIComponent(message)
-    window.open(\`https://mail.google.com/mail/?view=cm&fs=1&su=\${sub}&body=\${body}\`, '_blank')
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${sub}&body=${body}`, '_blank')
   }
 
   return (
@@ -175,7 +172,6 @@ export default function ContactModal({ listing, onClose }: Props) {
     >
       <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:20, width:'100%', maxWidth:560, maxHeight:'92vh', overflowY:'auto', boxShadow:'0 28px 90px rgba(0,0,0,.65)' }}>
 
-        {/* Header */}
         <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
           <div>
             <h2 style={{ fontSize:18, fontWeight:700, margin:'0 0 5px', fontFamily:'Syne,sans-serif' }}>🤖 Kontaktiraj prodavca</h2>
@@ -190,7 +186,6 @@ export default function ContactModal({ listing, onClose }: Props) {
 
         <div style={{ padding:'20px 24px' }}>
 
-          {/* Ako nema imena — pokaži input */}
           {!userName && (
             <div style={{ background:'rgba(255,107,0,.07)', border:'1px solid rgba(255,107,0,.25)', borderRadius:12, padding:'12px 16px', marginBottom:18, display:'flex', gap:10, alignItems:'center' }}>
               <span style={{ fontSize:20 }}>👤</span>
@@ -205,26 +200,24 @@ export default function ContactModal({ listing, onClose }: Props) {
             </div>
           )}
 
-          {/* Listing chip */}
           <div style={{ background:'var(--bg3)', borderRadius:10, padding:'10px 14px', marginBottom:22, display:'flex', alignItems:'center', gap:12 }}>
             <span style={{ fontSize:22 }}>🚗</span>
             <div>
               <div style={{ fontWeight:600, fontSize:14 }}>
-                {listing.year && \`\${listing.year} \`}{listing.make} {listing.model}
+                {listing.year && `${listing.year} `}{listing.make} {listing.model}
               </div>
               <div style={{ color:'var(--text3)', fontSize:13 }}>
-                {listing.price ? \`\${Number(listing.price).toLocaleString()} €\` : ''}
-                {listing.city ? \` · \${listing.city}\` : ''}
-                {listing.country ? \` · \${listing.country}\` : ''}
+                {listing.price ? `${Number(listing.price).toLocaleString()} €` : ''}
+                {listing.city ? ` · ${listing.city}` : ''}
+                {listing.country ? ` · ${listing.country}` : ''}
               </div>
             </div>
           </div>
 
-          {/* SEKCIJA 1: VIN */}
           <div style={{
             marginBottom:22,
             background: vinRequested ? 'linear-gradient(135deg, rgba(34,197,94,.08), rgba(34,197,94,.04))' : 'linear-gradient(135deg, rgba(99,102,241,.08), rgba(99,102,241,.04))',
-            border: \`2px solid \${vinRequested ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.35)'}\`,
+            border: `2px solid ${vinRequested ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.35)'}`,
             borderRadius:14, padding:'16px 18px', transition:'all .25s',
           }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
@@ -247,13 +240,12 @@ export default function ContactModal({ listing, onClose }: Props) {
               width:'100%', padding:'12px', borderRadius:10, cursor:'pointer', fontSize:14, fontWeight:700, transition:'all .2s',
               background: vinRequested ? 'rgba(34,197,94,.15)' : 'linear-gradient(135deg, rgba(99,102,241,.25), rgba(99,102,241,.15))',
               color: vinRequested ? '#22C55E' : '#818CF8',
-              border: \`1px solid \${vinRequested ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.4)'}\` as any,
+              border: `1px solid ${vinRequested ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.4)'}` as any,
             }}>
               {vinRequested ? '✓ VIN zahtev dodat u poruku' : '🔐 Zatraži VIN broj'}
             </button>
           </div>
 
-          {/* SEKCIJA 2: Dodatna pitanja */}
           <div style={{ marginBottom:18 }}>
             <p style={{ fontSize:11, color:'var(--text3)', margin:'0 0 10px', fontWeight:600, letterSpacing:'.07em' }}>💬 DODATNA PITANJA (opcionalno)</p>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
@@ -261,14 +253,13 @@ export default function ContactModal({ listing, onClose }: Props) {
                 <button key={q} onClick={() => toggleQ(q)} style={{
                   padding:'8px 14px', borderRadius:20, fontSize:13, cursor:'pointer', transition:'all .14s',
                   background: selected.includes(q) ? 'rgba(255,107,0,.14)' : 'var(--bg3)',
-                  border: \`1px solid \${selected.includes(q) ? 'var(--accent)' : 'var(--border)'}\`,
+                  border: `1px solid ${selected.includes(q) ? 'var(--accent)' : 'var(--border)'}`,
                   color: selected.includes(q) ? 'var(--accent)' : 'var(--text2)',
                 }}>{q}</button>
               ))}
             </div>
           </div>
 
-          {/* Custom input */}
           <div style={{ marginBottom:20 }}>
             <p style={{ fontSize:11, color:'var(--text3)', margin:'0 0 8px', fontWeight:600, letterSpacing:'.07em' }}>DODAJ VLASTITO PITANJE (opcionalno)</p>
             <textarea value={custom} onChange={e => setCustom(e.target.value)}
@@ -278,7 +269,6 @@ export default function ContactModal({ listing, onClose }: Props) {
             />
           </div>
 
-          {/* Generate button */}
           <button onClick={generate} disabled={loading || !canGenerate} style={{
             width:'100%', padding:'14px', borderRadius:12, border:'none',
             background: (!canGenerate || loading) ? 'var(--bg3)' : 'var(--accent)',
@@ -286,12 +276,11 @@ export default function ContactModal({ listing, onClose }: Props) {
             fontSize:15, fontWeight:700, cursor:(!canGenerate||loading)?'default':'pointer',
             marginBottom:16, transition:'all .2s',
           }}>
-            {loading ? '⏳ Generišem poruku...' : \`🤖 Generiši poruku na \${langInfo.name.split(' ')[0]}\`}
+            {loading ? '⏳ Generišem poruku...' : `🤖 Generiši poruku na ${langInfo.name.split(' ')[0]}`}
           </button>
 
           {error && <p style={{ color:'#EF4444', fontSize:13, textAlign:'center', margin:'0 0 12px' }}>{error}</p>}
 
-          {/* Generated message */}
           {message && (
             <div>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
@@ -305,7 +294,7 @@ export default function ContactModal({ listing, onClose }: Props) {
                 <button onClick={copy} style={{
                   flex:1, padding:'11px', borderRadius:10,
                   background: copied ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
-                  border: \`1px solid \${copied ? '#22C55E' : 'var(--border)'}\`,
+                  border: `1px solid ${copied ? '#22C55E' : 'var(--border)'}`,
                   color: copied ? '#22C55E' : 'var(--text2)',
                   fontSize:13, fontWeight:600, cursor:'pointer',
                 }}>{copied ? '✓ Kopirano!' : '📋 Kopiraj'}</button>
@@ -319,13 +308,13 @@ export default function ContactModal({ listing, onClose }: Props) {
               <button onClick={saveToInbox} disabled={savingInbox || savedToInbox} style={{
                 width:'100%', padding:'11px', borderRadius:10, marginBottom:10, cursor: savedToInbox ? 'default' : 'pointer',
                 background: savedToInbox ? 'rgba(34,197,94,.1)' : 'rgba(99,102,241,.1)',
-                border: \`1px solid \${savedToInbox ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.3)'}\`,
+                border: `1px solid ${savedToInbox ? 'rgba(34,197,94,.4)' : 'rgba(99,102,241,.3)'}`,
                 color: savedToInbox ? '#22C55E' : '#818CF8',
                 fontSize:13, fontWeight:600, transition:'all .2s',
               }}>
                 {savingInbox ? '⏳ Čuvam...' : savedToInbox ? '✅ Sačuvano u Inbox' : '📬 Sačuvaj u Inbox — prati odgovor'}
               </button>
-              <p style={{ fontSize:11, color:'var(--text3)', textAlign:'center', margin:'0 0 6px', lineHeight:1.5 }}>
+              <p style={{ fontSize:11, color:'var(--text3)', textAlign:'center', margin:0, lineHeight:1.5 }}>
                 Poruka je generisana AI-om. Preporučujemo da je pregledate pre slanja.
               </p>
             </div>
