@@ -74,7 +74,7 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [show, isMobile])
 
-  const btnStyle: React.CSSProperties = {
+  const btnStyle = {
     background: show ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.1)',
     border: `1px solid ${show ? 'rgba(239,68,68,.6)' : 'rgba(239,68,68,.35)'}`,
     borderRadius: 20, width: 18, height: 18, cursor: 'pointer',
@@ -152,7 +152,7 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
 // =====================================================
 // SECTION HEADER sa Info ikonom
 // =====================================================
-function SectionHeader({ title, tooltipId, style }: { title: string; tooltipId: keyof typeof TOOLTIPS; style?: React.CSSProperties }) {
+function SectionHeader({ title, tooltipId, style }: { title: string; tooltipId: keyof typeof TOOLTIPS; style?: any }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', position: 'relative', ...style }}>
       <span>{title}</span>
