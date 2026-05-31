@@ -14,14 +14,12 @@ HEADERS = {
 
 
 def _hq_image(url: str) -> str:
-    """Zameni thumbnail rule sa high-quality verzijom"""
+    """Zameni bilo koji rule sa HQ verzijom ($_14 = velika rezolucija na Marktplaats)"""
     if not url:
         return url
-    url = url.replace("ecg_mp_eps$_79.jpg", "ecg_mp_eps$_14.jpg")
-    url = url.replace("ecg_mp_eps$_57.jpg", "ecg_mp_eps$_14.jpg")
-    url = url.replace("$_79.AUTO", "$_14.AUTO")
-    url = url.replace("$_2.AUTO",  "$_14.AUTO")
-    url = url.replace("$_57.AUTO", "$_14.AUTO")
+    # Na Marktplaatsu $_14 je VELIKA rezolucija (obrnuto od Kleinanzeigen!)
+    url = re.sub(r'ecg_mp_eps\$_\d+\.jpg', 'ecg_mp_eps$_14.jpg', url)
+    url = re.sub(r'\$_\d+\.AUTO', '$_14.AUTO', url)
     return url
 
 
@@ -149,10 +147,10 @@ def _parse_listing(item: dict) -> dict | None:
             model = model or (parts[1] if len(parts) > 1 else None)
 
         year = _parse_int(year_str)
-        if year and year < 2000:
+        if year and year < 1970:
             return None
 
-        # ✅ HQ slike
+        # Sve slike u HQ (bez limita)
         images = []
         for img in (item.get("pictures", []) or item.get("images", []) or []):
             if isinstance(img, dict):
@@ -188,7 +186,7 @@ def _parse_listing(item: dict) -> dict | None:
             "country":         "NL",
             "city":            city.strip() if city else None,
             "description":     title,
-            "images":          images[:6],
+            "images":          images,  # sve slike, bez [:6] limita
             "url":             vip_url,
         }
     except Exception as e:
