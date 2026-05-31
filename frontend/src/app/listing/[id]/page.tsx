@@ -57,6 +57,15 @@ const SOURCE_LABELS: Record<string, string> = {
   mobile_de:    'Mobile.de',
 }
 
+function countryBadge(country: string): string {
+  const flags: Record<string, string> = {
+    DE:'🇩🇪', AT:'🇦🇹', NL:'🇳🇱', BE:'🇧🇪', FR:'🇫🇷',
+    IT:'🇮🇹', CH:'🇨🇭', ES:'🇪🇸', PL:'🇵🇱', DK:'🇩🇰', SE:'🇸🇪',
+  }
+  return flags[country] ? `${flags[country]} ${country}` : '✓ Verifikovan'
+}
+
+
 // =====================================================
 // TOOLTIP TEKSTOVI — svi info opisi na jednom mestu
 // =====================================================
@@ -209,7 +218,7 @@ function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:s
 }
 
 // ── Swipeable glavna slika ────────────────────────────────────────
-function SwipeableImage({ images, activeImg, setActiveImg, alt, portalName }: any) {
+function SwipeableImage({ images, activeImg, setActiveImg, alt, country }: any) {
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -235,7 +244,7 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, portalName }: an
         ? <img src={fullImg(images[activeImg])} alt={alt} style={{width:'100%',height:'100%',objectFit:'contain',userSelect:'none',background:'#0a0a0a'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
         : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
       }
-      <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
+      <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(country||'')}</span>
       {images.length > 1 && (
         <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
           {activeImg+1}/{images.length}
@@ -495,7 +504,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               activeImg={activeImg}
               setActiveImg={setActiveImg}
               alt={`${listing.make} ${listing.model}`}
-              portalName={portalName}
+              country={listing.country}
             />
             {images.length > 1 && (
               <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,marginBottom:8}}>
@@ -534,7 +543,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
                 : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:60}}>🚗</div>
               }
-              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
+              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(country||'')}</span>
             </div>
             {images.length > 1 && (
               <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5,marginBottom:16}}>
@@ -660,7 +669,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 </div>
               )}
               <a href={listing.url} target="_blank" rel="noopener" style={{display:'block',width:'100%',padding:'12px',textAlign:'center',background:'var(--accent)',color:'#fff',borderRadius:10,fontWeight:700,fontSize:14,marginBottom:8,textDecoration:'none'}}>
-                Pogledaj na {portalName} →
+                🔗 Pogledaj originalni oglas →
               </a>
 
               {/* Kontaktiraj sa info */}
@@ -904,7 +913,7 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
                 display:'flex', flexDirection:'column', alignItems:'center', gap:3,
               }}>
                 <span style={{fontSize:22}}>🔗</span>
-                <span style={{fontSize:12}}>{portalName}</span>
+                <span style={{fontSize:12}}>Oglas</span>
               </a>
             </div>
 
