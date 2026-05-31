@@ -196,7 +196,7 @@ const MAKE_LOGOS: Record<string, string> = {
   'Lamborghini':   `${CDN}/lamborghini.png`,
   'Maserati':      `${CDN}/maserati.png`,
   'Aston Martin':  `${CDN}/aston-martin.png`,
-  // Dodatne marke koje postoje u bazi
+  // Dodatne marke
   'Cadillac':      `${CDN}/cadillac.png`,
   'Rolls-Royce':   `${CDN}/rolls-royce.png`,
   'Smart':         `${CDN}/smart.png`,
@@ -214,6 +214,34 @@ const MAKE_LOGOS: Record<string, string> = {
   'Genesis':       `${CDN}/genesis.png`,
   'Lincoln':       `${CDN}/lincoln.png`,
   'Buick':         `${CDN}/buick.png`,
+  // Marke sa slike koje su sada pokrivene
+  'Maxus':         `${CDN}/maxus.png`,
+  'McLaren':       `${CDN}/mclaren.png`,
+  'Lotus':         `${CDN}/lotus.png`,
+  'MAN':           `${CDN}/man.png`,
+  'Microcar':      `${CDN}/microcar.png`,
+  'KTM':           `${CDN}/ktm.png`,
+  'Pontiac':       `${CDN}/pontiac.png`,
+  'BAIC':          `${CDN}/baic-motor.png`,
+  // Kineski i novi EV brendovi
+  'Polestar':      `${CDN}/polestar.png`,
+  'Rivian':        `${CDN}/rivian.png`,
+  'Lucid':         `${CDN}/lucid.png`,
+  'Nio':           `${CDN}/nio.png`,
+  'Xpeng':         `${CDN}/xpeng.png`,
+  'Li Auto':       `${CDN}/li-auto.png`,
+  'Zeekr':         `${CDN}/zeekr.png`,
+  'Great Wall':    `${CDN}/great-wall.png`,
+  'Haval':         `${CDN}/haval.png`,
+  'Geely':         `${CDN}/geely.png`,
+  'Chery':         `${CDN}/chery.png`,
+  'MG':            `${CDN}/mg.png`,
+  'Roewe':         `${CDN}/roewe.png`,
+  'Omoda':         `${CDN}/omoda.png`,
+  'Exeed':         `${CDN}/exeed.png`,
+  'Dongfeng':      `${CDN}/dongfeng.png`,
+  'Lynk & Co':     `${CDN}/lynk-and-co.png`,
+  'Leapmotor':     `${CDN}/leapmotor.png`,
 }
 
 const TOP_19_MAKES = [
