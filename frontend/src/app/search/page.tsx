@@ -152,26 +152,48 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
   )
 }
 
+const CDN = 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb'
+
 const MAKE_LOGOS: Record<string, string> = {
-  'Volkswagen':'https://logo.clearbit.com/vw.com','BMW':'https://logo.clearbit.com/bmw.com',
-  'Mercedes-Benz':'https://logo.clearbit.com/mercedes-benz.com','Audi':'https://logo.clearbit.com/audi.com',
-  'Ford':'https://logo.clearbit.com/ford.com','Opel':'https://logo.clearbit.com/opel.com',
-  'Renault':'https://logo.clearbit.com/renault.com','Peugeot':'https://logo.clearbit.com/peugeot.com',
-  'Citroën':'https://logo.clearbit.com/citroen.com','Škoda':'https://logo.clearbit.com/skoda-auto.com',
-  'Toyota':'https://logo.clearbit.com/toyota.com','Hyundai':'https://logo.clearbit.com/hyundai.com',
-  'Kia':'https://logo.clearbit.com/kia.com','Volvo':'https://logo.clearbit.com/volvocars.com',
-  'SEAT':'https://logo.clearbit.com/seat.com','Fiat':'https://logo.clearbit.com/fiat.com',
-  'Nissan':'https://logo.clearbit.com/nissan.com','Mazda':'https://logo.clearbit.com/mazda.com',
-  'Honda':'https://logo.clearbit.com/honda.com','Tesla':'https://logo.clearbit.com/tesla.com',
-  'Porsche':'https://logo.clearbit.com/porsche.com','MINI':'https://logo.clearbit.com/mini.com',
-  'Mitsubishi':'https://logo.clearbit.com/mitsubishi-motors.com','Suzuki':'https://logo.clearbit.com/suzuki.com',
-  'Subaru':'https://logo.clearbit.com/subaru.com','Dacia':'https://logo.clearbit.com/dacia.com',
-  'Alfa Romeo':'https://logo.clearbit.com/alfaromeo.com','Jeep':'https://logo.clearbit.com/jeep.com',
-  'Land Rover':'https://logo.clearbit.com/landrover.com','Cupra':'https://logo.clearbit.com/cupraofficial.com',
-  'Lexus':'https://logo.clearbit.com/lexus.com','Dodge':'https://logo.clearbit.com/dodge.com',
-  'Chevrolet':'https://logo.clearbit.com/chevrolet.com','Bentley':'https://logo.clearbit.com/bentleymotors.com',
-  'Ferrari':'https://logo.clearbit.com/ferrari.com','Lamborghini':'https://logo.clearbit.com/lamborghini.com',
-  'Maserati':'https://logo.clearbit.com/maserati.com','Aston Martin':'https://logo.clearbit.com/astonmartin.com',
+  'Volkswagen':    `${CDN}/volkswagen.png`,
+  'BMW':           `${CDN}/bmw.png`,
+  'Mercedes-Benz': `${CDN}/mercedes-benz.png`,
+  'Audi':          `${CDN}/audi.png`,
+  'Ford':          `${CDN}/ford.png`,
+  'Opel':          `${CDN}/opel.png`,
+  'Renault':       `${CDN}/renault.png`,
+  'Peugeot':       `${CDN}/peugeot.png`,
+  'Citroën':       `${CDN}/citroen.png`,
+  'Škoda':         `${CDN}/skoda.png`,
+  'Toyota':        `${CDN}/toyota.png`,
+  'Hyundai':       `${CDN}/hyundai.png`,
+  'Kia':           `${CDN}/kia.png`,
+  'Volvo':         `${CDN}/volvo.png`,
+  'SEAT':          `${CDN}/seat.png`,
+  'Fiat':          `${CDN}/fiat.png`,
+  'Nissan':        `${CDN}/nissan.png`,
+  'Mazda':         `${CDN}/mazda.png`,
+  'Honda':         `${CDN}/honda.png`,
+  'Tesla':         `${CDN}/tesla.png`,
+  'Porsche':       `${CDN}/porsche.png`,
+  'MINI':          `${CDN}/mini.png`,
+  'Mini':          `${CDN}/mini.png`,
+  'Mitsubishi':    `${CDN}/mitsubishi.png`,
+  'Suzuki':        `${CDN}/suzuki.png`,
+  'Subaru':        `${CDN}/subaru.png`,
+  'Dacia':         `${CDN}/dacia.png`,
+  'Alfa Romeo':    `${CDN}/alfa-romeo.png`,
+  'Jeep':          `${CDN}/jeep.png`,
+  'Land Rover':    `${CDN}/land-rover.png`,
+  'Cupra':         `${CDN}/cupra.png`,
+  'Lexus':         `${CDN}/lexus.png`,
+  'Dodge':         `${CDN}/dodge.png`,
+  'Chevrolet':     `${CDN}/chevrolet.png`,
+  'Bentley':       `${CDN}/bentley.png`,
+  'Ferrari':       `${CDN}/ferrari.png`,
+  'Lamborghini':   `${CDN}/lamborghini.png`,
+  'Maserati':      `${CDN}/maserati.png`,
+  'Aston Martin':  `${CDN}/aston-martin.png`,
 }
 
 const TOP_19_MAKES = [
@@ -289,27 +311,53 @@ function MakeTile({ makeName, count, isSelected, onClick, logoFailed, onLogoErro
   makeName:string;count:number;isSelected:boolean;onClick:()=>void;logoFailed:boolean;onLogoError:()=>void
 }) {
   const logoUrl = MAKE_LOGOS[makeName]
-  const initials = makeName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
+  const initials = makeName.split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()
+  const hasBgLogo = logoUrl && !logoFailed
+
   return (
     <button onClick={onClick} className="make-tile" style={{
-      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-      gap:6,padding:'12px 6px',borderRadius:14,cursor:'pointer',
-      background:isSelected?'rgba(255,107,0,.15)':'var(--bg2)',
-      border:`2px solid ${isSelected?'var(--accent)':'var(--border)'}`,
-      transition:'all .15s',minHeight:80,
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+      gap:5, padding:'10px 4px', borderRadius:14, cursor:'pointer',
+      background: isSelected ? 'rgba(255,107,0,.12)' : 'var(--bg2)',
+      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+      transition:'all .15s',
+      height: 94, width:'100%', boxSizing:'border-box' as any,
     }}>
-      <div style={{width:36,height:36,borderRadius:8,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',background:isSelected?'rgba(255,107,0,.1)':'rgba(255,255,255,.06)',flexShrink:0}}>
-        {logoUrl&&!logoFailed ? (
-          <img src={logoUrl} alt={makeName} style={{width:28,height:28,objectFit:'contain',filter:'brightness(0) invert(1)',opacity:isSelected?1:0.7}} onError={onLogoError} />
+      {/* Logo ili inicijali — fiksna veličina za sve */}
+      <div style={{
+        width:44, height:44, flexShrink:0,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        borderRadius:10, overflow:'hidden',
+        background: hasBgLogo ? 'rgba(255,255,255,.95)' : (isSelected ? 'rgba(255,107,0,.18)' : 'rgba(255,255,255,.07)'),
+        boxSizing:'border-box' as any,
+        padding: hasBgLogo ? 3 : 0,
+      }}>
+        {hasBgLogo ? (
+          <img
+            src={logoUrl} alt={makeName}
+            style={{ width:38, height:38, objectFit:'contain' }}
+            onError={onLogoError}
+          />
         ) : (
-          <span style={{fontSize:13,fontWeight:700,color:isSelected?'var(--accent)':'var(--text3)'}}>{initials}</span>
+          <span style={{ fontSize:15, fontWeight:800, color: isSelected ? 'var(--accent)' : 'var(--text3)', lineHeight:1 }}>{initials}</span>
         )}
       </div>
-      <div style={{fontSize:11,fontWeight:600,color:isSelected?'var(--accent)':'var(--text2)',textAlign:'center',lineHeight:1.2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%',paddingLeft:2,paddingRight:2}}>{makeName}</div>
-      <div style={{fontSize:10,color:'var(--text3)',opacity:.7}}>{count}</div>
+
+      {/* Naziv marke */}
+      <div style={{
+        fontSize: 10, fontWeight: 600, lineHeight: 1.2,
+        color: isSelected ? 'var(--accent)' : 'var(--text2)',
+        textAlign:'center', width:'100%',
+        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+        paddingLeft:4, paddingRight:4,
+      }}>{makeName}</div>
+
+      {/* Broj oglasa */}
+      <div style={{ fontSize:9, color:'var(--text3)', opacity:.6, lineHeight:1 }}>{count}</div>
     </button>
   )
 }
+
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
