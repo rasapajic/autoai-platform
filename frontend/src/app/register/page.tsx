@@ -6,6 +6,7 @@ export default function RegisterPage() {
   const [lastName,  setLastName]  = useState('')
   const [email,     setEmail]     = useState('')
   const [password,  setPassword]  = useState('')
+  const [showPass,  setShowPass]  = useState(false)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState('')
 
@@ -63,8 +64,14 @@ export default function RegisterPage() {
           </div>
           <div style={{ marginBottom:22 }}>
             <label style={{ fontSize:12, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em' }}>LOZINKA</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="Min. 8 karaktera" style={IS} />
+            <div style={{ position:'relative' }}>
+              <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                placeholder="Min. 8 karaktera" style={{...IS, paddingRight:44}} />
+              <button type="button" onClick={() => setShowPass(v => !v)}
+                style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:18, lineHeight:1, padding:0 }}>
+                {showPass ? '🙈' : '👁'}
+              </button>
+            </div>
           </div>
           {error && <p style={{ color:'#EF4444', fontSize:13, marginBottom:14 }}>{error}</p>}
           <button onClick={handleRegister} disabled={loading} style={{
