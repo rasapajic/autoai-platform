@@ -543,7 +543,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
                 : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:60}}>🚗</div>
               }
-              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(country||'')}</span>
+              <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(listing.country||'')}</span>
             </div>
             {images.length > 1 && (
               <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5,marginBottom:16}}>
