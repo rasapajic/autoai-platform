@@ -31,23 +31,23 @@ const SOURCE_LABELS: Record<string, string> = {
 // TOOLTIP TEKSTOVI — svi info opisi na jednom mestu
 // =====================================================
 const TOOLTIPS = {
-  aiScore: `AI Score je automatska ocena oglasa od 0 do 100. Računa se na osnovu kompletnosti podataka, realnosti cene u odnosu na tržište, kilometraže i podobnosti vozila za uvoz u Srbiju. Što je score viši, oglas je pouzdaniji i vozilo pogodnije za kupovinu.`,
+  aiScore: "AI Score je automatska ocena oglasa od 0 do 100. Računa se na osnovu kompletnosti podataka, realnosti cene u odnosu na tržište, kilometraže i podobnosti vozila za uvoz u Srbiju. Što je score viši, oglas je pouzdaniji i vozilo pogodnije za kupovinu.",
 
-  uvozSrbija: `Ovaj indikator pokazuje da li vozilo može da se uveze u Srbiju bez problema. Srbija zahteva minimum Euro 4 emisijsku normu (za benzince godište 2006+, dizele treba posebno proveriti). Električna vozila su oslobođena carine i nemaju ograničenja.`,
+  uvozSrbija: "Ovaj indikator pokazuje da li vozilo može da se uveze u Srbiju bez problema. Srbija zahteva minimum Euro 4 emisijsku normu (za benzince godište 2006+, dizele treba posebno proveriti). Električna vozila su oslobođena carine i nemaju ograničenja.",
 
-  ukupnoSrbija: `Prikazuje procenu ukupnog troška kupovine vozila iz EU i dovoženja u Srbiju. Uključuje: EU cenu vozila, carinu (0-5% zavisno od tipa), PDV (20%), transport od prodavca do Srbije (~420€) i troškove registracije (~280€). Ovo je procena — tačan iznos može da varira.`,
+  ukupnoSrbija: "Prikazuje procenu ukupnog troška kupovine vozila iz EU i dovoženja u Srbiju. Uključuje: EU cenu vozila, carinu (0-5% zavisno od tipa), PDV (20%), transport od prodavca do Srbije (~420€) i troškove registracije (~280€). Ovo je procena — tačan iznos može da varira.",
 
-  podaciProvereni: `AutoAI je automatski posjetio originalni oglas i ažurirao podatke o vozilu — godište, kilometražu, gorivo i Euro normu. Ovo smanjuje grešku koja nastaje kada prodavaci pogrešno unose podatke na platformama.`,
+  podaciProvereni: "AutoAI je automatski posjetio originalni oglas i ažurirao podatke o vozilu — godište, kilometražu, gorivo i Euro normu. Ovo smanjuje grešku koja nastaje kada prodavaci pogrešno unose podatke na platformama.",
 
-  bezbednosnaProvera: `Automatska analiza oglasa na znakove prevare. AI traži tipične obrasce lažnih oglasa: sumnjivo niska cena, nekonzistentni podaci, nedostatak fotografija, ili neobična lokacija vozila. Zeleni signali znače da oglas izgleda legitimno.`,
+  bezbednosnaProvera: "Automatska analiza oglasa na znakove prevare. AI traži tipične obrasce lažnih oglasa: sumnjivo niska cena, nekonzistentni podaci, nedostatak fotografija, ili neobična lokacija vozila. Zeleni signali znače da oglas izgleda legitimno.",
 
-  vinProvera: `VIN (Vehicle Identification Number) je jedinstveni 17-cifreni broj svakog vozila, poput lične karte automobila. Unošenjem VIN broja možeš da proveris da li se podaci iz oglasa (marka, model, godište) poklapaju sa zvaničnim podacima iz fabrike. Neslaganje može biti znak prevare.`,
+  vinProvera: "VIN (Vehicle Identification Number) je jedinstveni 17-cifreni broj svakog vozila, poput lične karte automobila. Unošenjem VIN broja možeš da proveris da li se podaci iz oglasa (marka, model, godište) poklapaju sa zvaničnim podacima iz fabrike. Neslaganje može biti znak prevare.",
 
-  staProveriti: `Lista specifičnih stvari koje treba proveriti kod ovog modela vozila na fizičkom pregledu. Svaki model automobila ima poznate slabosti — ovde su navedeni tipični problemi za ovu marku i model kako bi se zaštitio od skupe greške.`,
+  staProveriti: "Lista specifičnih stvari koje treba proveriti kod ovog modela vozila na fizičkom pregledu. Svaki model automobila ima poznate slabosti — ovde su navedeni tipični problemi za ovu marku i model kako bi se zaštitio od skupe greške.",
 
-  kontaktirajProdavca: `AI automatski generiše profesionalnu poruku prodavcu na njegovom jeziku (nemački, holandski, francuski...). Poruka pita za sve važne detalje — VIN broj, servisnu istoriju, razlog prodaje i dostupnost za pregled. Ne moraš da znaš strani jezik.`,
+  kontaktirajProdavca: "AI automatski generiše profesionalnu poruku prodavcu na njegovom jeziku (nemački, holandski, francuski...). Poruka pita za sve važne detalje — VIN broj, servisnu istoriju, razlog prodaje i dostupnost za pregled. Ne moraš da znaš strani jezik.",
 
-  sacuvajPretragu: `Sačuvaj trenutne filtere i dobijaj email obaveštenje čim se pojavi novo vozilo koje odgovara tvojim kriterijumima. Korisno kada tražiš specifičan model — nema potrebe da svakodnevno pretražuješ ručno.`,
+  sacuvajPretragu: "Sačuvaj trenutne filtere i dobijaj email obaveštenje čim se pojavi novo vozilo koje odgovara tvojim kriterijumima. Korisno kada tražiš specifičan model — nema potrebe da svakodnevno pretražuješ ručno.",
 }
 
 // =====================================================
@@ -146,18 +146,6 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
         </span>
       )}
     </span>
-  )
-}
-
-// =====================================================
-// SECTION HEADER sa Info ikonom
-// =====================================================
-function SectionHeader({ title, tooltipId, style }: { title: string; tooltipId: keyof typeof TOOLTIPS; style?: any }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', position: 'relative', ...style }}>
-      <span>{title}</span>
-      <InfoIcon id={tooltipId} text={TOOLTIPS[tooltipId]} />
-    </div>
   )
 }
 
