@@ -720,7 +720,7 @@ export default function SearchPage() {
         </button>
 
         <div className="sg" style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:24,alignItems:'start'}}>
-          <aside className="sd" style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:20,position:'sticky',top:80}}>
+          <aside className="sd" style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:20,position:'sticky',top:80,maxHeight:'calc(100vh - 100px)',overflowY:'auto'}}>
             <Sidebar filters={filters} setFilter={setFilter} onReset={()=>{const r={...DEFAULT_FILTERS};setFilters(r);doSearch(r)}} />
           </aside>
           {sidebarOpen&&(
