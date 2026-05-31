@@ -1000,12 +1000,12 @@ function Sidebar({filters,setFilter,onReset}:any) {
         </div>
       </FS>
       <FS label="Lokacija vozila">
-        <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4}}>
           {COUNTRIES.map(({code,flag,label})=>{
             const active=(filters.countries||[]).includes(code)
             return (
               <button key={code} className="cb" onClick={()=>{const cur=filters.countries||[];setFilter('countries',active?cur.filter((c:string)=>c!==code):[...cur,code])}}
-                style={{padding:'4px 9px',borderRadius:20,fontSize:12,cursor:'pointer',transition:'all .15s',background:active?'rgba(255,107,0,.15)':'transparent',border:`1px solid ${active?'var(--accent)':'var(--border)'}`,color:active?'var(--accent)':'var(--text3)'}}>
+                style={{padding:'5px 8px',borderRadius:8,fontSize:12,cursor:'pointer',transition:'all .15s',background:active?'rgba(255,107,0,.15)':'transparent',border:`1px solid ${active?'var(--accent)':'var(--border)'}`,color:active?'var(--accent)':'var(--text3)',textAlign:'left'}}>
                 {flag} {label}
               </button>
             )
