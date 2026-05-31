@@ -49,7 +49,6 @@ KNOWN_MAKES = [
     "Suzuki","Tesla","Toyota","Volkswagen","Volvo",
 ]
 
-# ✅ Rotacija zemalja — svaki run skuplja iz druge države
 COUNTRY_ROTATION = ["D", "A", "F", "B", "NL", "I", "E", "CH", "PL", "CZ", "H"]
 
 
@@ -114,8 +113,6 @@ class AutoScout24Scraper:
             "pricefrom": 2000,
             "ustate":   "N,U",
         }
-
-        # ✅ Zemlja — iz filtera ili argumenta
         if country:
             params["cy"] = country
         elif filters.get("country"):
@@ -149,7 +146,6 @@ class AutoScout24Scraper:
         seen_ids = set()
         filter_fuel = filters.get("fuel_type")
 
-        # ✅ Ako nema specifičnog filtera za zemlju, rotiraj po svim zemljama
         countries = []
         if filters.get("country"):
             countries = [filters["country"].upper()]
@@ -277,14 +273,24 @@ class AutoScout24Scraper:
                     const val = parseInt(raw.replace(/\./g,'').replace(/,/g,''));
                     if (val >= 1 && val <= 999999) { km_text = raw+' km'; break; }
                 }
+                // ✅ FIX: Diesel i Benzin se provjeravaju PRIJE Electric
+                // Koristimo word-boundary regex da izbjegnemo "Electric windows" itd.
                 const fuelPairs = [
-                    ['Electric','electric'],['Elektro','electric'],['Hybrid','hybrid'],
-                    ['Diesel','diesel'],['Benzin','petrol'],['Petrol','petrol'],
-                    ['LPG','lpg'],['CNG','cng'],
+                    [/\bDiesel\b/i,   'diesel'],
+                    [/\bBenzin\b/i,   'petrol'],
+                    [/\bGasoline\b/i, 'petrol'],
+                    [/\bPetrol\b/i,   'petrol'],
+                    [/\bElektro\b/i,  'electric'],
+                    [/\bElektric\b/i, 'electric'],
+                    [/\bBEV\b/,       'electric'],
+                    [/\bHybrid\b/i,   'hybrid'],
+                    [/\bPlug-in\b/i,  'hybrid'],
+                    [/\bLPG\b/i,      'lpg'],
+                    [/\bCNG\b/i,      'cng'],
                 ];
                 let fuel_text = '';
-                for (const [kw,norm] of fuelPairs) {
-                    if (fullText.includes(kw)) { fuel_text=norm; break; }
+                for (const [rx,norm] of fuelPairs) {
+                    if (rx.test(fullText)) { fuel_text=norm; break; }
                 }
                 const transKws = ['Automatik','Automatic','Schaltgetriebe','Manual','DSG'];
                 let trans_text = '';
@@ -342,8 +348,9 @@ class AutoScout24Scraper:
 
         if year and year < 2005:
             return None
-        if not fuel_type and filter_fuel:
-            fuel_type = filter_fuel
+
+        # ✅ FIX: Ne koristiti filter kao fallback — može biti pogrešno za gorivo
+        # if not fuel_type and filter_fuel: fuel_type = filter_fuel
 
         country, city = self._parse_location(raw.get("location_raw", ""))
 
