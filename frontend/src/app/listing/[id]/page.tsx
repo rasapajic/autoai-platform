@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { getListing, getPriceHistory, getSimilar, fraudCheck } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
 import VinChecker from '@/components/VinChecker'
