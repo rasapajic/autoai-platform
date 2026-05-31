@@ -320,7 +320,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const trust     = calcTrustScore(listing, vinResult)
   const portalName = SOURCE_LABELS[listing.source] || listing.source || 'Portal'
 
-  const fuelLabel = (f: string) => ({diesel:'Dizel',petrol:'Benzin',electric:'Električni',hybrid:'Hibrid',lpg:'Plin',gasoline:'Benzin'} as any)[f]||f
+  const fuelLabel = (f: string) => ({diesel:'Dizel',petrol:'Benzin',gasoline:'Benzin',benzin:'Benzin',electric:'Električni',elektrisch:'Električni',hybrid:'Hibrid',lpg:'Plin',cng:'CNG'} as any)[f.toLowerCase()]||f
 
   const specs = [
     {label:'Godište',    value:listing.year},
