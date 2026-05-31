@@ -296,7 +296,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div style={{paddingBottom:20}}>
+    <div style={{paddingBottom:0}}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
 
       {/* AI Score Bottom Sheet */}
@@ -439,7 +439,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
           {/* MOBILE STACK */}
           <div className="mobile-stack">
-            <div style={{marginBottom:8,borderRadius:14,overflow:'hidden',position:'relative',height:220,background:'var(--bg3)'}}>
+            <div style={{marginBottom:8,borderRadius:14,overflow:'hidden',position:'relative',height:200,background:'var(--bg3)'}}>
               {images[activeImg]
                 ? <img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
                 : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
@@ -448,9 +448,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               {images.length > 1 && <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{activeImg+1}/{images.length}</span>}
             </div>
             {images.length > 1 && (
-              <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:8,paddingBottom:2}}>
-                {images.slice(0,8).map((img:string,i:number) => (
-                  <div key={i} onClick={() => setActiveImg(i)} style={{width:54,height:40,flexShrink:0,borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,marginBottom:8}}>
+                {images.map((img:string,i:number) => (
+                  <div key={i} onClick={() => setActiveImg(i)} style={{aspectRatio:'4/3',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`}}>
                     <img src={img} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} />
                   </div>
                 ))}
@@ -487,9 +487,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.7)'}}>{portalName}</span>
             </div>
             {images.length > 1 && (
-              <div style={{display:'flex',gap:5,overflowX:'auto',marginBottom:16}}>
-                {images.slice(0,10).map((img:string,i:number) => (
-                  <div key={i} onClick={() => setActiveImg(i)} style={{width:70,height:50,flexShrink:0,borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:5,marginBottom:16}}>
+                {images.map((img:string,i:number) => (
+                  <div key={i} onClick={() => setActiveImg(i)} style={{aspectRatio:'4/3',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`}}>
                     <img src={img} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} />
                   </div>
                 ))}
@@ -900,7 +900,7 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
                 <div style={{display:'flex',alignItems:'center',marginBottom:6}}>
                   <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em'}}>🇷🇸 TROŠAK UVOZA U SRBIJU</div>
                 </div>
-                <div style={{fontSize:26,fontWeight:800,color:'vavar(--accent)',marginBottom:10}}>{fmt(bd.total)} €</div>
+                <div style={{fontSize:26,fontWeight:800,color:'var(--accent)',marginBottom:10}}>{fmt(bd.total)} €</div>
                 {[
                   {label:'EU cena', val:price!, note:''},
                   {label:`Carina (${bd.carinaPct}%)`, val:bd.carina, note:bd.carinaPct===0?'0%':'srbija'},
