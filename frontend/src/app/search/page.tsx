@@ -888,7 +888,9 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
             ?<img src={fullImg(img)} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'contain',background:'#0a0a0a'}} onError={e=>{(e.target as HTMLImageElement).src=img}} />
             :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:48,opacity:.35}}>🚗</div>
           }
-          <span style={{position:'absolute',bottom:10,left:10,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 8px',fontSize:11,color:'rgba(255,255,255,.65)',backdropFilter:'blur(4px)'}}>{listing.source}</span>
+          <span style={{position:'absolute',bottom:10,left:10,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 8px',fontSize:11,color:'rgba(255,255,255,.85)',backdropFilter:'blur(4px)'}}>
+            {listing.country === 'DE' ? '🇩🇪' : listing.country === 'AT' ? '🇦🇹' : listing.country === 'NL' ? '🇳🇱' : listing.country === 'BE' ? '🇧🇪' : listing.country === 'FR' ? '🇫🇷' : listing.country === 'IT' ? '🇮🇹' : listing.country === 'CH' ? '🇨🇭' : listing.country === 'ES' ? '🇪🇸' : listing.country === 'PL' ? '🇵🇱' : listing.country === 'DK' ? '🇩🇰' : listing.country === 'SE' ? '🇸🇪' : '✓'} Verifikovan izvor
+          </span>
         </div>
         <div style={{padding:'14px 18px 0'}}>
           <h3 style={{fontSize:15,fontWeight:600,margin:'0 0 4px',fontFamily:'Syne,sans-serif',lineHeight:1.3,color:'var(--text)'}}>
