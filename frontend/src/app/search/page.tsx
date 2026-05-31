@@ -59,9 +59,11 @@ const TOOLTIPS = {
 function InfoIcon({ id, text }: { id: string; text: string }) {
   const [show, setShow]         = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [mounted, setMounted]   = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
+    setMounted(true)
     const check = () => setIsMobile(window.innerWidth < 769)
     check()
     window.addEventListener('resize', check)
@@ -85,6 +87,12 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
   }
+
+  if (!mounted) return (
+    <span style={{ display:'inline-flex', alignItems:'center', marginLeft:5 }}>
+      <span style={btnStyle}>ℹ</span>
+    </span>
+  )
 
   return (
     <span ref={ref} style={{ display:'inline-flex', alignItems:'center', marginLeft:5, position:'relative' }}>
