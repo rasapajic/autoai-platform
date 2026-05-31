@@ -75,10 +75,10 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
   }, [show, isMobile])
 
   const btnStyle: React.CSSProperties = {
-    background: show ? 'rgba(255,107,0,.15)' : 'rgba(255,255,255,.07)',
-    border: `1px solid ${show ? 'rgba(255,107,0,.4)' : 'rgba(255,255,255,.12)'}`,
+    background: show ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.1)',
+    border: `1px solid ${show ? 'rgba(239,68,68,.6)' : 'rgba(239,68,68,.35)'}`,
     borderRadius: 20, width: 18, height: 18, cursor: 'pointer',
-    fontSize: 10, color: show ? 'var(--accent)' : 'var(--text3)',
+    fontSize: 10, color: show ? '#EF4444' : '#EF4444',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
   }
