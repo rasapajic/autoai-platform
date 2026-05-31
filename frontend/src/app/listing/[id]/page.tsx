@@ -573,7 +573,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 {specs.map(s => (
                   <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'9px 12px'}}>
                     <div style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>{s.label}</div>
-                    <div style={{fontSize:13,fontWeight:500}}>{s.value}</div>
+                    <div style={{fontSize:13,fontWeight:500}}>
+                      {s.label === 'Grad' ? (
+                        <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
+                          target="_blank" rel="noopener" style={{color:'inherit',textDecoration:'none'}}>
+                          {s.value} 📍
+                        </a>
+                      ) : s.value}
+                    </div>
                   </div>
                 ))}
               </div>
