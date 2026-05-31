@@ -872,9 +872,9 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
       )}
 
       <a href={`/listing/${listing.id}`} onClick={onListingClick} style={{display:'block',textDecoration:'none'}}>
-        <div style={{height:200,background:'var(--bg3)',position:'relative',overflow:'hidden'}}>
+        <div style={{height:220,background:'#0a0a0a',position:'relative',overflow:'hidden'}}>
           {img
-            ?<img src={fullImg(img)} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{(e.target as HTMLImageElement).src=img}} />
+            ?<img src={fullImg(img)} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:'100%',objectFit:'contain',background:'#0a0a0a'}} onError={e=>{(e.target as HTMLImageElement).src=img}} />
             :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:48,opacity:.35}}>🚗</div>
           }
           <span style={{position:'absolute',bottom:10,left:10,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 8px',fontSize:11,color:'rgba(255,255,255,.65)',backdropFilter:'blur(4px)'}}>{listing.source}</span>
