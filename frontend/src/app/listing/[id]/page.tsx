@@ -250,15 +250,17 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       style={{ position:'relative', borderRadius:20, overflow:'hidden',
-        height:220, background:'#111', touchAction:'pan-y', marginBottom:0, marginLeft:-12, marginRight:-12 }}
+        aspectRatio:'16/10', width:'100%', background:'#0d0d0d',
+        touchAction:'pan-y', marginBottom:0 }}
     >
       {/* Slika */}
       {images[activeImg]
         ? <img src={fullImg(images[activeImg])} alt={alt}
-            style={{ width:'100%', height:'100%', objectFit:'contain', userSelect:'none' }}
+            style={{ width:'100%', height:'100%', objectFit:'contain',
+              objectPosition:'center center', userSelect:'none', display:'block' }}
             onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }} />
         : <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-            height:'100%', fontSize:60 }}>🚗</div>
+            height:'100%', fontSize:60, aspectRatio:'16/10' }}>🚗</div>
       }
 
       {/* Gradient overlay bottom */}
@@ -505,9 +507,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
         .action-btn:active { opacity:.8; transform:scale(.97); }
       `}</style>
 
-      <div className="container" style={{padding:'0 12px 0'}}>
+      <div className="container" style={{padding:'0 0 0'}}>
         {/* Breadcrumb */}
-        <div style={{fontSize:12,color:'var(--text3)',marginBottom:10,display:'flex',alignItems:'center',gap:5}}>
+        <div style={{fontSize:12,color:'var(--text3)',marginBottom:10,display:'flex',alignItems:'center',gap:5,padding:'12px 16px 0'}}>
           <a href={backUrl} style={{color:'var(--text3)',textDecoration:'none'}}>← Pretraga</a>
           <span>·</span>
           <span style={{color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{listing.make} {listing.model}</span>
@@ -590,7 +592,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             </div>
 
             {/* ── NAZIV + META ──────────────────────── */}
-            <div style={{padding:'14px 0 8px'}}>
+            <div style={{padding:'14px 16px 8px'}}>
               {/* Make / Model */}
               <div style={{fontSize:13,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:2}}>
                 {listing.make?.toUpperCase()}
@@ -622,14 +624,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             </div>
 
             {/* ── CENA ──────────────────────────────────── */}
-            <div style={{marginBottom:14}}>
+            <div style={{marginBottom:14,paddingLeft:16,paddingRight:16}}>
               <div style={{fontSize:38,fontWeight:900,color:'var(--text)',lineHeight:1,letterSpacing:'-1px'}}>
                 {price ? `${fmt(price)} €` : 'Na upit'}
               </div>
             </div>
 
             {/* ── DVE KARTICE: UVOZ + SRBIJA ────────────── */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16,paddingLeft:16,paddingRight:16}}>
               <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}22`,borderRadius:16,padding:'12px 14px'}}>
                 <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:4}}>UVOZ U SRBIJU</div>
                 <div style={{fontSize:13,fontWeight:700,color:eligColor,marginBottom:2}}>{elig.emoji} {elig.label}</div>
@@ -651,7 +653,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             </div>
 
             {/* ── CTA DUGMAD ────────────────────────────── */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,marginBottom:16}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,marginBottom:16,paddingLeft:16,paddingRight:16}}>
               <button onClick={() => setShowContact(true)} style={{
                 padding:'16px 12px',background:'var(--accent)',border:'none',
                 color:'#fff',borderRadius:20,fontSize:16,fontWeight:800,cursor:'pointer',
@@ -677,6 +679,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             </div>
 
             {/* ── TABS ──────────────────────────────────── */}
+            <div style={{paddingLeft:16,paddingRight:16}}>
             <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust}
               specs={specs} similar={similar} price={price} deltaGood={deltaGood}
               onContact={() => setShowContact(true)} onShowScore={() => setShowScoreSheet(true)}
@@ -685,6 +688,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               onVinResult={setVinResult} vinResult={vinResult}
               portalName={portalName} saved={favorited} onSave={handleSave}
             />
+            </div>
           </div>
 
           {/* DESKTOP LEVA KOLONA */}
