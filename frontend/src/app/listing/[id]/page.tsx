@@ -341,41 +341,71 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
             alignItems:'center', justifyContent:'center', fontSize:60 }}>🚗</div>
       }
 
-      {/* AI SCORE — gore lijevo */}
-      {trust && (
-        <div onClick={onScoreClick} style={{
-          position:'absolute', top:10, left:10, cursor:'pointer',
+      {/* GORE LIJEVO: Verifikovan + AI score stacked */}
+      <div style={{ position:'absolute', top:10, left:10, display:'flex', flexDirection:'column', gap:6 }}>
+        {/* Verifikovan izvor */}
+        <div style={{
           background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)',
-          borderRadius:10, padding:'5px 10px',
-          border:`1px solid ${scoreColor}55`,
+          borderRadius:20, padding:'5px 12px',
+          border:`1px solid ${verifyBadge.color}55`,
+          display:'flex', alignItems:'center', gap:6,
         }}>
-          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-            <div style={{ width:7, height:7, borderRadius:'50%', background:scoreColor }} />
-            <span style={{ fontSize:14, fontWeight:900, color:scoreColor }}>AI {trust.score}</span>
+          <span style={{ fontSize:13, color:verifyBadge.color }}>
+            {enriched ? '✅' : '⚠️'}
+          </span>
+          <span style={{ fontSize:12, fontWeight:700, color:'#fff' }}>{verifyBadge.text}</span>
+        </div>
+
+        {/* AI Score */}
+        {trust && (
+          <div onClick={onScoreClick} style={{
+            background:'rgba(0,0,0,.82)', backdropFilter:'blur(8px)',
+            borderRadius:14, padding:'8px 12px', cursor:'pointer',
+            border:`1px solid ${scoreColor}55`,
+            display:'flex', alignItems:'center', gap:10,
+          }}>
+            {/* Ring */}
+            <div style={{ position:'relative', width:36, height:36, flexShrink:0 }}>
+              <svg width="36" height="36" style={{ transform:'rotate(-90deg)' }}>
+                <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="3" />
+                <circle cx="18" cy="18" r="14" fill="none" stroke={scoreColor} strokeWidth="3"
+                  strokeDasharray={`${(trust.score/100)*88} 88`} strokeLinecap="round" />
+              </svg>
+              <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ fontSize:10, fontWeight:800, color:scoreColor }}>{trust.score}</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:16, fontWeight:900, color:scoreColor, lineHeight:1 }}>
+                AI {trust.score}<span style={{ fontSize:11, opacity:.7 }}>/100</span>
+              </div>
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.7)', marginTop:2 }}>{trust.label}</div>
+            </div>
           </div>
-          <div style={{ fontSize:10, color:'rgba(255,255,255,.55)', marginTop:1 }}>{scoreLabel}</div>
+        )}
+      </div>
+
+      {/* GORE DESNO: broj slika */}
+      {images.length > 1 && (
+        <div style={{
+          position:'absolute', top:10, right:10,
+          background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)',
+          borderRadius:20, padding:'5px 12px',
+          border:'1px solid rgba(255,255,255,.15)',
+        }}>
+          <span style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{activeImg+1} / {images.length}</span>
         </div>
       )}
 
-      {/* STATUS — gore desno */}
-      <div style={{
-        position:'absolute', top:10, right:10,
-        background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)',
-        borderRadius:20, padding:'4px 9px',
-        border:`1px solid ${verifyBadge.color}44`,
-      }}>
-        <span style={{ fontSize:11, fontWeight:700, color:verifyBadge.color }}>{verifyBadge.text}</span>
-      </div>
-
       {/* Dot indikatori */}
       {images.length > 1 && (
-        <div style={{ position:'absolute', bottom:8, left:'50%', transform:'translateX(-50%)',
-          display:'flex', gap:5, alignItems:'center' }}>
+        <div style={{ position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)',
+          display:'flex', gap:6, alignItems:'center' }}>
           {images.slice(0, 8).map((_: string, i: number) => (
             <div key={i} onClick={() => setActiveImg(i)} style={{
-              width: activeImg===i ? 18 : 6, height:6, borderRadius:3,
-              background: activeImg===i ? '#fff' : 'rgba(255,255,255,.4)',
-              cursor:'pointer', transition:'all .2s',
+              width: activeImg===i ? 22 : 7, height:7, borderRadius:4,
+              background: activeImg===i ? 'var(--accent)' : 'rgba(255,255,255,.35)',
+              cursor:'pointer', transition:'all .25s',
             }} />
           ))}
         </div>
@@ -671,10 +701,10 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <div style={{fontSize:13,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:4}}>
                 {listing.make?.toUpperCase()}
               </div>
-              <div style={{fontSize:30,fontWeight:700,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.2,color:'var(--text)'}}>
+              <div style={{fontSize:34,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.2,color:'var(--text)'}}>
                 {listing.model}{listing.year ? <span style={{color:'var(--text3)',fontWeight:400}}> {listing.year}</span> : ''}
               </div>
-              <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:15,color:'var(--text3)',marginBottom:14}}>
+              <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:16,color:'var(--text2)',marginBottom:16}}>
                 {listing.city && <span>📍 {listing.city.split(' - ')[0]}</span>}
                 {listing.fuel_type && <span>⛽ {fuelLabel(listing.fuel_type)}</span>}
                 {listing.mileage && <span>🛣 {fmtKm(listing.mileage)}</span>}
@@ -683,7 +713,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* ── CENA ──────────────────────────────────── */}
             <div style={{padding:'0 16px 16px'}}>
-              <div style={{fontSize:52,fontWeight:800,color:'var(--text)',lineHeight:1,letterSpacing:'-1px'}}>
+              <div style={{fontSize:54,fontWeight:900,color:'var(--text)',lineHeight:1,letterSpacing:'-1.5px'}}>
                 {price ? `${fmt(price)} €` : 'Na upit'}
               </div>
               {listing.price_delta_pct && (
@@ -703,7 +733,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,padding:'0 16px 16px'}}>
               <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:16,padding:'14px 16px',minHeight:90}}>
                 <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>UVOZ U SRBIJU</div>
-                <div style={{fontSize:18,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
+                <div style={{fontSize:20,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
                 {elig.sublabel && <div style={{fontSize:13,color:'var(--text3)',lineHeight:1.4}}>{elig.sublabel}</div>}
               </div>
               {bd ? (
@@ -712,7 +742,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',
                   width:'100%',minHeight:90}}>
                   <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>ZA SRBIJU</div>
-                  <div style={{fontSize:24,fontWeight:800,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
+                  <div style={{fontSize:28,fontWeight:900,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
                   <div style={{fontSize:13,color:'var(--text3)'}}>Sa uvozom →</div>
                 </button>
               ) : (
@@ -726,7 +756,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,padding:'0 16px 20px'}}>
               <button onClick={() => setShowContact(true)} style={{
                 padding:'18px 12px',background:'var(--accent)',border:'none',
-                color:'#fff',borderRadius:20,fontSize:20,fontWeight:800,cursor:'pointer',
+                color:'#fff',borderRadius:20,fontSize:22,fontWeight:800,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',gap:8,
                 boxShadow:'0 6px 24px rgba(255,107,0,.4)',
               }}>
