@@ -218,7 +218,7 @@ function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:s
 }
 
 // ── Swipeable glavna slika ────────────────────────────────────────
-function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust }: any) {
+function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, onScoreClick }: any) {
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -245,25 +245,38 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust }
         : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
       }
 
-      {/* AI Score overlay — top left */}
+      {/* AI Score overlay — top left, clickable */}
       {trust && (
-        <div style={{position:'absolute',top:8,left:8,display:'flex',flexDirection:'column',gap:4}}>
-          <div style={{background:'rgba(0,0,0,.82)',borderRadius:8,padding:'5px 9px',backdropFilter:'blur(6px)',border:`1px solid ${trust.color}55`}}>
-            <div style={{display:'flex',alignItems:'center',gap:5}}>
-              <div style={{width:7,height:7,borderRadius:'50%',background:trust.color,flexShrink:0}} />
-              <span style={{fontSize:13,fontWeight:800,color:trust.color}}>AI {trust.score}/100</span>
+        <div onClick={onScoreClick} style={{position:'absolute',top:8,left:8,cursor:'pointer'}}>
+          <div style={{background:'rgba(0,0,0,.85)',borderRadius:10,padding:'6px 10px',backdropFilter:'blur(8px)',border:`1px solid ${trust.color}66`,boxShadow:`0 2px 12px ${trust.color}33`}}>
+            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:2}}>
+              <div style={{width:8,height:8,borderRadius:'50%',background:trust.color,flexShrink:0}} />
+              <span style={{fontSize:14,fontWeight:900,color:trust.color}}>AI {trust.score}/100</span>
             </div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,.7)',marginTop:1}}>{trust.label}</div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,.8)',fontWeight:600}}>{trust.label}</div>
           </div>
         </div>
       )}
 
-      {/* Bottom badges */}
+      {/* Top right - verifikovan */}
+      <span style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.85)',display:'flex',alignItems:'center',gap:4}}>
+        <span style={{fontSize:9,color:'#22C55E'}}>✓</span> Verifikovan izvor
+      </span>
+      {/* Bottom left - country */}
       <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(country||'')}</span>
       {images.length > 1 && (
         <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
           {activeImg+1}/{images.length}
         </span>
+      )}
+      {/* Left/right arrows */}
+      {images.length > 1 && activeImg > 0 && (
+        <div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i-1)}}
+          style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,color:'#fff'}}>‹</div>
+      )}
+      {images.length > 1 && activeImg < images.length-1 && (
+        <div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i+1)}}
+          style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,color:'#fff'}}>›</div>
       )}
       {images.length > 1 && activeImg > 0 && (
         <div onClick={() => setActiveImg((i:number) => i-1)}
@@ -514,34 +527,110 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
           {/* MOBILE STACK */}
           <div className="mobile-stack">
-            <SwipeableImage
-              images={images}
-              activeImg={activeImg}
-              setActiveImg={setActiveImg}
-              alt={`${listing.make} ${listing.model}`}
-              country={listing.country}
-              trust={trust}
-            />
-            {images.length > 1 && (
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,marginBottom:8}}>
-                {images.map((img:string,i:number) => (
-                  <div key={i} onClick={() => setActiveImg(i)} style={{aspectRatio:'4/3',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`}}>
-                    <img src={img} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}} />
-                  </div>
-                ))}
+
+            {/* ── HERO SLIKA ─────────────────────────────── */}
+            <div style={{position:'relative',marginBottom:0}}>
+              <SwipeableImage
+                images={images}
+                activeImg={activeImg}
+                setActiveImg={setActiveImg}
+                alt={`${listing.make} ${listing.model}`}
+                country={listing.country}
+                trust={trust}
+                onScoreClick={() => setShowScoreSheet(true)}
+              />
+              {/* Dot indikatori */}
+              {images.length > 1 && (
+                <div style={{display:'flex',justifyContent:'center',gap:5,marginTop:6,marginBottom:4}}>
+                  {images.slice(0,8).map((_:string,i:number) => (
+                    <div key={i} onClick={() => setActiveImg(i)} style={{
+                      width: activeImg===i ? 18 : 6,
+                      height:6, borderRadius:3, cursor:'pointer', transition:'all .2s',
+                      background: activeImg===i ? 'var(--accent)' : 'rgba(255,255,255,.3)',
+                    }} />
+                  ))}
+                  {images.length > 8 && <div style={{width:6,height:6,borderRadius:3,background:'rgba(255,255,255,.2)'}} />}
+                </div>
+              )}
+            </div>
+
+            {/* ── NAZIV + SPECS ROW ──────────────────────── */}
+            <div style={{padding:'10px 0 4px'}}>
+              <div style={{fontSize:20,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:6,lineHeight:1.2}}>
+                {listing.make} {listing.model}{listing.year ? ` · ${listing.year}` : ''}
               </div>
-            )}
-            <div style={{marginBottom:8}}>
-              <div className="mob-title" style={{fontSize:16,color:'var(--text)',fontWeight:700,marginBottom:2}}>{listing.make} {listing.model}{listing.year?` · ${listing.year}`:''}</div>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
-                <div className="mob-price" style={{fontSize:32,fontWeight:800,color:'var(--accent)',lineHeight:1}}>{price?`${fmt(price)} €`:'Na upit'}</div>
-                {listing.price_estimated && (
-                  <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',textAlign:'right'}}>
-                    {deltaGood?'↓ ispod':'↑ iznad'} proseka za {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%
-                  </div>
-                )}
+              {/* Spec icons row */}
+              <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:13,color:'var(--text3)'}}>
+                {listing.city && <span>📍 {listing.city.split(' - ')[0]}</span>}
+                {listing.fuel_type && <span>⛽ {fuelLabel(listing.fuel_type)}</span>}
+                {listing.transmission && <span>⚙ {listing.transmission==='automatic'?'Automatik':'Manuel'}</span>}
+                {listing.mileage && <span>🛣 {fmtKm(listing.mileage)}</span>}
               </div>
             </div>
+
+            {/* ── CENA ──────────────────────────────────── */}
+            <div style={{display:'flex',alignItems:'flex-end',gap:10,marginBottom:10}}>
+              <div style={{fontSize:36,fontWeight:900,color:'var(--accent)',lineHeight:1}}>
+                {price ? `${fmt(price)} €` : 'Na upit'}
+              </div>
+              {listing.price_estimated && (
+                <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',marginBottom:4}}>
+                  {deltaGood?'↓':'↑'} {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}% vs prosek
+                </div>
+              )}
+            </div>
+
+            {/* ── DVE KARTICE: UVOZ + SRBIJA ────────────── */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
+              {/* Uvoz u Srbiju */}
+              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:12,padding:'10px 12px'}}>
+                <div style={{fontSize:10,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:3}}>UVOZ U SRBIJU</div>
+                <div style={{fontSize:13,fontWeight:700,color:eligColor,marginBottom:2}}>{elig.emoji} {elig.label}</div>
+                {elig.sublabel && <div style={{fontSize:11,color:'var(--text3)'}}>{elig.sublabel}</div>}
+              </div>
+              {/* Ukupno za Srbiju */}
+              {bd && (
+                <button onClick={() => setShowBdSheet(true)} style={{background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.25)',borderRadius:12,padding:'10px 12px',textAlign:'left',cursor:'pointer',width:'100%'}}>
+                  <div style={{fontSize:10,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:3}}>🇷🇸 ZA SRBIJU</div>
+                  <div style={{fontSize:16,fontWeight:800,color:'var(--accent)'}}>{fmt(bd.total)} €</div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>Detaljan obračun ›</div>
+                </button>
+              )}
+            </div>
+
+            {/* ── CTA DUGMAD ────────────────────────────── */}
+            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:8,marginBottom:14}}>
+              <button onClick={() => setShowContact(true)} style={{
+                padding:'14px 8px', background:'var(--accent)', border:'none',
+                color:'#fff', borderRadius:14, fontSize:15, fontWeight:800, cursor:'pointer',
+                display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+                boxShadow:'0 4px 20px rgba(255,107,0,.35)',
+              }}>
+                <span style={{fontSize:20}}>🤖</span>
+                <span>Kontaktiraj</span>
+              </button>
+              <button onClick={handleSave} style={{
+                padding:'14px 6px',
+                background: favorited ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
+                border: `2px solid ${favorited ? 'var(--accent)' : 'var(--border)'}`,
+                color: favorited ? 'var(--accent)' : 'var(--text2)',
+                borderRadius:14, fontSize:13, fontWeight:700, cursor:'pointer',
+                display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+              }}>
+                <span style={{fontSize:20}}>{favorited?'❤️':'🤍'}</span>
+                <span style={{fontSize:11}}>{favorited?'Sačuvano':'Sačuvaj'}</span>
+              </button>
+              <a href={listing.url} target="_blank" rel="noopener" style={{
+                padding:'14px 6px', background:'var(--bg2)', border:'2px solid var(--border)',
+                color:'var(--text2)', borderRadius:14, fontSize:13, fontWeight:700, textDecoration:'none',
+                display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+              }}>
+                <span style={{fontSize:20}}>⚖️</span>
+                <span style={{fontSize:11}}>Oglas</span>
+              </a>
+            </div>
+
+            {/* ── TABS ──────────────────────────────────── */}
             <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust}
               specs={specs} similar={similar} price={price} deltaGood={deltaGood}
               onContact={() => setShowContact(true)} onShowScore={() => setShowScoreSheet(true)}
