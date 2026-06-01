@@ -319,7 +319,7 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       style={{ position:'relative', width:'calc(100% + 32px)', marginLeft:-16, marginRight:-16,
-        background:'#0d0d0d', overflow:'hidden', touchAction:'pan-y' }}
+        background:'#0d0d0d', overflow:'hidden', touchAction:'pan-y', minHeight:200 }}
     >
       {/* ── Slika: width 100%, height auto, contain ── */}
       {images[activeImg]
@@ -781,14 +781,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* ── TABS ──────────────────────────────────── */}
             <div style={{paddingLeft:16,paddingRight:16}}>
-            <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust}
-              specs={specs} similar={similar} price={price} deltaGood={deltaGood}
-              onContact={() => setShowContact(true)} onShowScore={() => setShowScoreSheet(true)}
-              onShowBd={() => setShowBdSheet(true)} enriching={enriching} enriched={enriched}
-              scanMsg={scanMsg} onEnrich={() => autoEnrich(listing.url)} fraud={fraud}
-              onVinResult={setVinResult} vinResult={vinResult}
-              portalName={portalName} saved={favorited} onSave={handleSave}
-            />
+              <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust}
+                specs={specs} similar={similar} price={price} deltaGood={deltaGood}
+                onContact={() => setShowContact(true)} onShowScore={() => setShowScoreSheet(true)}
+                onShowBd={() => setShowBdSheet(true)} enriching={enriching} enriched={enriched}
+                scanMsg={scanMsg} onEnrich={() => autoEnrich(listing.url)} fraud={fraud}
+                onVinResult={setVinResult} vinResult={vinResult}
+                portalName={portalName} saved={favorited} onSave={handleSave}
+              />
             </div>
           </div>
 
@@ -1125,39 +1125,7 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
               </div>
             )}
 
-            {/* Akciona dugmad */}
-            <div style={{display:'flex', gap:8, marginTop:4}}>
-              <button onClick={onContact} className="action-btn" style={{
-                flex:2, padding:'18px 8px', background:'var(--accent)', border:'none',
-                color:'#fff', borderRadius:14, fontSize:17, fontWeight:800, cursor:'pointer',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:3,
-                boxShadow:'0 4px 20px rgba(255,107,0,.35)',
-              }}>
-                <span style={{fontSize:22}}>🤖</span>
-                <span>Kontaktiraj</span>
-              </button>
-              <button onClick={onSave} className="action-btn" style={{
-                flex:1, padding:'18px 6px',
-                background: saved ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
-                border: `2px solid ${saved ? 'var(--accent)' : 'var(--border)'}`,
-                color: saved ? 'var(--accent)' : 'var(--text2)',
-                borderRadius:14, fontSize:14, fontWeight:700, cursor:'pointer',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:3,
-              }}>
-                <span style={{fontSize:22}}>{saved ? '❤️' : '🤍'}</span>
-                <span style={{fontSize:13}}>{saved ? 'Sačuvano' : 'Sačuvaj'}</span>
-              </button>
-              <a href={listing.url} target="_blank" rel="noopener" className="action-btn" style={{
-                flex:1, padding:'18px 6px', background:'var(--bg2)', border:'2px solid var(--border)',
-                color:'var(--text2)', borderRadius:14, fontSize:13, fontWeight:700, textDecoration:'none',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:3,
-              }}>
-                <span style={{fontSize:22}}>🔗</span>
-                <span style={{fontSize:12}}>Oglas</span>
-              </a>
-            </div>
-
-            {/* Slični oglasi */}
+                        {/* Slični oglasi */}
             {similar.length > 0 && (
               <div style={{marginTop:4}}>
                 <div style={{fontSize:14,fontWeight:700,marginBottom:8,color:'var(--text)'}}>Slični oglasi</div>
