@@ -217,8 +217,80 @@ function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:s
   )
 }
 
+// ── Fullscreen galerija ──────────────────────────────────────────
+function FullscreenGallery({ images, startIndex, onClose }: { images: string[]; startIndex: number; onClose: () => void }) {
+  const [idx, setIdx] = useState(startIndex)
+  const touchStartX = useRef<number>(0)
+
+  useEffect(() => { setIdx(startIndex) }, [startIndex])
+
+  const onTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.changedTouches[0].clientX }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const delta = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(delta) > 50) {
+      if (delta > 0) setIdx(i => Math.min(i+1, images.length-1))
+      else           setIdx(i => Math.max(i-1, 0))
+    }
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:3000, background:'#000',
+      display:'flex', flexDirection:'column' }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+        padding:'14px 16px', flexShrink:0 }}>
+        <span style={{ fontSize:14, color:'rgba(255,255,255,.6)' }}>{idx+1} / {images.length}</span>
+        <button onClick={onClose} style={{ background:'rgba(255,255,255,.1)', border:'none',
+          borderRadius:20, width:36, height:36, color:'#fff', fontSize:18, cursor:'pointer',
+          display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+      </div>
+
+      {/* Image - fills remaining space, contain so full car visible */}
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+        style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center',
+          overflow:'hidden', touchAction:'pan-y' }}>
+        <img
+          src={fullImg(images[idx])}
+          alt=""
+          style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain',
+            userSelect:'none', display:'block' }}
+          onError={e => { (e.target as HTMLImageElement).src = images[idx] }}
+        />
+      </div>
+
+      {/* Dots */}
+      {images.length > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', gap:5, padding:'12px 0',
+          flexShrink:0 }}>
+          {images.slice(0, 10).map((_: string, i: number) => (
+            <div key={i} onClick={() => setIdx(i)} style={{
+              width: idx===i ? 20 : 6, height:6, borderRadius:3,
+              background: idx===i ? '#fff' : 'rgba(255,255,255,.3)',
+              cursor:'pointer', transition:'all .2s',
+            }} />
+          ))}
+        </div>
+      )}
+
+      {/* Arrows */}
+      {idx > 0 && (
+        <button onClick={() => setIdx(i=>i-1)} style={{ position:'absolute', left:12,
+          top:'50%', transform:'translateY(-50%)', background:'rgba(255,255,255,.15)',
+          border:'none', borderRadius:'50%', width:40, height:40, color:'#fff',
+          fontSize:20, cursor:'pointer', backdropFilter:'blur(4px)' }}>‹</button>
+      )}
+      {idx < images.length-1 && (
+        <button onClick={() => setIdx(i=>i+1)} style={{ position:'absolute', right:12,
+          top:'50%', transform:'translateY(-50%)', background:'rgba(255,255,255,.15)',
+          border:'none', borderRadius:'50%', width:40, height:40, color:'#fff',
+          fontSize:20, cursor:'pointer', backdropFilter:'blur(4px)' }}>›</button>
+      )}
+    </div>
+  )
+}
+
 // ── Swipeable glavna slika ────────────────────────────────────────
-function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, onScoreClick, enriched }: any) {
+function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, onScoreClick, enriched, onImageClick }: any) {
   const touchStartX = useRef<number>(0)
   const touchEndX   = useRef<number>(0)
 
@@ -256,8 +328,9 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
       {/* Slika */}
       {images[activeImg]
         ? <img src={fullImg(images[activeImg])} alt={alt}
+            onClick={onImageClick}
             style={{ width:'100%', height:'100%', objectFit:'contain',
-              objectPosition:'center center', userSelect:'none', display:'block' }}
+              objectPosition:'center center', userSelect:'none', display:'block', cursor:'zoom-in' }}
             onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }} />
         : <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
             height:'100%', fontSize:60, aspectRatio:'16/10' }}>🚗</div>
@@ -345,6 +418,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   const [backUrl,        setBackUrl]        = useState('/search')
   const [showScoreSheet, setShowScoreSheet] = useState(false)
   const [showBdSheet,    setShowBdSheet]    = useState(false)
+  const [showGallery,    setShowGallery]    = useState(false)
   const scanInterval = useRef<any>(null)
 
   useEffect(() => {
@@ -423,6 +497,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
   return (
     <div style={{paddingBottom:0}}>
       {showContact && <ContactModal listing={listing} onClose={() => setShowContact(false)} />}
+      {showGallery && images.length > 0 && <FullscreenGallery images={images} startIndex={activeImg} onClose={() => setShowGallery(false)} />}
 
       {/* AI Score Bottom Sheet */}
       <BottomSheet open={showScoreSheet} onClose={() => setShowScoreSheet(false)} title={`AI procena: ${trust.score}/100`}>
