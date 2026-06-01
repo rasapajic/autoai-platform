@@ -667,88 +667,83 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             </div>
 
             {/* ── NAZIV + META ──────────────────────── */}
-            <div style={{padding:'14px 16px 8px'}}>
-              {/* Make / Model */}
-              <div style={{fontSize:13,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:2}}>
+            <div style={{padding:'16px 16px 0'}}>
+              <div style={{fontSize:13,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:4}}>
                 {listing.make?.toUpperCase()}
               </div>
-              <div style={{fontSize:24,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:6,lineHeight:1.15}}>
-                {listing.model} {listing.year && <span style={{color:'var(--text3)',fontWeight:400}}>{listing.year}</span>}
+              <div style={{fontSize:30,fontWeight:700,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.2,color:'var(--text)'}}>
+                {listing.model}{listing.year ? <span style={{color:'var(--text3)',fontWeight:400}}> {listing.year}</span> : ''}
               </div>
-
-              {/* Meta icons row */}
-              <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:13,color:'var(--text3)',marginBottom:8}}>
+              <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:15,color:'var(--text3)',marginBottom:14}}>
                 {listing.city && <span>📍 {listing.city.split(' - ')[0]}</span>}
                 {listing.fuel_type && <span>⛽ {fuelLabel(listing.fuel_type)}</span>}
-                {listing.transmission && <span>⚙ {listing.transmission==='automatic'?'Automatik':'Manuel'}</span>}
                 {listing.mileage && <span>🛣 {fmtKm(listing.mileage)}</span>}
               </div>
+            </div>
 
-              {/* AI price insight */}
+            {/* ── CENA ──────────────────────────────────── */}
+            <div style={{padding:'0 16px 16px'}}>
+              <div style={{fontSize:52,fontWeight:800,color:'var(--text)',lineHeight:1,letterSpacing:'-1px'}}>
+                {price ? `${fmt(price)} €` : 'Na upit'}
+              </div>
               {listing.price_delta_pct && (
-                <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13}}>
+                <div style={{fontSize:15,marginTop:6,display:'flex',alignItems:'center',gap:8}}>
                   <span style={{color:'var(--text3)'}}>⭐ AI procena:</span>
                   <span style={{fontWeight:700,color:deltaGood?'#22C55E':'#F97316'}}>
-                    {deltaGood ? 'Ispod tržišta' : Number(listing.price_delta_pct) <= 10 ? 'Fer cena' : 'Iznad tržišta'}
+                    {deltaGood?'Ispod tržišta':Math.abs(Number(listing.price_delta_pct))<=10?'Fer cena':'Iznad tržišta'}
                   </span>
-                  <span style={{fontSize:12,color:deltaGood?'#22C55E':'#F97316'}}>
+                  <span style={{fontSize:14,color:deltaGood?'#22C55E':'#F97316'}}>
                     {deltaGood?'↓':'↑'}{Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%
                   </span>
                 </div>
               )}
             </div>
 
-            {/* ── CENA ──────────────────────────────────── */}
-            <div style={{marginBottom:14,paddingLeft:16,paddingRight:16}}>
-              <div style={{fontSize:38,fontWeight:900,color:'var(--text)',lineHeight:1,letterSpacing:'-1px'}}>
-                {price ? `${fmt(price)} €` : 'Na upit'}
-              </div>
-            </div>
-
-            {/* ── DVE KARTICE: UVOZ + SRBIJA ────────────── */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16,paddingLeft:16,paddingRight:16}}>
-              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}22`,borderRadius:16,padding:'12px 14px'}}>
-                <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:4}}>UVOZ U SRBIJU</div>
-                <div style={{fontSize:13,fontWeight:700,color:eligColor,marginBottom:2}}>{elig.emoji} {elig.label}</div>
-                {elig.sublabel && <div style={{fontSize:11,color:'var(--text3)'}}>{elig.sublabel}</div>}
+            {/* ── DVE KARTICE ───────────────────────────── */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,padding:'0 16px 16px'}}>
+              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:16,padding:'14px 16px',minHeight:90}}>
+                <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>UVOZ U SRBIJU</div>
+                <div style={{fontSize:18,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
+                {elig.sublabel && <div style={{fontSize:13,color:'var(--text3)',lineHeight:1.4}}>{elig.sublabel}</div>}
               </div>
               {bd ? (
                 <button onClick={() => setShowBdSheet(true)} style={{
-                  background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.2)',
-                  borderRadius:16,padding:'12px 14px',textAlign:'left',cursor:'pointer',width:'100%'}}>
-                  <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:4}}>ZA SRBIJU</div>
-                  <div style={{fontSize:18,fontWeight:800,color:'var(--accent)',lineHeight:1}}>{fmt(bd.total)} €</div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:3}}>Uključuje procenu uvoza →</div>
+                  background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.25)',
+                  borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',
+                  width:'100%',minHeight:90}}>
+                  <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>ZA SRBIJU</div>
+                  <div style={{fontSize:24,fontWeight:800,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
+                  <div style={{fontSize:13,color:'var(--text3)'}}>Sa uvozom →</div>
                 </button>
               ) : (
-                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:'12px 14px'}}>
-                  <div style={{fontSize:11,color:'var(--text3)'}}>Cena nije dostupna</div>
+                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:'14px 16px',minHeight:90}}>
+                  <div style={{fontSize:13,color:'var(--text3)'}}>Nedostaje cena</div>
                 </div>
               )}
             </div>
 
-            {/* ── CTA DUGMAD ────────────────────────────── */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,marginBottom:16,paddingLeft:16,paddingRight:16}}>
+            {/* ── CTA ───────────────────────────────────── */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,padding:'0 16px 20px'}}>
               <button onClick={() => setShowContact(true)} style={{
-                padding:'16px 12px',background:'var(--accent)',border:'none',
-                color:'#fff',borderRadius:20,fontSize:16,fontWeight:800,cursor:'pointer',
+                padding:'18px 12px',background:'var(--accent)',border:'none',
+                color:'#fff',borderRadius:20,fontSize:20,fontWeight:800,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',gap:8,
                 boxShadow:'0 6px 24px rgba(255,107,0,.4)',
               }}>
                 🤖 Kontaktiraj
               </button>
               <button onClick={handleSave} style={{
-                width:54,height:54,padding:0,
-                background: favorited ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
-                border: `2px solid ${favorited ? 'var(--accent)' : 'var(--border)'}`,
-                color: favorited ? 'var(--accent)' : 'var(--text2)',
-                borderRadius:20,fontSize:22,fontWeight:700,cursor:'pointer',
+                width:58,height:58,padding:0,
+                background:favorited?'rgba(255,107,0,.15)':'var(--bg2)',
+                border:`2px solid ${favorited?'var(--accent)':'var(--border)'}`,
+                color:favorited?'var(--accent)':'var(--text2)',
+                borderRadius:20,fontSize:24,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',
               }}>{favorited?'❤️':'🤍'}</button>
-              <button onClick={() => {}} style={{
-                width:54,height:54,padding:0,
+              <button onClick={()=>{}} style={{
+                width:58,height:58,padding:0,
                 background:'var(--bg2)',border:'2px solid var(--border)',
-                color:'var(--text2)',borderRadius:20,fontSize:20,cursor:'pointer',
+                color:'var(--text2)',borderRadius:20,fontSize:22,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',
               }}>⚖️</button>
             </div>
@@ -1053,23 +1048,7 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
         {tab === 0 && (
           <div style={{display:'flex', flexDirection:'column', gap:8}}>
 
-            {/* Uvoz status */}
-            {elig && (
-              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:12,padding:'10px 14px', position:'relative'}}>
-                <div style={{display:'flex',alignItems:'center',marginBottom:2}}>
-                  <div className="mob-status" style={{fontSize:14,fontWeight:700,color:eligColor}}>{elig.emoji} {elig.label}</div>
-                </div>
-                {elig.sublabel && <div style={{fontSize:12,color:'var(--text3)',marginTop:2}}>{elig.sublabel}</div>}
-                {bd && (
-                  <button onClick={onShowBd} style={{marginTop:6,background:'none',border:'none',cursor:'pointer',padding:0,textAlign:'left'}}>
-                    <div style={{display:'flex',alignItems:'center',gap:0}}>
-                      <div style={{fontSize:11,color:'var(--text3)'}}>🇷🇸 za Srbiju</div>
-                    </div>
-                    <div style={{fontSize:20,fontWeight:800,color:'var(--accent)'}}>{fmt(bd.total)} €</div>
-                  </button>
-                )}
-              </div>
-            )}
+            }
 
             {/* Specs grid */}
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px'}}>
