@@ -319,7 +319,7 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       style={{ position:'relative', width:'calc(100% + 32px)', marginLeft:-16, marginRight:-16,
-        background:'#0d0d0d', overflow:'hidden', touchAction:'pan-y', minHeight:200 }}
+        background:'#0d0d0d', overflow:'hidden', touchAction:'pan-y', borderRadius:'0 0 22px 22px' }}
     >
       {/* ── Slika: width 100%, height auto, contain ── */}
       {images[activeImg]
@@ -330,9 +330,10 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
             style={{
               display:        'block',
               width:          '100%',
-              height:         'auto',
-              maxHeight:      '60vw',
-              objectFit:      'contain',
+              height:         '78vh',
+              minHeight:      320,
+              maxHeight:      '78vh',
+              objectFit:      'cover',
               objectPosition: 'center center',
               userSelect:     'none',
               cursor:         'zoom-in',
@@ -685,19 +686,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 trust={trust}
                 onScoreClick={() => setShowScoreSheet(true)}
               />
-              {/* Dot indikatori */}
-              {images.length > 1 && (
-                <div style={{display:'flex',justifyContent:'center',gap:5,marginTop:6,marginBottom:4}}>
-                  {images.slice(0,8).map((_:string,i:number) => (
-                    <div key={i} onClick={() => setActiveImg(i)} style={{
-                      width: activeImg===i ? 18 : 6,
-                      height:6, borderRadius:3, cursor:'pointer', transition:'all .2s',
-                      background: activeImg===i ? 'var(--accent)' : 'rgba(255,255,255,.3)',
-                    }} />
-                  ))}
-                  {images.length > 8 && <div style={{width:6,height:6,borderRadius:3,background:'rgba(255,255,255,.2)'}} />}
-                </div>
-              )}
+
             </div>
 
             {/* ── NAZIV + META ──────────────────────── */}
