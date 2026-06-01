@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import sentry_sdk
 import subprocess
 import sys
+import os
 from app.core.config import settings
 from app.core.db import engine, Base
 
@@ -15,17 +16,19 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     print("✅ Baza podataka inicijalizovana")
 
-    # ✅ Pokreni Celery worker i beat kao background procese
     try:
         worker = subprocess.Popen([
             sys.executable, "-m", "celery",
             "-A", "app.core.celery_tasks.celery_app",
             "worker", "--loglevel=info", "--concurrency=2"
         ])
+        # ✅ Beat sa --schedule u /tmp da izbjegnemo read-only filesystem grešku
         beat = subprocess.Popen([
             sys.executable, "-m", "celery",
             "-A", "app.core.celery_tasks.celery_app",
-            "beat", "--loglevel=info"
+            "beat", "--loglevel=info",
+            "--scheduler", "celery.beat:PersistentScheduler",
+            "--schedule", "/tmp/celerybeat-schedule",
         ])
         _celery_procs.extend([worker, beat])
         print(f"✅ Celery worker PID: {worker.pid}")
@@ -74,7 +77,6 @@ async def health():
         "environment": settings.APP_ENV,
     }
 
-# ✅ Svi routeri
 from app.api import search, listings, users, alerts, ai_chat, analyze, admin, vin, inbox
 app.include_router(search.router,    prefix="/api/v1/search",   tags=["🔍 Pretraga"])
 app.include_router(listings.router,  prefix="/api/v1/listings", tags=["🚗 Oglasi"])
