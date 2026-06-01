@@ -318,8 +318,8 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
     <div
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      style={{ position:'relative', width:'100%', background:'#0d0d0d',
-        borderRadius:20, overflow:'hidden', touchAction:'pan-y' }}
+      style={{ position:'relative', width:'calc(100% + 32px)', marginLeft:-16, marginRight:-16,
+        background:'#0d0d0d', overflow:'hidden', touchAction:'pan-y' }}
     >
       {/* ── Slika: width 100%, height auto, contain ── */}
       {images[activeImg]
@@ -328,14 +328,12 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
             alt={alt}
             onClick={onImageClick}
             style={{
-              display:         'block',
-              width:           '100%',
-              height:          'auto',
-              maxHeight:       '68vw',
-              objectFit:       'contain',
-              objectPosition:  'center center',
-              userSelect:      'none',
-              cursor:          'zoom-in',
+              display:        'block',
+              width:          '100%',
+              height:         'auto',
+              objectFit:      'contain',
+              userSelect:     'none',
+              cursor:         'zoom-in',
             }}
             onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }}
           />
