@@ -10,6 +10,7 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
     "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://www.kleinanzeigen.de/",
 }
 
 KNOWN_MAKES = [
@@ -18,6 +19,7 @@ KNOWN_MAKES = [
     "Seat", "Mazda", "Honda", "Nissan", "Fiat", "Citroën", "Citroen", "Porsche",
     "Land Rover", "Jeep", "Dacia", "Suzuki", "Mitsubishi", "Subaru", "Tesla",
     "Alfa Romeo", "Lexus", "Mini", "Smart", "Jaguar", "Bentley", "Lancia",
+    "Cupra", "Polestar", "MG", "BYD", "Xpeng",
 ]
 
 
@@ -33,11 +35,10 @@ def _clean_text(text: str, max_len: int = 100) -> str:
 
 
 def _hq_image(url: str) -> str:
-    """Zameni bilo koji rule sa $_57.AUTO (visoka rezolucija ~900px)"""
+    """Zamijeni bilo koji rule sa $_57.AUTO (visoka rezolucija ~900px)"""
     if not url:
         return url
-    url = re.sub(r'\$_\w+\.AUTO', '$_57.AUTO', url)
-    return url
+    return re.sub(r'\$_\w+\.AUTO', '$_57.AUTO', url)
 
 
 def _parse_price(val) -> float | None:
@@ -86,11 +87,123 @@ def _extract_make_model(title: str) -> tuple:
     return (words[0][:100] if words else None), (" ".join(words[1:3])[:100] if len(words) > 1 else None)
 
 
+async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
+    """Dohvati detalje oglasa: sve slike + grad + gorivo + km"""
+    result = {"images": [], "city": "", "fuel_type": None, "mileage": None, "year": None}
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+            if resp.status != 200:
+                return result
+            html = await resp.text()
+
+            # ── Slike iz LD+JSON (sve, ne samo prva) ──────────────
+            for ld_match in re.finditer(
+                r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+                html, re.DOTALL
+            ):
+                try:
+                    ld = json.loads(ld_match.group(1))
+                    if ld.get("image"):
+                        imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
+                        result["images"] += [_hq_image(i) for i in imgs if i]
+                    elif ld.get("contentUrl"):
+                        result["images"].append(_hq_image(ld["contentUrl"]))
+                except Exception:
+                    pass
+
+            # ── Fallback slike iz gallery JSON ─────────────────────
+            if not result["images"]:
+                gallery_m = re.search(r'"imageUrls"\s*:\s*(\[[^\]]+\])', html)
+                if gallery_m:
+                    try:
+                        urls = json.loads(gallery_m.group(1))
+                        result["images"] = [_hq_image(u) for u in urls if u]
+                    except Exception:
+                        pass
+
+            # ── Fallback slike iz img tagova ───────────────────────
+            if not result["images"]:
+                for m in re.finditer(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', html):
+                    result["images"].append(_hq_image(m.group(1)))
+
+            # ── Deduplikacija slika ────────────────────────────────
+            seen = set()
+            unique = []
+            for img in result["images"]:
+                key = re.sub(r'\$_\w+\.AUTO', '', img)
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(img)
+            result["images"] = unique
+
+            # ── Grad ──────────────────────────────────────────────
+            # Kleinanzeigen prikazuje grad u vise mjesta
+            for city_pat in [
+                r'<span[^>]+itemprop="addressLocality"[^>]*>([^<]+)</span>',
+                r'class="[^"]*breadcrump-link[^"]*"[^>]*>([^<]{4,50})</a>',
+                r'"addressLocality"\s*:\s*"([^"]+)"',
+                r'class="addetail-user--city"[^>]*>([^<]+)<',
+                r'<span[^>]+class="[^"]*location[^"]*"[^>]*>([^<]+)</span>',
+            ]:
+                m = re.search(city_pat, html)
+                if m:
+                    city = _clean_text(m.group(1), 100).strip()
+                    if city and len(city) > 2:
+                        result["city"] = city
+                        break
+
+            # ── Gorivo ────────────────────────────────────────────
+            fuel_map = {
+                'benzin': 'petrol', 'super': 'petrol', 'gasoline': 'petrol', 'petrol': 'petrol',
+                'diesel': 'diesel', 'dizel': 'diesel',
+                'elektro': 'electric', 'electric': 'electric', 'elektr': 'electric', 'bev': 'electric',
+                'hybrid': 'hybrid', 'plug-in': 'hybrid', 'phev': 'hybrid',
+                'autogas': 'lpg', 'lpg': 'lpg', 'gas': 'lpg',
+                'erdgas': 'cng', 'cng': 'cng',
+            }
+            # Traži u structured data ili attribute sekciji
+            attr_section = re.search(
+                r'Kraftstoffart.*?<[^>]+>([^<]{3,30})<',
+                html, re.IGNORECASE | re.DOTALL
+            )
+            fuel_text = attr_section.group(1).lower().strip() if attr_section else ''
+            if not fuel_text:
+                # Fallback: traži keyword u tekstu stranice
+                page_lower = html.lower()
+                for kw, ftype in sorted(fuel_map.items(), key=lambda x: -len(x[0])):
+                    if f'>{kw}<' in page_lower or f'"kraftstoff">{kw}' in page_lower:
+                        fuel_text = kw
+                        break
+            for kw, ftype in sorted(fuel_map.items(), key=lambda x: -len(x[0])):
+                if kw in fuel_text:
+                    result["fuel_type"] = ftype
+                    break
+
+            # ── Kilometraža ────────────────────────────────────────
+            km_m = re.search(r'Kilometerstand.*?(\d[\d.]+)\s*km', html, re.IGNORECASE | re.DOTALL)
+            if km_m:
+                result["mileage"] = _parse_int(km_m.group(1).replace(".", ""))
+
+            # ── Godište ────────────────────────────────────────────
+            year_m = re.search(
+                r'(?:Erstzulassung|Baujahr|EZ)[^\d]*(\d{4})',
+                html, re.IGNORECASE
+            )
+            if year_m:
+                y = int(year_m.group(1))
+                if 1970 <= y <= 2026:
+                    result["year"] = y
+
+    except Exception as e:
+        print(f"[Kleinanzeigen] Detail greška {url}: {e}")
+
+    return result
+
+
 def _parse_listings_from_html(html: str) -> list:
     listings = []
-
     article_pattern = re.compile(
-        r'<article[^>]+data-adid="(\d+)"[^>]*data-href="([^"]*)"[^>]*>(.*?)</article>',
+        r'<article[^>]+data-adid="(\d+)"[^>]+data-href="([^"]*)"[^>]*>(.*?)</article>',
         re.DOTALL
     )
 
@@ -104,11 +217,10 @@ def _parse_listings_from_html(html: str) -> list:
 
         ad_url = f"https://www.kleinanzeigen.de{ad_href}"
 
-        title       = ""
-        description = ""
-        all_images  = []
+        title = description = ""
+        thumb_images = []
 
-        # LD+JSON — naslov, opis, slike
+        # LD+JSON listing thumbnail
         ld_match = re.search(
             r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
             content, re.DOTALL
@@ -118,16 +230,14 @@ def _parse_listings_from_html(html: str) -> list:
                 ld = json.loads(ld_match.group(1))
                 title       = ld.get("title") or ld.get("name") or ""
                 description = ld.get("description") or ""
-                # Skupi sve slike iz LD+JSON
                 if ld.get("image"):
                     imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
-                    all_images = [_hq_image(i) for i in imgs if i]
+                    thumb_images = [_hq_image(i) for i in imgs if i]
                 elif ld.get("contentUrl"):
-                    all_images = [_hq_image(ld["contentUrl"])]
+                    thumb_images = [_hq_image(ld["contentUrl"])]
             except Exception:
                 pass
 
-        # Fallback naslov
         if not title:
             for pat in [
                 r'class="[^"]*text-module-begin[^"]*"[^>]*>(.*?)</a>',
@@ -145,26 +255,17 @@ def _parse_listings_from_html(html: str) -> list:
             content, re.DOTALL
         )
         if m:
-            price_text = _clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50)
-            price = _parse_price(price_text)
-
+            price = _parse_price(_clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50))
         if not price:
-            all_prices = re.findall(r'([\d.,]+)\s*€', content)
-            for p_str in all_prices:
+            for p_str in re.findall(r'([\d.,]+)\s*€', content):
                 p = _parse_price(p_str)
                 if p:
                     price = p
                     break
-
         if not price:
             continue
 
-        # Fallback slike iz img tagova
-        if not all_images:
-            for img_m in re.finditer(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', content):
-                all_images.append(_hq_image(img_m.group(1)))
-
-        # Grad — pokušaj više CSS selektora
+        # Grad sa listinga (grubi)
         city = ""
         for city_pat in [
             r'class="aditem-main--top--left"[^>]*>(.*?)</(?:p|div)>',
@@ -173,13 +274,12 @@ def _parse_listings_from_html(html: str) -> list:
         ]:
             m = re.search(city_pat, content, re.DOTALL)
             if m:
-                raw = re.sub(r'<[^>]+>', ' ', m.group(1))
-                city = _clean_text(raw, 100)
-                city = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', city).strip()[:100]
-                if city:
+                raw = _clean_text(re.sub(r'<[^>]+>', ' ', m.group(1)), 100)
+                raw = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', raw).strip()
+                if raw:
+                    city = raw
                     break
 
-        # Godište — traži 1970-2024, ignoriši tekuću godinu
         year_m = re.search(r'\b(19[789]\d|200\d|201\d|202[0-4])\b', title + " " + description)
         km_m   = re.search(r'([\d.]+)\s*km', title + " " + description, re.IGNORECASE)
 
@@ -188,8 +288,7 @@ def _parse_listings_from_html(html: str) -> list:
             "title":   _clean_text(title, 200),
             "price":   price,
             "city":    city,
-            "images":  all_images,
-            "image":   all_images[0] if all_images else "",
+            "images":  thumb_images,
             "url":     ad_url,
             "year":    _parse_int(year_m.group(1)) if year_m else None,
             "mileage": _parse_int(km_m.group(1).replace(".", "")) if km_m else None,
@@ -200,7 +299,7 @@ def _parse_listings_from_html(html: str) -> list:
     return listings
 
 
-def _parse_listing(item: dict) -> dict | None:
+def _parse_listing(item: dict, detail: dict | None = None) -> dict | None:
     try:
         item_id = str(item.get("id") or "")
         if not item_id:
@@ -212,19 +311,26 @@ def _parse_listing(item: dict) -> dict | None:
             return None
 
         make, model = _extract_make_model(title)
-        year = item.get("year")
+        year = (detail or {}).get("year") or item.get("year")
         if year and year < 1970:
             return None
 
-        city = _clean_text(item.get("city") or "", 100)
+        # Grad: detalj ima bolji
+        city = ""
+        if detail and detail.get("city"):
+            city = detail["city"]
+        elif item.get("city"):
+            city = item["city"]
 
-        # Uzmi sve slike, osiguraj HQ
-        images = item.get("images") or []
-        if not images:
-            img = item.get("image", "")
-            if img and img.startswith("http"):
-                images = [img]
-        images = [_hq_image(i) for i in images if i and i.startswith("http")]
+        # Slike: detalj ima sve, listing samo thumbnail
+        images = []
+        if detail and detail.get("images"):
+            images = detail["images"]
+        elif item.get("images"):
+            images = [_hq_image(i) for i in item["images"] if i and i.startswith("http")]
+
+        fuel_type = (detail or {}).get("fuel_type")
+        mileage   = (detail or {}).get("mileage") or item.get("mileage")
 
         return {
             "external_id":  f"ka_{item_id}",
@@ -234,8 +340,8 @@ def _parse_listing(item: dict) -> dict | None:
             "year":         year,
             "price":        price,
             "currency":     "EUR",
-            "mileage":      item.get("mileage"),
-            "fuel_type":    None,
+            "mileage":      mileage,
+            "fuel_type":    fuel_type,
             "transmission": None,
             "country":      "DE",
             "city":         city or None,
@@ -260,19 +366,31 @@ class KleinanzeigenScraper:
 
                 try:
                     async with session.get(url, timeout=aiohttp.ClientTimeout(total=25)) as resp:
-                        print(f"[Kleinanzeigen] Status: {resp.status}")
                         if resp.status != 200:
                             break
-
                         html = await resp.text()
                         items = _parse_listings_from_html(html)
-
                         if not items:
                             break
 
+                        # ── Detalji paralelno, max 5 odjednom ──────
+                        semaphore = asyncio.Semaphore(5)
+
+                        async def fetch_with_sem(item):
+                            async with semaphore:
+                                await asyncio.sleep(0.3)
+                                return await _fetch_detail(session, item["url"])
+
+                        details = await asyncio.gather(
+                            *[fetch_with_sem(it) for it in items],
+                            return_exceptions=True
+                        )
+
                         before = len(all_listings)
-                        for item in items:
-                            parsed = _parse_listing(item)
+                        for item, detail in zip(items, details):
+                            if isinstance(detail, Exception):
+                                detail = None
+                            parsed = _parse_listing(item, detail)
                             if parsed and parsed["external_id"] not in seen_ids:
                                 seen_ids.add(parsed["external_id"])
                                 all_listings.append(parsed)
@@ -283,7 +401,7 @@ class KleinanzeigenScraper:
                         if len(items) < 10:
                             break
 
-                        await asyncio.sleep(2.0)
+                        await asyncio.sleep(2.5)
 
                 except Exception as e:
                     print(f"[Kleinanzeigen] Greška: {e}")
