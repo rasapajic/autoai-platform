@@ -760,6 +760,21 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               </button>
             </div>
 
+            {/* ── LINK PRODAVCA ─────────────────────────── */}
+            {listing.url && (
+              <div style={{padding:'0 16px 16px'}}>
+                <a href={listing.url} target="_blank" rel="noopener" style={{
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                  width:'100%', padding:'14px', borderRadius:16,
+                  background:'var(--bg2)', border:'1px solid var(--border)',
+                  color:'var(--text2)', fontSize:15, fontWeight:600,
+                  textDecoration:'none',
+                }}>
+                  🔗 Pogledaj originalni oglas →
+                </a>
+              </div>
+            )}
+
             {/* ── TABS ──────────────────────────────────── */}
             <div style={{paddingLeft:16,paddingRight:16}}>
               <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust}
