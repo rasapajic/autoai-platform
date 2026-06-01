@@ -14,12 +14,17 @@ HEADERS = {
 
 
 def _hq_image(url: str) -> str:
-    """Zameni bilo koji rule sa HQ verzijom ($_14 = velika rezolucija na Marktplaats)"""
+    """Zameni bilo koji rule sa HQ verzijom na Marktplaats."""
     if not url:
         return url
-    # Na Marktplaatsu $_14 je VELIKA rezolucija (obrnuto od Kleinanzeigen!)
+    # Format 1: ?rule=ecg_mp_eps$_2.jpg  → $_14.jpg
     url = re.sub(r'ecg_mp_eps\$_\d+\.jpg', 'ecg_mp_eps$_14.jpg', url)
+    # Format 2: $_2.AUTO → $_14.AUTO
     url = re.sub(r'\$_\d+\.AUTO', '$_14.AUTO', url)
+    # Format 3: /image.jpg?rule=...number... (query param variant)
+    url = re.sub(r'rule=\d+', 'rule=ecg_mp_eps$_14.jpg', url)
+    # Format 4: images.marktplaats.com API with size param
+    url = re.sub(r'[?&]s=\d+x\d+', '', url)  # remove size restrictions
     return url
 
 
@@ -157,7 +162,7 @@ def _parse_listing(item: dict) -> dict | None:
                 url = (img.get("largeUrl") or img.get("mediumUrl") or
                        img.get("url") or img.get("src") or "")
                 if not url and img.get("id"):
-                    url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_14.jpg"
+                    url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_14.jpg&imageVariantName=MASTER"
             else:
                 url = str(img)
             if url and url.startswith("http"):
