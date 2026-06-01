@@ -322,15 +322,15 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       style={{ position:'relative', borderRadius:20, overflow:'hidden',
-        height:240, width:'100%', background:'#0d0d0d',
+        height:220, width:'100%', background:'#0d0d0d', position:'relative',
         touchAction:'pan-y', marginBottom:0 }}
     >
       {/* Slika */}
       {images[activeImg]
         ? <img src={fullImg(images[activeImg])} alt={alt}
             onClick={onImageClick}
-            style={{ width:'100%', height:'100%', objectFit:'cover',
-              objectPosition:'center 45%', userSelect:'none', display:'block', cursor:'zoom-in' }}
+            style={{ width:'100%', height:'100%', objectFit:'contain',
+              objectPosition:'center center', userSelect:'none', display:'block', cursor:'zoom-in' }}
             onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }} />
         : <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
             height:'100%', fontSize:60, aspectRatio:'16/10' }}>🚗</div>
@@ -339,19 +339,17 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
       {/* Gradient overlay bottom */}
       <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,.65) 100%)', pointerEvents:'none' }} />
 
-      {/* ── AI SCORE — gore lijevo (glassmorphism) ── */}
+      {/* ── AI SCORE — gore lijevo ── */}
       {trust && (
-        <div onClick={onScoreClick} style={{ position:'absolute', top:12, left:12, cursor:'pointer',
-          background:'rgba(0,0,0,.55)', backdropFilter:'blur(12px)',
-          borderRadius:16, padding:'8px 12px',
-          border:`1px solid ${scoreColor}44`,
-          boxShadow:`0 4px 20px rgba(0,0,0,.4), 0 0 0 1px ${scoreColor}22` }}>
-          <div style={{ fontSize:9, color:'rgba(255,255,255,.5)', fontWeight:700,
-            letterSpacing:'.1em', marginBottom:2 }}>AI SCORE</div>
-          <div style={{ fontSize:30, fontWeight:900, color:scoreColor, lineHeight:1 }}>
-            {trust.score}
+        <div onClick={onScoreClick} style={{ position:'absolute', top:10, left:10, cursor:'pointer',
+          background:'rgba(0,0,0,.72)', backdropFilter:'blur(10px)',
+          borderRadius:12, padding:'5px 10px',
+          border:`1px solid ${scoreColor}55` }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <div style={{ width:8, height:8, borderRadius:'50%', background:scoreColor, flexShrink:0 }} />
+            <span style={{ fontSize:15, fontWeight:900, color:scoreColor }}>AI {trust.score}</span>
           </div>
-          <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginTop:2 }}>{scoreLabel}</div>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.6)', marginTop:1 }}>{scoreLabel}</div>
         </div>
       )}
 
