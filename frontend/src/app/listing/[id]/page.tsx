@@ -218,14 +218,12 @@ function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:s
 }
 
 // ── Swipeable glavna slika ────────────────────────────────────────
-function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, onScoreClick }: any) {
+function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, onScoreClick, enriched }: any) {
   const touchStartX = useRef<number>(0)
-  const touchEndX = useRef<number>(0)
+  const touchEndX   = useRef<number>(0)
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.changedTouches[0].clientX
-  }
-  const onTouchEnd = (e: React.TouchEvent) => {
+  const onTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.changedTouches[0].clientX }
+  const onTouchEnd   = (e: React.TouchEvent) => {
     touchEndX.current = e.changedTouches[0].clientX
     const delta = touchStartX.current - touchEndX.current
     if (Math.abs(delta) > 40) {
@@ -234,61 +232,98 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
     }
   }
 
+  // Score color rules: 0-39 red, 40-69 orange, 70-100 green
+  const scoreColor = trust
+    ? (trust.score >= 70 ? '#22C55E' : trust.score >= 40 ? '#F97316' : '#EF4444')
+    : '#9CA3AF'
+
+  const scoreLabel = trust
+    ? (trust.score >= 70 ? 'Visok nivo poverenja' : trust.score >= 40 ? 'Srednji nivo poverenja' : 'Nizak nivo poverenja')
+    : ''
+
+  const verifyBadge = enriched
+    ? { text: '✓ Izvor potvrđen',    color: '#22C55E', bg: 'rgba(34,197,94,.18)' }
+    : { text: '⚠ Delimično potvrđeni podaci', color: '#F97316', bg: 'rgba(249,115,22,.18)' }
+
   return (
     <div
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      style={{marginBottom:8,borderRadius:14,overflow:'hidden',position:'relative',height:240,background:'#0a0a0a',touchAction:'pan-y'}}
+      style={{ position:'relative', borderRadius:20, overflow:'hidden',
+        height:260, background:'#0a0a0a', touchAction:'pan-y', marginBottom:0 }}
     >
+      {/* Slika */}
       {images[activeImg]
-        ? <img src={fullImg(images[activeImg])} alt={alt} style={{width:'100%',height:'100%',objectFit:'contain',userSelect:'none',background:'#0a0a0a'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
-        : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
+        ? <img src={fullImg(images[activeImg])} alt={alt}
+            style={{ width:'100%', height:'100%', objectFit:'cover', userSelect:'none' }}
+            onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }} />
+        : <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+            height:'100%', fontSize:60 }}>🚗</div>
       }
 
-      {/* AI Score overlay — top left, clickable */}
+      {/* Gradient overlay bottom */}
+      <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,.65) 100%)', pointerEvents:'none' }} />
+
+      {/* ── AI SCORE — gore lijevo (glassmorphism) ── */}
       {trust && (
-        <div onClick={onScoreClick} style={{position:'absolute',top:8,left:8,cursor:'pointer'}}>
-          <div style={{background:'rgba(0,0,0,.85)',borderRadius:10,padding:'6px 10px',backdropFilter:'blur(8px)',border:`1px solid ${trust.color}66`,boxShadow:`0 2px 12px ${trust.color}33`}}>
-            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:2}}>
-              <div style={{width:8,height:8,borderRadius:'50%',background:trust.color,flexShrink:0}} />
-              <span style={{fontSize:14,fontWeight:900,color:trust.color}}>AI {trust.score}/100</span>
-            </div>
-            <div style={{fontSize:11,color:'rgba(255,255,255,.8)',fontWeight:600}}>{trust.label}</div>
+        <div onClick={onScoreClick} style={{ position:'absolute', top:12, left:12, cursor:'pointer',
+          background:'rgba(0,0,0,.55)', backdropFilter:'blur(12px)',
+          borderRadius:16, padding:'8px 12px',
+          border:`1px solid ${scoreColor}44`,
+          boxShadow:`0 4px 20px rgba(0,0,0,.4), 0 0 0 1px ${scoreColor}22` }}>
+          <div style={{ fontSize:9, color:'rgba(255,255,255,.5)', fontWeight:700,
+            letterSpacing:'.1em', marginBottom:2 }}>AI SCORE</div>
+          <div style={{ fontSize:30, fontWeight:900, color:scoreColor, lineHeight:1 }}>
+            {trust.score}
           </div>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.65)', marginTop:2 }}>{scoreLabel}</div>
         </div>
       )}
 
-      {/* Top right - verifikovan */}
-      <span style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.85)',display:'flex',alignItems:'center',gap:4}}>
-        <span style={{fontSize:9,color:'#22C55E'}}>✓</span> Verifikovan izvor
-      </span>
-      {/* Bottom left - country */}
-      <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(country||'')}</span>
-      {images.length > 1 && (
-        <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
-          {activeImg+1}/{images.length}
+      {/* ── STATUS — gore desno (glassmorphism) ── */}
+      <div style={{ position:'absolute', top:12, right:12,
+        background:'rgba(0,0,0,.55)', backdropFilter:'blur(12px)',
+        borderRadius:20, padding:'5px 10px',
+        border:`1px solid ${verifyBadge.color}44` }}>
+        <span style={{ fontSize:11, fontWeight:700, color: verifyBadge.color }}>
+          {verifyBadge.text}
         </span>
+      </div>
+
+      {/* ── Dot indikatori ── */}
+      {images.length > 1 && (
+        <div style={{ position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)',
+          display:'flex', gap:5, alignItems:'center' }}>
+          {images.slice(0, 8).map((_: string, i: number) => (
+            <div key={i} onClick={() => setActiveImg(i)} style={{
+              width: activeImg === i ? 20 : 6, height: 6,
+              borderRadius: 3, cursor:'pointer', transition:'all .25s',
+              background: activeImg === i ? '#fff' : 'rgba(255,255,255,.35)',
+            }} />
+          ))}
+          {images.length > 8 && <div style={{ width:5, height:5, borderRadius:'50%', background:'rgba(255,255,255,.2)' }} />}
+        </div>
       )}
-      {/* Left/right arrows */}
+
+      {/* ── Arrows ── */}
       {images.length > 1 && activeImg > 0 && (
-        <div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i-1)}}
-          style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,color:'#fff'}}>‹</div>
+        <div onClick={e => { e.stopPropagation(); setActiveImg((i:number) => i-1) }}
+          style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)',
+            background:'rgba(0,0,0,.45)', borderRadius:'50%', width:34, height:34,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            cursor:'pointer', fontSize:18, color:'#fff', backdropFilter:'blur(4px)' }}>‹</div>
       )}
       {images.length > 1 && activeImg < images.length-1 && (
-        <div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i+1)}}
-          style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:18,color:'#fff'}}>›</div>
-      )}
-      {images.length > 1 && activeImg > 0 && (
-        <div onClick={() => setActiveImg((i:number) => i-1)}
-          style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16,color:'#fff'}}>‹</div>
-      )}
-      {images.length > 1 && activeImg < images.length-1 && (
-        <div onClick={() => setActiveImg((i:number) => i+1)}
-          style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16,color:'#fff'}}>›</div>
+        <div onClick={e => { e.stopPropagation(); setActiveImg((i:number) => i+1) }}
+          style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
+            background:'rgba(0,0,0,.45)', borderRadius:'50%', width:34, height:34,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            cursor:'pointer', fontSize:18, color:'#fff', backdropFilter:'blur(4px)' }}>›</div>
       )}
     </div>
   )
 }
+
 
 
 export default function ListingPage({ params }: { params: { id: string } }) {
@@ -447,8 +482,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
         .mobile-stack { display:block; }
         .trust-bar { transition:width .6s ease; }
         @media(max-width:768px){
-          .mob-title    { font-size:20px !important; font-weight:700 !important; }
-          .mob-price    { font-size:38px !important; font-weight:800 !important; line-height:1 !important; }
+          .mob-title    { font-size:22px !important; font-weight:800 !important; }
+          .mob-price    { font-size:42px !important; font-weight:900 !important; line-height:1 !important; }
           .mob-price-rs { font-size:22px !important; font-weight:700 !important; }
           .mob-status   { font-size:16px !important; font-weight:700 !important; }
           .mob-status-sub { font-size:13px !important; }
@@ -470,7 +505,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
         .action-btn:active { opacity:.8; transform:scale(.97); }
       `}</style>
 
-      <div className="container" style={{padding:'12px 12px 0'}}>
+      <div className="container" style={{padding:'0 12px 0'}}>
         {/* Breadcrumb */}
         <div style={{fontSize:12,color:'var(--text3)',marginBottom:10,display:'flex',alignItems:'center',gap:5}}>
           <a href={backUrl} style={{color:'var(--text3)',textDecoration:'none'}}>← Pretraga</a>
@@ -554,80 +589,91 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               )}
             </div>
 
-            {/* ── NAZIV + SPECS ROW ──────────────────────── */}
-            <div style={{padding:'10px 0 4px'}}>
-              <div style={{fontSize:20,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:6,lineHeight:1.2}}>
-                {listing.make} {listing.model}{listing.year ? ` · ${listing.year}` : ''}
+            {/* ── NAZIV + META ──────────────────────── */}
+            <div style={{padding:'14px 0 8px'}}>
+              {/* Make / Model */}
+              <div style={{fontSize:13,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:2}}>
+                {listing.make?.toUpperCase()}
               </div>
-              {/* Spec icons row */}
-              <div style={{display:'flex',gap:12,flexWrap:'wrap',fontSize:13,color:'var(--text3)'}}>
+              <div style={{fontSize:24,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:6,lineHeight:1.15}}>
+                {listing.model} {listing.year && <span style={{color:'var(--text3)',fontWeight:400}}>{listing.year}</span>}
+              </div>
+
+              {/* Meta icons row */}
+              <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:13,color:'var(--text3)',marginBottom:8}}>
                 {listing.city && <span>📍 {listing.city.split(' - ')[0]}</span>}
                 {listing.fuel_type && <span>⛽ {fuelLabel(listing.fuel_type)}</span>}
                 {listing.transmission && <span>⚙ {listing.transmission==='automatic'?'Automatik':'Manuel'}</span>}
                 {listing.mileage && <span>🛣 {fmtKm(listing.mileage)}</span>}
               </div>
-            </div>
 
-            {/* ── CENA ──────────────────────────────────── */}
-            <div style={{display:'flex',alignItems:'flex-end',gap:10,marginBottom:10}}>
-              <div style={{fontSize:36,fontWeight:900,color:'var(--accent)',lineHeight:1}}>
-                {price ? `${fmt(price)} €` : 'Na upit'}
-              </div>
-              {listing.price_estimated && (
-                <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',marginBottom:4}}>
-                  {deltaGood?'↓':'↑'} {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}% vs prosek
+              {/* AI price insight */}
+              {listing.price_delta_pct && (
+                <div style={{display:'flex',alignItems:'center',gap:8,fontSize:13}}>
+                  <span style={{color:'var(--text3)'}}>⭐ AI procena:</span>
+                  <span style={{fontWeight:700,color:deltaGood?'#22C55E':'#F97316'}}>
+                    {deltaGood ? 'Ispod tržišta' : Number(listing.price_delta_pct) <= 10 ? 'Fer cena' : 'Iznad tržišta'}
+                  </span>
+                  <span style={{fontSize:12,color:deltaGood?'#22C55E':'#F97316'}}>
+                    {deltaGood?'↓':'↑'}{Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%
+                  </span>
                 </div>
               )}
             </div>
 
+            {/* ── CENA ──────────────────────────────────── */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:38,fontWeight:900,color:'var(--text)',lineHeight:1,letterSpacing:'-1px'}}>
+                {price ? `${fmt(price)} €` : 'Na upit'}
+              </div>
+            </div>
+
             {/* ── DVE KARTICE: UVOZ + SRBIJA ────────────── */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
-              {/* Uvoz u Srbiju */}
-              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:12,padding:'10px 12px'}}>
-                <div style={{fontSize:10,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:3}}>UVOZ U SRBIJU</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:16}}>
+              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}22`,borderRadius:16,padding:'12px 14px'}}>
+                <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:4}}>UVOZ U SRBIJU</div>
                 <div style={{fontSize:13,fontWeight:700,color:eligColor,marginBottom:2}}>{elig.emoji} {elig.label}</div>
                 {elig.sublabel && <div style={{fontSize:11,color:'var(--text3)'}}>{elig.sublabel}</div>}
               </div>
-              {/* Ukupno za Srbiju */}
-              {bd && (
-                <button onClick={() => setShowBdSheet(true)} style={{background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.25)',borderRadius:12,padding:'10px 12px',textAlign:'left',cursor:'pointer',width:'100%'}}>
-                  <div style={{fontSize:10,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:3}}>🇷🇸 ZA SRBIJU</div>
-                  <div style={{fontSize:16,fontWeight:800,color:'var(--accent)'}}>{fmt(bd.total)} €</div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>Detaljan obračun ›</div>
+              {bd ? (
+                <button onClick={() => setShowBdSheet(true)} style={{
+                  background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.2)',
+                  borderRadius:16,padding:'12px 14px',textAlign:'left',cursor:'pointer',width:'100%'}}>
+                  <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:4}}>ZA SRBIJU</div>
+                  <div style={{fontSize:18,fontWeight:800,color:'var(--accent)',lineHeight:1}}>{fmt(bd.total)} €</div>
+                  <div style={{fontSize:11,color:'var(--text3)',marginTop:3}}>Uključuje procenu uvoza →</div>
                 </button>
+              ) : (
+                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:'12px 14px'}}>
+                  <div style={{fontSize:11,color:'var(--text3)'}}>Cena nije dostupna</div>
+                </div>
               )}
             </div>
 
             {/* ── CTA DUGMAD ────────────────────────────── */}
-            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:8,marginBottom:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,marginBottom:16}}>
               <button onClick={() => setShowContact(true)} style={{
-                padding:'14px 8px', background:'var(--accent)', border:'none',
-                color:'#fff', borderRadius:14, fontSize:15, fontWeight:800, cursor:'pointer',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:2,
-                boxShadow:'0 4px 20px rgba(255,107,0,.35)',
+                padding:'16px 12px',background:'var(--accent)',border:'none',
+                color:'#fff',borderRadius:20,fontSize:16,fontWeight:800,cursor:'pointer',
+                display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+                boxShadow:'0 6px 24px rgba(255,107,0,.4)',
               }}>
-                <span style={{fontSize:20}}>🤖</span>
-                <span>Kontaktiraj</span>
+                🤖 Kontaktiraj
               </button>
               <button onClick={handleSave} style={{
-                padding:'14px 6px',
+                width:54,height:54,padding:0,
                 background: favorited ? 'rgba(255,107,0,.15)' : 'var(--bg2)',
                 border: `2px solid ${favorited ? 'var(--accent)' : 'var(--border)'}`,
                 color: favorited ? 'var(--accent)' : 'var(--text2)',
-                borderRadius:14, fontSize:13, fontWeight:700, cursor:'pointer',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:2,
-              }}>
-                <span style={{fontSize:20}}>{favorited?'❤️':'🤍'}</span>
-                <span style={{fontSize:11}}>{favorited?'Sačuvano':'Sačuvaj'}</span>
-              </button>
-              <a href={listing.url} target="_blank" rel="noopener" style={{
-                padding:'14px 6px', background:'var(--bg2)', border:'2px solid var(--border)',
-                color:'var(--text2)', borderRadius:14, fontSize:13, fontWeight:700, textDecoration:'none',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:2,
-              }}>
-                <span style={{fontSize:20}}>⚖️</span>
-                <span style={{fontSize:11}}>Oglas</span>
-              </a>
+                borderRadius:20,fontSize:22,fontWeight:700,cursor:'pointer',
+                display:'flex',alignItems:'center',justifyContent:'center',
+              }}>{favorited?'❤️':'🤍'}</button>
+              <button onClick={() => {}} style={{
+                width:54,height:54,padding:0,
+                background:'var(--bg2)',border:'2px solid var(--border)',
+                color:'var(--text2)',borderRadius:20,fontSize:20,cursor:'pointer',
+                display:'flex',alignItems:'center',justifyContent:'center',
+              }}>⚖️</button>
             </div>
 
             {/* ── TABS ──────────────────────────────────── */}
