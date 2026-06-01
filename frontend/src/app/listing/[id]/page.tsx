@@ -331,7 +331,9 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
               display:        'block',
               width:          '100%',
               height:         'auto',
+              maxHeight:      '52vh',
               objectFit:      'contain',
+              objectPosition: 'center center',
               userSelect:     'none',
               cursor:         'zoom-in',
             }}
@@ -578,7 +580,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+        .desktop-only { display:block }
         @media(max-width:768px){
+          .desktop-only { display:none !important }
           .listing-grid { grid-template-columns:1fr !important; }
           .desktop-sidebar { display:none !important; }
           .desktop-section { display:none !important; }
@@ -614,7 +618,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
       <div className="container" style={{padding:'0 0 0'}}>
         {/* Breadcrumb */}
-        <div style={{fontSize:12,color:'var(--text3)',marginBottom:10,display:'flex',alignItems:'center',gap:5,padding:'12px 16px 0'}}>
+        <div style={{fontSize:17,color:'var(--text3)',marginBottom:10,display:'flex',alignItems:'center',gap:6,padding:'12px 16px 0'}}>
           <a href={backUrl} style={{color:'var(--text3)',textDecoration:'none'}}>← Pretraga</a>
           <span>·</span>
           <span style={{color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{listing.make} {listing.model}</span>
@@ -698,10 +702,10 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* ── NAZIV + META ──────────────────────── */}
             <div style={{padding:'16px 16px 0'}}>
-              <div style={{fontSize:32,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.2,color:'var(--text)'}}>
-                {listing.make} {listing.model}{listing.year ? <span style={{color:'var(--text3)',fontWeight:400}}> {listing.year}</span> : ''}
+              <div style={{fontSize:40,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.15,color:'var(--text)'}}>
+                {listing.make} {listing.model}{listing.year ? <span style={{color:'var(--text3)',fontWeight:400,fontSize:26}}> {listing.year}</span> : ''}
               </div>
-              <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:16,color:'var(--text2)',marginBottom:16}}>
+              <div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:20,color:'var(--text2)',marginBottom:16}}>
                 {listing.city && <span>📍 {listing.city.split(' - ')[0]}</span>}
                 {listing.fuel_type && <span>⛽ {fuelLabel(listing.fuel_type)}</span>}
                 {listing.mileage && <span>🛣 {fmtKm(listing.mileage)}</span>}
@@ -710,11 +714,11 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* ── CENA ──────────────────────────────────── */}
             <div style={{padding:'0 16px 16px'}}>
-              <div style={{fontSize:54,fontWeight:900,color:'var(--text)',lineHeight:1,letterSpacing:'-1.5px'}}>
+              <div style={{fontSize:68,fontWeight:800,color:'var(--text)',lineHeight:1,letterSpacing:'-2px'}}>
                 {price ? `${fmt(price)} €` : 'Na upit'}
               </div>
               {listing.price_delta_pct && (
-                <div style={{fontSize:15,marginTop:6,display:'flex',alignItems:'center',gap:8}}>
+                <div style={{fontSize:18,marginTop:8,display:'flex',alignItems:'center',gap:10}}>
                   <span style={{color:'var(--text3)'}}>⭐ AI procena:</span>
                   <span style={{fontWeight:700,color:deltaGood?'#22C55E':'#F97316'}}>
                     {deltaGood?'Ispod tržišta':Math.abs(Number(listing.price_delta_pct))<=10?'Fer cena':'Iznad tržišta'}
@@ -729,18 +733,18 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             {/* ── DVE KARTICE ───────────────────────────── */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,padding:'0 16px 16px'}}>
               <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:16,padding:'16px',minHeight:100}}>
-                <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>UVOZ U SRBIJU</div>
-                <div style={{fontSize:20,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
-                {elig.sublabel && <div style={{fontSize:13,color:'var(--text3)',lineHeight:1.4}}>{elig.sublabel}</div>}
+                <div style={{fontSize:14,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>UVOZ U SRBIJU</div>
+                <div style={{fontSize:24,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
+                {elig.sublabel && <div style={{fontSize:16,color:'var(--text3)',lineHeight:1.4}}>{elig.sublabel}</div>}
               </div>
               {bd ? (
                 <button onClick={() => setShowBdSheet(true)} style={{
                   background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.25)',
                   borderRadius:16,padding:'16px',textAlign:'left',cursor:'pointer',
                   width:'100%',minHeight:100}}>
-                  <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>ZA SRBIJU</div>
-                  <div style={{fontSize:28,fontWeight:900,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
-                  <div style={{fontSize:13,color:'var(--text3)'}}>Sa uvozom →</div>
+                  <div style={{fontSize:14,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>ZA SRBIJU</div>
+                  <div style={{fontSize:30,fontWeight:900,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
+                  <div style={{fontSize:16,color:'var(--text3)'}}>Sa uvozom →</div>
                 </button>
               ) : (
                 <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:'16px',minHeight:100}}>
@@ -752,7 +756,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             {/* ── CTA ───────────────────────────────────── */}
             <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,padding:'0 16px 20px'}}>
               <button onClick={() => setShowContact(true)} style={{
-                padding:'18px 12px',background:'var(--accent)',border:'none',
+                padding:'0 12px',height:64,background:'var(--accent)',border:'none',
                 color:'#fff',borderRadius:20,fontSize:22,fontWeight:800,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',gap:8,
                 boxShadow:'0 6px 24px rgba(255,107,0,.4)',
@@ -760,15 +764,15 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                 🤖 Kontaktiraj
               </button>
               <button onClick={handleSave} style={{
-                width:58,height:58,padding:0,
+                width:64,height:64,padding:0,
                 background:favorited?'rgba(255,107,0,.15)':'var(--bg2)',
                 border:`2px solid ${favorited?'var(--accent)':'var(--border)'}`,
                 color:favorited?'var(--accent)':'var(--text2)',
-                borderRadius:20,fontSize:24,cursor:'pointer',
+                borderRadius:20,fontSize:26,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',
               }}>{favorited?'❤️':'🤍'}</button>
               <button onClick={()=>{}} style={{
-                width:58,height:58,padding:0,
+                width:64,height:64,padding:0,
                 background:'var(--bg2)',border:'2px solid var(--border)',
                 color:'var(--text2)',borderRadius:20,fontSize:22,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',
@@ -1058,10 +1062,10 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
       <div style={{display:'flex',gap:4,marginBottom:10,background:'var(--bg2)',borderRadius:12,padding:4,border:'1px solid var(--border)'}}>
         {TABS.map((t, i) => (
           <button key={i} onClick={() => setTab(i)} style={{
-            flex:1, padding:'10px 6px', borderRadius:9, border:'none', cursor:'pointer',
+            flex:1, padding:'0 6px', height:64, borderRadius:12, border:'none', cursor:'pointer',
             background: tab===i ? 'var(--accent)' : 'transparent',
             color: tab===i ? '#fff' : 'var(--text3)',
-            fontSize:13, fontWeight:700, transition:'all .15s',
+            fontSize:16, fontWeight:700, transition:'all .15s',
             display:'flex', flexDirection:'column', alignItems:'center', gap:2,
           }}>
             <span style={{fontSize:16}}>{t.icon}</span>
