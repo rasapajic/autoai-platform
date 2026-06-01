@@ -304,99 +304,103 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
     }
   }
 
-  // Score color rules: 0-39 red, 40-69 orange, 70-100 green
   const scoreColor = trust
     ? (trust.score >= 70 ? '#22C55E' : trust.score >= 40 ? '#F97316' : '#EF4444')
     : '#9CA3AF'
-
   const scoreLabel = trust
     ? (trust.score >= 70 ? 'Visok nivo poverenja' : trust.score >= 40 ? 'Srednji nivo poverenja' : 'Nizak nivo poverenja')
     : ''
-
   const verifyBadge = enriched
-    ? { text: '✓ Izvor potvrđen',    color: '#22C55E', bg: 'rgba(34,197,94,.18)' }
-    : { text: '⚠ Delimično potvrđeni podaci', color: '#F97316', bg: 'rgba(249,115,22,.18)' }
+    ? { text: '✓ Izvor potvrđen',            color: '#22C55E' }
+    : { text: '⚠ Delimično potvrđeni podaci', color: '#F97316' }
 
   return (
     <div
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      style={{ position:'relative', borderRadius:20, overflow:'hidden',
-        height:220, width:'100%', background:'#0d0d0d', position:'relative',
-        touchAction:'pan-y', marginBottom:0 }}
+      style={{ position:'relative', width:'100%', background:'#0d0d0d',
+        borderRadius:20, overflow:'hidden', touchAction:'pan-y' }}
     >
-      {/* Slika */}
+      {/* ── Slika: width 100%, height auto, contain ── */}
       {images[activeImg]
-        ? <img src={fullImg(images[activeImg])} alt={alt}
+        ? <img
+            src={fullImg(images[activeImg])}
+            alt={alt}
             onClick={onImageClick}
-            style={{ width:'100%', height:'100%', objectFit:'contain',
-              objectPosition:'center center', userSelect:'none', display:'block', cursor:'zoom-in' }}
-            onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }} />
-        : <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-            height:'100%', fontSize:60, aspectRatio:'16/10' }}>🚗</div>
+            style={{
+              display:         'block',
+              width:           '100%',
+              height:          'auto',
+              maxHeight:       '68vw',
+              objectFit:       'contain',
+              objectPosition:  'center center',
+              userSelect:      'none',
+              cursor:          'zoom-in',
+            }}
+            onError={e => { (e.target as HTMLImageElement).src = images[activeImg] }}
+          />
+        : <div style={{ width:'100%', height:220, display:'flex',
+            alignItems:'center', justifyContent:'center', fontSize:60 }}>🚗</div>
       }
 
-      {/* Gradient overlay bottom */}
-      <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,.65) 100%)', pointerEvents:'none' }} />
-
-      {/* ── AI SCORE — gore lijevo ── */}
+      {/* AI SCORE — gore lijevo */}
       {trust && (
-        <div onClick={onScoreClick} style={{ position:'absolute', top:10, left:10, cursor:'pointer',
-          background:'rgba(0,0,0,.72)', backdropFilter:'blur(10px)',
-          borderRadius:12, padding:'5px 10px',
-          border:`1px solid ${scoreColor}55` }}>
-          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-            <div style={{ width:8, height:8, borderRadius:'50%', background:scoreColor, flexShrink:0 }} />
-            <span style={{ fontSize:15, fontWeight:900, color:scoreColor }}>AI {trust.score}</span>
+        <div onClick={onScoreClick} style={{
+          position:'absolute', top:10, left:10, cursor:'pointer',
+          background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)',
+          borderRadius:10, padding:'5px 10px',
+          border:`1px solid ${scoreColor}55`,
+        }}>
+          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+            <div style={{ width:7, height:7, borderRadius:'50%', background:scoreColor }} />
+            <span style={{ fontSize:14, fontWeight:900, color:scoreColor }}>AI {trust.score}</span>
           </div>
-          <div style={{ fontSize:10, color:'rgba(255,255,255,.6)', marginTop:1 }}>{scoreLabel}</div>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.55)', marginTop:1 }}>{scoreLabel}</div>
         </div>
       )}
 
-      {/* ── STATUS — gore desno (glassmorphism) ── */}
-      <div style={{ position:'absolute', top:12, right:12,
-        background:'rgba(0,0,0,.55)', backdropFilter:'blur(12px)',
-        borderRadius:20, padding:'5px 10px',
-        border:`1px solid ${verifyBadge.color}44` }}>
-        <span style={{ fontSize:11, fontWeight:700, color: verifyBadge.color }}>
-          {verifyBadge.text}
-        </span>
+      {/* STATUS — gore desno */}
+      <div style={{
+        position:'absolute', top:10, right:10,
+        background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)',
+        borderRadius:20, padding:'4px 9px',
+        border:`1px solid ${verifyBadge.color}44`,
+      }}>
+        <span style={{ fontSize:11, fontWeight:700, color:verifyBadge.color }}>{verifyBadge.text}</span>
       </div>
 
-      {/* ── Dot indikatori ── */}
+      {/* Dot indikatori */}
       {images.length > 1 && (
-        <div style={{ position:'absolute', bottom:10, left:'50%', transform:'translateX(-50%)',
+        <div style={{ position:'absolute', bottom:8, left:'50%', transform:'translateX(-50%)',
           display:'flex', gap:5, alignItems:'center' }}>
           {images.slice(0, 8).map((_: string, i: number) => (
             <div key={i} onClick={() => setActiveImg(i)} style={{
-              width: activeImg === i ? 20 : 6, height: 6,
-              borderRadius: 3, cursor:'pointer', transition:'all .25s',
-              background: activeImg === i ? '#fff' : 'rgba(255,255,255,.35)',
+              width: activeImg===i ? 18 : 6, height:6, borderRadius:3,
+              background: activeImg===i ? '#fff' : 'rgba(255,255,255,.4)',
+              cursor:'pointer', transition:'all .2s',
             }} />
           ))}
-          {images.length > 8 && <div style={{ width:5, height:5, borderRadius:'50%', background:'rgba(255,255,255,.2)' }} />}
         </div>
       )}
 
-      {/* ── Arrows ── */}
+      {/* Strelice */}
       {images.length > 1 && activeImg > 0 && (
         <div onClick={e => { e.stopPropagation(); setActiveImg((i:number) => i-1) }}
-          style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)',
-            background:'rgba(0,0,0,.45)', borderRadius:'50%', width:34, height:34,
+          style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)',
+            background:'rgba(0,0,0,.5)', borderRadius:'50%', width:32, height:32,
             display:'flex', alignItems:'center', justifyContent:'center',
-            cursor:'pointer', fontSize:18, color:'#fff', backdropFilter:'blur(4px)' }}>‹</div>
+            cursor:'pointer', color:'#fff', fontSize:18 }}>‹</div>
       )}
       {images.length > 1 && activeImg < images.length-1 && (
         <div onClick={e => { e.stopPropagation(); setActiveImg((i:number) => i+1) }}
-          style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
-            background:'rgba(0,0,0,.45)', borderRadius:'50%', width:34, height:34,
+          style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)',
+            background:'rgba(0,0,0,.5)', borderRadius:'50%', width:32, height:32,
             display:'flex', alignItems:'center', justifyContent:'center',
-            cursor:'pointer', fontSize:18, color:'#fff', backdropFilter:'blur(4px)' }}>›</div>
+            cursor:'pointer', color:'#fff', fontSize:18 }}>›</div>
       )}
     </div>
   )
 }
-
 
 
 export default function ListingPage({ params }: { params: { id: string } }) {
