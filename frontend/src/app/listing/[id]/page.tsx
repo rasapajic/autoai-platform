@@ -1219,7 +1219,6 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
     </div>
   )
 }
-
 function PageSkeleton() {
   return (
     <div style={{padding:'12px'}}>
@@ -1229,24 +1228,4 @@ function PageSkeleton() {
       <div className="skeleton" style={{height:60,borderRadius:14}} />
     </div>
   )
-}            <footer style={{textAlign:'center',padding:'20px 16px 40px',borderTop:'1px solid var(--border)',marginTop:20}}>
-        <p style={{fontSize:13,color:'var(--text3)',margin:0,opacity:.6}}>© 2026 AutoAI</p>
-      </footer>ent'
-import React, { useEffect, useState, useRef } from 'react'
-import { getListing, getPriceHistory, getSimilar, fraudCheck } from '@/lib/api'
-import ContactModal from '@/components/ContactModal'
-import VinChecker from '@/components/VinChecker'
-import ModelChecklist from '@/components/ModelChecklist'
-
-// ── Tooltip tekstovi ─────────────────────────────────────────────
-const TOOLTIPS: Record<string, string> = {
-  aiScore:            "AI Score je automatska ocena oglasa od 0 do 100. Racuna se na osnovu kompletnosti podataka, realnosti cene u odnosu na trziste, kilometraze i podobnosti vozila za uvoz u Srbiju. Sto je score visi, oglas je pouzdaniji.",
-  uvozSrbija:         "Pokazuje da li vozilo moze da se uveze u Srbiju. Srbija zahteva minimum Euro 4 normu (benzinci 2006+, dizeli posebno). Elektricna vozila su oslobodjena carine i nemaju ogranicenja.",
-  ukupnoSrbija:       "Procena ukupnog troska: EU cena + carina (0-5%) + PDV 20% + transport ~420 EUR + registracija ~280 EUR. Ovo je procena - tacni iznosi mogu varirati.",
-  podaciProvereni:    "AutoAI je posjetio originalni oglas i azurirao podatke o vozilu - godiste, kilometrazu, gorivo i Euro normu. Ovo smanjuje greske koje nastaju pogresnim unosom prodavaca.",
-  bezbednosnaProvera: "Automatska analiza oglasa na znakove prevare. AI trazi tipicne obrasce laznih oglasa: sumnjivo niska cena, nekonzistentni podaci, nedostatak fotografija. Zeleni signali znace da oglas izgleda legitimno.",
-  vinProvera:         "VIN je jedinstveni 17-cifreni broj svakog vozila. Unosenjem VIN broja mozes da proveris da li se podaci iz oglasa poklapaju sa zvanicnim podacima iz fabrike. Neslaganje moze biti znak prevare.",
-  staProveriti:       "Lista specificnih stvari koje treba proveriti kod ovog modela na fizickom pregledu. Svaki model ima poznate slabosti - ovde su tipicni problemi za ovu marku i model.",
-  kontaktirajProdavca:"AI automatski generise profesionalnu poruku prodavcu na njegovom jeziku (nemacki, holandski, francuski...). Poruka pita za VIN broj, servisnu istoriju i razlog prodaje.",
-  sacuvajPretragu:    "Sacuvaj filtere i dobijaj email obavjestenje cim se pojavi novo vozilo koje odgovara tvojim kriterijumima. Nema potrebe da svakodnevno pretrazujes rucno.",
 }
