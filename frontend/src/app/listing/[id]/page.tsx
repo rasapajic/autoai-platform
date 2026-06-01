@@ -698,11 +698,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* ── NAZIV + META ──────────────────────── */}
             <div style={{padding:'16px 16px 0'}}>
-              <div style={{fontSize:13,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:4}}>
-                {listing.make?.toUpperCase()}
-              </div>
-              <div style={{fontSize:34,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.2,color:'var(--text)'}}>
-                {listing.model}{listing.year ? <span style={{color:'var(--text3)',fontWeight:400}}> {listing.year}</span> : ''}
+              <div style={{fontSize:32,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.2,color:'var(--text)'}}>
+                {listing.make} {listing.model}{listing.year ? <span style={{color:'var(--text3)',fontWeight:400}}> {listing.year}</span> : ''}
               </div>
               <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:16,color:'var(--text2)',marginBottom:16}}>
                 {listing.city && <span>📍 {listing.city.split(' - ')[0]}</span>}
@@ -731,7 +728,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* ── DVE KARTICE ───────────────────────────── */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,padding:'0 16px 16px'}}>
-              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:16,padding:'14px 16px',minHeight:90}}>
+              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:16,padding:'16px',minHeight:100}}>
                 <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>UVOZ U SRBIJU</div>
                 <div style={{fontSize:20,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
                 {elig.sublabel && <div style={{fontSize:13,color:'var(--text3)',lineHeight:1.4}}>{elig.sublabel}</div>}
@@ -739,14 +736,14 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               {bd ? (
                 <button onClick={() => setShowBdSheet(true)} style={{
                   background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.25)',
-                  borderRadius:16,padding:'14px 16px',textAlign:'left',cursor:'pointer',
-                  width:'100%',minHeight:90}}>
+                  borderRadius:16,padding:'16px',textAlign:'left',cursor:'pointer',
+                  width:'100%',minHeight:100}}>
                   <div style={{fontSize:11,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>ZA SRBIJU</div>
                   <div style={{fontSize:28,fontWeight:900,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
                   <div style={{fontSize:13,color:'var(--text3)'}}>Sa uvozom →</div>
                 </button>
               ) : (
-                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:'14px 16px',minHeight:90}}>
+                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:'16px',minHeight:100}}>
                   <div style={{fontSize:13,color:'var(--text3)'}}>Nedostaje cena</div>
                 </div>
               )}
