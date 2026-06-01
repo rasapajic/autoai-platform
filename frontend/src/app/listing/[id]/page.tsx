@@ -330,11 +330,9 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
             style={{
               display:        'block',
               width:          '100%',
-              height:         '78vh',
-              minHeight:      320,
-              maxHeight:      '78vh',
+              height:         'min(72vh, 520px)',
               objectFit:      'cover',
-              objectPosition: 'center center',
+              objectPosition: 'center 40%',
               userSelect:     'none',
               cursor:         'zoom-in',
             }}
@@ -345,44 +343,34 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust, 
       }
 
       {/* GORE LIJEVO: Verifikovan + AI score stacked */}
-      <div style={{ position:'absolute', top:10, left:10, display:'flex', flexDirection:'column', gap:6 }}>
+      <div style={{ position:'absolute', top:12, left:12, display:'flex', flexDirection:'column', gap:7 }}>
         {/* Verifikovan izvor */}
         <div style={{
-          background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)',
-          borderRadius:20, padding:'5px 12px',
+          background:'rgba(0,0,0,.72)', backdropFilter:'blur(10px)',
+          borderRadius:20, padding:'5px 11px',
           border:`1px solid ${verifyBadge.color}55`,
-          display:'flex', alignItems:'center', gap:6,
+          display:'inline-flex', alignItems:'center', gap:5, alignSelf:'flex-start',
         }}>
-          <span style={{ fontSize:13, color:verifyBadge.color }}>
-            {enriched ? '✅' : '⚠️'}
-          </span>
+          <span style={{ fontSize:12 }}>{enriched ? '✅' : '⚠️'}</span>
           <span style={{ fontSize:12, fontWeight:700, color:'#fff' }}>{verifyBadge.text}</span>
         </div>
 
-        {/* AI Score */}
+        {/* AI Score — compact */}
         {trust && (
           <div onClick={onScoreClick} style={{
-            background:'rgba(0,0,0,.82)', backdropFilter:'blur(8px)',
+            background:'rgba(0,0,0,.72)', backdropFilter:'blur(10px)',
             borderRadius:14, padding:'8px 12px', cursor:'pointer',
-            border:`1px solid ${scoreColor}55`,
-            display:'flex', alignItems:'center', gap:10,
+            border:`1px solid ${scoreColor}66`,
+            display:'inline-flex', alignItems:'center', gap:8, alignSelf:'flex-start',
+            minWidth:90,
           }}>
-            {/* Ring */}
-            <div style={{ position:'relative', width:36, height:36, flexShrink:0 }}>
-              <svg width="36" height="36" style={{ transform:'rotate(-90deg)' }}>
-                <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="3" />
-                <circle cx="18" cy="18" r="14" fill="none" stroke={scoreColor} strokeWidth="3"
-                  strokeDasharray={`${(trust.score/100)*88} 88`} strokeLinecap="round" />
-              </svg>
-              <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <span style={{ fontSize:10, fontWeight:800, color:scoreColor }}>{trust.score}</span>
-              </div>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:22, fontWeight:900, color:scoreColor, lineHeight:1 }}>{trust.score}</div>
+              <div style={{ fontSize:9, color:'rgba(255,255,255,.5)', letterSpacing:'.06em' }}>/ 100</div>
             </div>
             <div>
-              <div style={{ fontSize:16, fontWeight:900, color:scoreColor, lineHeight:1 }}>
-                AI {trust.score}<span style={{ fontSize:11, opacity:.7 }}>/100</span>
-              </div>
-              <div style={{ fontSize:11, color:'rgba(255,255,255,.7)', marginTop:2 }}>{trust.label}</div>
+              <div style={{ fontSize:11, fontWeight:800, color:'rgba(255,255,255,.9)', lineHeight:1.2 }}>AI ocena</div>
+              <div style={{ fontSize:10, color:scoreColor, fontWeight:700, marginTop:2 }}>{scoreLabel}</div>
             </div>
           </div>
         )}
@@ -694,10 +682,15 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <div style={{fontSize:32,fontWeight:800,fontFamily:'Syne,sans-serif',marginBottom:10,lineHeight:1.2,color:'var(--text)'}}>
                 {listing.make} {listing.model}{listing.year ? <span style={{color:'var(--text3)',fontWeight:400}}> {listing.year}</span> : ''}
               </div>
-              <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:16,color:'var(--text2)',marginBottom:14}}>
-                {listing.city && <span>📍 {listing.city.split(' - ')[0]}</span>}
-                {listing.fuel_type && <span>⛽ {fuelLabel(listing.fuel_type)}</span>}
-                {listing.mileage && <span>🛣 {fmtKm(listing.mileage)}</span>}
+              <div style={{marginBottom:14}}>
+                <div style={{display:'flex',gap:12,fontSize:15,color:'var(--text2)',marginBottom:4,flexWrap:'wrap'}}>
+                  {listing.fuel_type && <span>⛽ {fuelLabel(listing.fuel_type)}</span>}
+                  {listing.country && <span>📍 {listing.country}</span>}
+                  {listing.transmission && <span>⚙ {listing.transmission==='automatic'?'Automatik':'Manuel'}</span>}
+                </div>
+                {listing.mileage && (
+                  <div style={{fontSize:15,color:'var(--text3)'}}>📏 {fmtKm(listing.mileage)}</div>
+                )}
               </div>
             </div>
 
@@ -721,7 +714,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
 
             {/* ── DVE KARTICE ───────────────────────────── */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,padding:'0 16px 16px'}}>
-              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:16,padding:'16px',minHeight:100}}>
+              <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:14,padding:'12px 14px',minHeight:80}}>
                 <div style={{fontSize:13,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>UVOZ U SRBIJU</div>
                 <div style={{fontSize:20,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
                 {elig.sublabel && <div style={{fontSize:16,color:'var(--text3)',lineHeight:1.4}}>{elig.sublabel}</div>}
@@ -729,44 +722,50 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               {bd ? (
                 <button onClick={() => setShowBdSheet(true)} style={{
                   background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.25)',
-                  borderRadius:16,padding:'16px',textAlign:'left',cursor:'pointer',
-                  width:'100%',minHeight:100}}>
+                  borderRadius:14,padding:'12px 14px',textAlign:'left',cursor:'pointer',
+                  width:'100%',minHeight:80}}>
                   <div style={{fontSize:13,color:'var(--text3)',fontWeight:700,letterSpacing:'.07em',marginBottom:6}}>ZA SRBIJU</div>
                   <div style={{fontSize:26,fontWeight:900,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
                   <div style={{fontSize:16,color:'var(--text3)'}}>Sa uvozom →</div>
                 </button>
               ) : (
-                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:'16px',minHeight:100}}>
+                <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:'12px 14px',minHeight:80}}>
                   <div style={{fontSize:13,color:'var(--text3)'}}>Nedostaje cena</div>
                 </div>
               )}
             </div>
 
             {/* ── CTA ───────────────────────────────────── */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:10,padding:'0 16px 20px'}}>
+            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:8,padding:'0 16px 20px'}}>
               <button onClick={() => setShowContact(true)} style={{
-                padding:'18px 12px',background:'var(--accent)',border:'none',
-                color:'#fff',borderRadius:20,fontSize:20,fontWeight:800,cursor:'pointer',
+                height:56,background:'var(--accent)',border:'none',
+                color:'#fff',borderRadius:16,fontSize:17,fontWeight:800,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',gap:8,
-                boxShadow:'0 6px 24px rgba(255,107,0,.4)',
+                boxShadow:'0 4px 20px rgba(255,107,0,.35)',
               }}>
                 🤖 Kontaktiraj
               </button>
               <button onClick={handleSave} style={{
-                width:58,height:58,padding:0,
-                background:favorited?'rgba(255,107,0,.15)':'var(--bg2)',
+                height:54,
+                background:favorited?'rgba(255,107,0,.12)':'var(--bg2)',
                 border:`2px solid ${favorited?'var(--accent)':'var(--border)'}`,
                 color:favorited?'var(--accent)':'var(--text2)',
-                borderRadius:20,fontSize:26,cursor:'pointer',
-                display:'flex',alignItems:'center',justifyContent:'center',
-              }}>{favorited?'❤️':'🤍'}</button>
+                borderRadius:14,fontSize:13,fontWeight:700,cursor:'pointer',
+                display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
+              }}>
+                <span style={{fontSize:20}}>{favorited?'❤️':'🤍'}</span>
+                <span style={{fontSize:11}}>{favorited?'Sačuvano':'Sačuvaj'}</span>
+              </button>
               <button onClick={()=>{}} style={{
-                width:58,height:58,padding:0,
+                height:54,
                 background:'var(--bg2)',border:'2px solid var(--border)',
-                color:'var(--text2)',borderRadius:20,fontSize:22,cursor:'pointer',
-                display:'flex',alignItems:'center',justifyContent:'center',
-              }}>⚖️</button>
-            </div>
+                color:'var(--text2)',borderRadius:14,fontSize:13,fontWeight:700,cursor:'pointer',
+                display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
+              }}>
+                <span style={{fontSize:20}}>⚖️</span>
+                <span style={{fontSize:11}}>Uporedi</span>
+              </button>
+            </div>/div>
 
             {/* ── TABS ──────────────────────────────────── */}
             <div style={{paddingLeft:16,paddingRight:16}}>
@@ -825,9 +824,9 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               <h2 style={{fontSize:15,marginBottom:14}}>Specifikacije</h2>
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
                 {specs.map(s => (
-                  <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'9px 12px'}}>
-                    <div style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>{s.label}</div>
-                    <div style={{fontSize:13,fontWeight:500}}>
+                  <div key={s.label} style={{background:'var(--bg3)',borderRadius:10,padding:'10px 12px'}}>
+                    <div style={{fontSize:11,color:'var(--text3)',marginBottom:3}}>{s.icon} {s.label}</div>
+                    <div style={{fontSize:16,fontWeight:700,color:'var(--text)'}}>
                       {s.label === 'Grad' ? (
                         <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
                           target="_blank" rel="noopener" style={{color:'inherit',textDecoration:'none'}}>
@@ -1051,14 +1050,14 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
       <div style={{display:'flex',gap:4,marginBottom:10,background:'var(--bg2)',borderRadius:12,padding:4,border:'1px solid var(--border)'}}>
         {TABS.map((t, i) => (
           <button key={i} onClick={() => setTab(i)} style={{
-            flex:1, padding:'10px 6px', borderRadius:9, border:'none', cursor:'pointer',
+            flex:1, padding:'12px 6px', borderRadius:10, border:'none', cursor:'pointer',
             background: tab===i ? 'var(--accent)' : 'transparent',
             color: tab===i ? '#fff' : 'var(--text3)',
-            fontSize:13, fontWeight:700, transition:'all .15s',
-            display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+            fontSize:14, fontWeight:700, transition:'all .15s',
+            display:'flex', flexDirection:'column', alignItems:'center', gap:3,
           }}>
-            <span style={{fontSize:16}}>{t.icon}</span>
-            <span style={{fontSize:11}}>{t.label}</span>
+            <span style={{fontSize:18}}>{t.icon}</span>
+            <span style={{fontSize:12}}>{t.label}</span>
           </button>
         ))}
       </div>
@@ -1076,8 +1075,8 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
                 {specs.map((s: any) => (
                   <div key={s.label} style={{background:'var(--bg3)',borderRadius:8,padding:'8px 10px'}}>
-                    <div className="mob-spec-label" style={{fontSize:10,color:'var(--text3)',marginBottom:2}}>{s.label.toUpperCase()}</div>
-                    <div className="mob-spec-value" style={{fontSize:14,fontWeight:700}}>
+                    <div className="mob-spec-label" style={{fontSize:12,color:'var(--text3)',marginBottom:2}}>{s.label.toUpperCase()}</div>
+                    <div className="mob-spec-value" style={{fontSize:18,fontWeight:700}}>
                       {s.label === 'Grad' ? (
                         <a href={`https://maps.google.com/?q=${encodeURIComponent([listing.city, listing.country].filter(Boolean).join(', '))}`}
                           target="_blank" rel="noopener" style={{color:'inherit',textDecoration:'none'}}>
