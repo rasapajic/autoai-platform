@@ -332,14 +332,22 @@ export default function ContactModal({ listing, onClose }: Props) {
                     {sellerEmail && isValidEmail(sellerEmail) ? '📧 Otvori u Gmail-u' : '📧 Pošalji email'}
                   </button>
                   {!sellerEmail && (
-                    <a href={listing.url} target="_blank" rel="noopener" style={{
+                    <button onClick={async () => {
+                      try { await navigator.clipboard.writeText(message) } catch {
+                        const ta = document.createElement('textarea')
+                        ta.value = message; document.body.appendChild(ta)
+                        ta.select(); document.execCommand('copy')
+                        document.body.removeChild(ta)
+                      }
+                      setTimeout(() => window.open(listing.url, '_blank'), 150)
+                    }} style={{
                       flex:1, padding:'11px', borderRadius:10, textAlign:'center',
-                      background:'var(--bg3)', border:'1px solid var(--border)',
-                      color:'var(--accent)', fontSize:13, fontWeight:700, textDecoration:'none',
+                      background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)',
+                      color:'var(--accent)', fontSize:13, fontWeight:700, cursor:'pointer',
                       display:'flex', alignItems:'center', justifyContent:'center',
                     }}>
                       📋 Kopiraj i otvori oglas
-                    </a>
+                    </button>
                   )}
                 </div>
                 {!sellerEmail && (
