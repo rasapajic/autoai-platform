@@ -708,7 +708,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             {/* ── DVE KARTICE ───────────────────────────── */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,padding:'0 16px 16px'}}>
               <div style={{background:`${eligColor}0d`,border:`1px solid ${eligColor}33`,borderRadius:14,padding:'14px',minHeight:90}}>
-                <div style={{fontSize:12,color:'var(--text3)',fontWeight:700,letterSpacing:'.06em',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>UVOZ U SRBIJU <span onClick={e=>{e.stopPropagation()}} title='Srbija zahteva min Euro 4 normu. EV vozila su oslobođena carine.' style={{fontSize:11,color:'var(--accent)',cursor:'help',opacity:.7}}>ⓘ</span></div>
+                <div style={{fontSize:12,color:'var(--text3)',fontWeight:700,letterSpacing:'.06em',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>UVOZ U SRBIJU <span style={{fontSize:11,color:'var(--accent)',cursor:'help',opacity:.7}} title="Srbija zahteva min Euro 4 normu. EV su oslobođena carine.">ⓘ</span></div>
                 <div style={{fontSize:20,fontWeight:800,color:eligColor,marginBottom:4,lineHeight:1.2}}>{elig.emoji} {elig.label}</div>
                 {elig.sublabel && <div style={{fontSize:16,color:'var(--text3)',lineHeight:1.4}}>{elig.sublabel}</div>}
               </div>
@@ -717,7 +717,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
                   background:'rgba(255,107,0,.07)',border:'1px solid rgba(255,107,0,.25)',
                   borderRadius:14,padding:'14px',textAlign:'left',cursor:'pointer',
                   width:'100%',minHeight:90}}>
-                  <div style={{fontSize:12,color:'var(--text3)',fontWeight:700,letterSpacing:'.06em',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>ZA SRBIJU <span title='EU cena + carina + PDV 20% + transport ~420€ + registracija ~280€' style={{fontSize:11,color:'var(--accent)',cursor:'help',opacity:.7}}>ⓘ</span></div>
+                  <div style={{fontSize:12,color:'var(--text3)',fontWeight:700,letterSpacing:'.06em',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>ZA SRBIJU <span style={{fontSize:11,color:'var(--accent)',cursor:'help',opacity:.7}} title="EU cena + carina + PDV 20% + transport 420€ + registracija 280€">ⓘ</span></div>
                   <div style={{fontSize:26,fontWeight:900,color:'var(--accent)',lineHeight:1,marginBottom:4}}>{fmt(bd.total)} €</div>
                   <div style={{fontSize:16,color:'var(--text3)'}}>Sa uvozom →</div>
                 </button>
@@ -731,8 +731,8 @@ export default function ListingPage({ params }: { params: { id: string } }) {
             {/* ── CTA ───────────────────────────────────── */}
             <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:10,padding:'0 16px 20px'}}>
               <button onClick={() => setShowContact(true)} style={{
-                height:56,background:'var(--accent)',border:'none',
-                color:'#fff',borderRadius:16,fontSize:17,fontWeight:800,cursor:'pointer',
+                height:72,background:'var(--accent)',border:'none',
+                color:'#fff',borderRadius:18,fontSize:17,fontWeight:800,cursor:'pointer',
                 display:'flex',alignItems:'center',justifyContent:'center',gap:8,
                 boxShadow:'0 4px 20px rgba(255,107,0,.35)',
               }}>
@@ -1031,26 +1031,31 @@ function MobileTabs({ listing, elig, eligColor, bd, trust, specs, similar, price
   const [tab, setTab] = useState(0)
 
   const TABS = [
-    { icon:'🚗', label:'Vozilo' },
-    { icon:'🤖', label:'AI + Uvoz' },
-    { icon:'🔐', label:'VIN + Docs' },
+    { icon:'🚗', label:'Vozilo',    sub:'Specifikacije'    },
+    { icon:'🤖', label:'AI + Uvoz', sub:'Procena i troškovi' },
+    { icon:'🔐', label:'VIN + Docs',sub:'Provera'           },
   ]
 
   const fmt = (n: any) => Number(n).toLocaleString('de-DE')
 
   return (
     <div style={{display:'flex', flexDirection:'column'}}>
-      <div style={{display:'flex',gap:4,marginBottom:10,background:'var(--bg2)',borderRadius:12,padding:4,border:'1px solid var(--border)'}}>
+      <div style={{display:'flex',gap:6,marginBottom:12,background:'var(--bg2)',borderRadius:16,padding:5,border:'1px solid var(--border)'}}>
         {TABS.map((t, i) => (
           <button key={i} onClick={() => setTab(i)} style={{
-            flex:1, height:60, borderRadius:10, border:'none', cursor:'pointer',
-            background: tab===i ? 'var(--accent)' : 'transparent',
-            color: tab===i ? '#fff' : 'var(--text3)',
-            fontSize:13, fontWeight:700, transition:'all .15s',
-            display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+            flex:1, minHeight:76, borderRadius:12, border:'none', cursor:'pointer',
+            background: tab===i
+              ? 'linear-gradient(180deg,rgba(255,132,0,.18),rgba(255,132,0,.08))'
+              : 'transparent',
+            outline: tab===i ? '1px solid rgba(255,132,0,.35)' : 'none',
+            color: tab===i ? 'var(--accent)' : 'var(--text3)',
+            transition:'all .18s',
+            display:'flex', flexDirection:'column', alignItems:'center',
+            justifyContent:'center', gap:6, padding:'14px 8px',
           }}>
-            <span style={{fontSize:18}}>{t.icon}</span>
-            <span style={{fontSize:12}}>{t.label}</span>
+            <span style={{fontSize:28, lineHeight:1}}>{t.icon}</span>
+            <span style={{fontSize:16, fontWeight:600, lineHeight:1}}>{t.label}</span>
+            <span style={{fontSize:11, opacity:.55, lineHeight:1}}>{t.sub}</span>
           </button>
         ))}
       </div>
