@@ -218,7 +218,7 @@ function Accordion({ title, icon, children, defaultOpen=false, badge }: {title:s
 }
 
 // ── Swipeable glavna slika ────────────────────────────────────────
-function SwipeableImage({ images, activeImg, setActiveImg, alt, country }: any) {
+function SwipeableImage({ images, activeImg, setActiveImg, alt, country, trust }: any) {
   const touchStartX = useRef<number>(0)
   const touchEndX = useRef<number>(0)
 
@@ -244,6 +244,21 @@ function SwipeableImage({ images, activeImg, setActiveImg, alt, country }: any) 
         ? <img src={fullImg(images[activeImg])} alt={alt} style={{width:'100%',height:'100%',objectFit:'contain',userSelect:'none',background:'#0a0a0a'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}} />
         : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:50}}>🚗</div>
       }
+
+      {/* AI Score overlay — top left */}
+      {trust && (
+        <div style={{position:'absolute',top:8,left:8,display:'flex',flexDirection:'column',gap:4}}>
+          <div style={{background:'rgba(0,0,0,.82)',borderRadius:8,padding:'5px 9px',backdropFilter:'blur(6px)',border:`1px solid ${trust.color}55`}}>
+            <div style={{display:'flex',alignItems:'center',gap:5}}>
+              <div style={{width:7,height:7,borderRadius:'50%',background:trust.color,flexShrink:0}} />
+              <span style={{fontSize:13,fontWeight:800,color:trust.color}}>AI {trust.score}/100</span>
+            </div>
+            <div style={{fontSize:10,color:'rgba(255,255,255,.7)',marginTop:1}}>{trust.label}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom badges */}
       <span style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(country||'')}</span>
       {images.length > 1 && (
         <span style={{position:'absolute',bottom:8,right:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'2px 8px',fontSize:11,color:'rgba(255,255,255,.7)'}}>
@@ -505,6 +520,7 @@ export default function ListingPage({ params }: { params: { id: string } }) {
               setActiveImg={setActiveImg}
               alt={`${listing.make} ${listing.model}`}
               country={listing.country}
+              trust={trust}
             />
             {images.length > 1 && (
               <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,marginBottom:8}}>
