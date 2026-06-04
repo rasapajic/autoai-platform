@@ -45,7 +45,7 @@ function calcTrustScore(listing: any, vinResult?: any) {
   const descLen=(listing.description||'').length
   if(descLen>100){score+=8;explanations.push({text:'Detaljan opis vozila',ok:true})}else if(descLen>30){score+=4}else{explanations.push({text:'Kratak ili nedostaje opis',ok:false})}
   const elig=getSerbiaEligibility(listing)
-  if(elig.confidence==='high'){score+=20;explanations.push({text:'Pogodan za uvoz u Srbiju',ok:true})}else if(elig.confidence==='medium') score+=10 else if(elig.confidence==='low'){score+=4;explanations.push({text:'Nesigurnost pri uvozu',ok:false})}else explanations.push({text:'Problematičan uvoz',ok:false})
+  if(elig.confidence==='high'){score+=20;explanations.push({text:'Pogodan za uvoz u Srbiju',ok:true})}else if(elig.confidence==='medium'){score+=10}else if(elig.confidence==='low'){score+=4;explanations.push({text:'Nesigurnost pri uvozu',ok:false})}else{explanations.push({text:'Problematičan uvoz',ok:false})}
   if(vinResult){const hc=vinResult.mismatches?.some((m:any)=>m.severity==='critical'),hw=vinResult.mismatches?.some((m:any)=>m.severity==='warning');if(hc){score=Math.max(0,score-55);explanations.push({text:`🚨 VIN neslaganje: ${vinResult.mismatches.filter((m:any)=>m.severity==='critical').map((m:any)=>m.field).join(', ')}`,ok:false})}else if(hw){score=Math.max(0,score-25);explanations.push({text:'⚠️ VIN delimično neslaganje',ok:false})}else if(vinResult.match_status==='ok'){score=Math.min(100,score+15);explanations.push({text:'✅ VIN potvrđuje sve podatke',ok:true})}}else explanations.push({text:'VIN broj nije verifikovan',ok:false})
   score=Math.min(100,Math.max(0,Math.round(score)))
   const hcv=vinResult?.mismatches?.some((m:any)=>m.severity==='critical')
