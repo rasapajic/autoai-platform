@@ -115,7 +115,7 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
   eligible: '#22C55E', needs_check: '#F97316', not_recommended: '#EF4444', oldtimer: '#A855F7',
 }
 
-export default function SearchPage() {
+function SearchPage() {
   const searchParams  = useSearchParams()
   const [results,     setResults]     = useState<any>(null)
   const [loading,     setLoading]     = useState(true)
