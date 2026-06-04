@@ -421,7 +421,7 @@ function MakeTile({ makeName, count, isSelected, onClick, logoFailed, onLogoErro
 }
 
 
-export default function SearchPage() {
+function SearchPage() {
   const searchParams = useSearchParams()
 
   const getInitialFilters = () => {
