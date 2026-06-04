@@ -75,7 +75,7 @@ export default function ComparePage() {
     { label: 'Zemlja',       key: (l: any) => l.country || '—' },
     { label: 'EU cena',      key: (l: any) => l.price ? `${Number(l.price).toLocaleString('de-DE')} €` : '—', highlight: true },
     { label: 'Ukupno RS',    key: (l: any) => l.price ? `${calcImport(Number(l.price), l.year, l.fuel_type).total.toLocaleString('de-DE')} €` : '—', highlight: true },
-    { label: 'AI ocena',     key: (l: any) => l.price_rating ? ({ great:'🟢 Dobra', good:'🟡 Fer', fair:'⚪ Prosek', high:'🟠 Visoka', overpriced:'🔴 Previsoka' } as Record<string,string>)[l.price_rating] || '—' : '—' },
+   { label: 'AI ocena', key: (l: any) => l.price_rating ? ({ great:'🟢 Dobra', good:'🟡 Fer', fair:'⚪ Prosek', high:'🟠 Visoka', overpriced:'🔴 Previsoka' } as Record<string,string>)[l.price_rating] || '—' : '—' },
   ]
 
   return (
