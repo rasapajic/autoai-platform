@@ -432,6 +432,13 @@ export default function SearchPage() {
         if (saved&&fromListing==='1') { sessionStorage.removeItem('autoai_from_listing'); return JSON.parse(saved) }
       } catch {}
     }
+    export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPage />
+    </Suspense>
+  )
+}
     return {
       ...DEFAULT_FILTERS,
       make:searchParams.get('make')||'',model:searchParams.get('model')||'',
