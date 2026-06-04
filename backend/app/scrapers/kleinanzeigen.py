@@ -280,7 +280,7 @@ def _parse_listings_from_html(html: str) -> list:
                     city = raw
                     break
 
-        year_m = re.search(r'\b(19[789]\d|200\d|201\d|202[0-4])\b', title + " " + description)
+       year_m = re.search(r'\b(19[789]\d|200\d|201[0-9]|202[0-4])\b', title + " " + description)
         km_m   = re.search(r'([\d.]+)\s*km', title + " " + description, re.IGNORECASE)
 
         listings.append({
