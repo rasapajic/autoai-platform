@@ -283,6 +283,10 @@ def _parse_listings_from_html(html: str) -> list:
             if m:
                 raw = _clean_text(re.sub(r'<[^>]+>', ' ', m.group(1)), 100)
                 raw = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', raw).strip()
+# Izvuci samo ime grada iz formata "94333 Bayern - Geiselhöring"
+city_extract = re.search(r'\d{5}\s+[\w\s]+-\s*([\w\s]+)', raw)
+if city_extract:
+    raw = city_extract.group(1).strip()
                 if raw:
                     city = raw
                     break
