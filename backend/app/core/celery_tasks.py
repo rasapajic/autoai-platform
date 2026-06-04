@@ -313,18 +313,29 @@ def estimate_prices(portal: str = None):
 
 @celery_app.task
 def cleanup_old_listings():
-    """Deaktivira oglase koje nismo videli >7 dana."""
-    from datetime import timedelta
+    """Drži max 50.000 oglasa — briše najstarije kada se prekorači limit."""
+    from sqlalchemy import text
     db = SessionLocal()
     try:
-        cutoff = datetime.utcnow() - timedelta(days=7)
-        count = db.query(Listing).filter(
-            Listing.last_seen_at < cutoff,
-            Listing.is_active   == True,
-        ).update({"is_active": False})
-        db.commit()
-        logger.info(f"🧹 Deaktivirao {count} starih oglasa")
-        return {"deactivated": count}
+        total = db.execute(text("SELECT COUNT(*) FROM listings")).scalar()
+        logger.info(f"🧹 Ukupno oglasa: {total}")
+
+        deleted = 0
+        if total > 50000:
+            to_delete = total - 50000
+            result = db.execute(text(f"""
+                DELETE FROM listings
+                WHERE id IN (
+                    SELECT id FROM listings
+                    ORDER BY scraped_at ASC
+                    LIMIT {to_delete}
+                )
+            """))
+            deleted = result.rowcount
+            db.commit()
+            logger.info(f"🧹 Obrisao {deleted} najstarijih oglasa (limit: 50.000)")
+
+        return {"total_before": total, "deleted": deleted, "total_after": total - deleted}
     finally:
         db.close()
 
