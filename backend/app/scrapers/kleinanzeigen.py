@@ -186,9 +186,15 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
 
             # ── Godište ────────────────────────────────────────────
             year_m = re.search(
-                r'(?:Erstzulassung|Baujahr|EZ)[^\d]*(\d{4})',
-                html, re.IGNORECASE
-            )
+    r'(?:Erstzulassung|Baujahr|EZ)[^\d]*(?:\w+\s+)?(\d{4})',
+    html, re.IGNORECASE
+)
+if not year_m:
+    year_m = re.search(r'Erstzulassung.*?(\w+)\s+(\d{4})', html, re.IGNORECASE)
+    if year_m:
+        class FakeMatch:
+            def group(self, n): return year_m.group(2)
+        year_m = FakeMatch()
             if year_m:
                 y = int(year_m.group(1))
                 if 1970 <= y <= 2026:
