@@ -43,9 +43,9 @@ function calcTrustScore(listing: any, vinResult?: any) {
   if (listing.transmission) score+=4
   if (delta!==null){if(delta<-25){score+=6;explanations.push({text:`Cena ${Math.abs(delta).toFixed(0)}% ispod proseka — proveri razlog`,ok:false})}else if(delta<-5){score+=20;explanations.push({text:`Cena ispod proseka za ${Math.abs(delta).toFixed(0)}%`,ok:true})}else if(delta<=10){score+=15;explanations.push({text:'Cena odgovara tržišnom proseku',ok:true})}else if(delta<=20){score+=8;explanations.push({text:`Cena iznad proseka za ${delta.toFixed(0)}%`,ok:false})}else{score+=3;explanations.push({text:`Cena znatno iznad proseka (${delta.toFixed(0)}%)`,ok:false})}}else if(listing.price) score+=8
   const descLen=(listing.description||'').length
-  if(descLen>100){score+=8;explanations.push({text:'Detaljan opis vozila',ok:true})}else if(descLen>30){score+=4}else{explanations.push({text:'Kratak ili nedostaje opis',ok:false})}
+  if(descLen>100){score+=8;explanations.push({text:'Detaljan opis vozila',ok:true})}else if(descLen>30) score+=4 else explanations.push({text:'Kratak ili nedostaje opis',ok:false})
   const elig=getSerbiaEligibility(listing)
-  if(elig.confidence==='high'){score+=20;explanations.push({text:'Pogodan za uvoz u Srbiju',ok:true})}else if(elig.confidence==='medium'){score+=10}else if(elig.confidence==='low'){score+=4;explanations.push({text:'Nesigurnost pri uvozu',ok:false})}else{explanations.push({text:'Problematičan uvoz',ok:false})}
+  if(elig.confidence==='high'){score+=20;explanations.push({text:'Pogodan za uvoz u Srbiju',ok:true})}else if(elig.confidence==='medium') score+=10 else if(elig.confidence==='low'){score+=4;explanations.push({text:'Nesigurnost pri uvozu',ok:false})}else explanations.push({text:'Problematičan uvoz',ok:false})
   if(vinResult){const hc=vinResult.mismatches?.some((m:any)=>m.severity==='critical'),hw=vinResult.mismatches?.some((m:any)=>m.severity==='warning');if(hc){score=Math.max(0,score-55);explanations.push({text:`🚨 VIN neslaganje: ${vinResult.mismatches.filter((m:any)=>m.severity==='critical').map((m:any)=>m.field).join(', ')}`,ok:false})}else if(hw){score=Math.max(0,score-25);explanations.push({text:'⚠️ VIN delimično neslaganje',ok:false})}else if(vinResult.match_status==='ok'){score=Math.min(100,score+15);explanations.push({text:'✅ VIN potvrđuje sve podatke',ok:true})}}else explanations.push({text:'VIN broj nije verifikovan',ok:false})
   score=Math.min(100,Math.max(0,Math.round(score)))
   const hcv=vinResult?.mismatches?.some((m:any)=>m.severity==='critical')
@@ -347,16 +347,27 @@ export default function ListingPage({params}:{params:{id:string}}){
 
           {/* DESKTOP LEVA */}
           <div className="desktop-section" style={{display:'block'}}>
-            <div style={{borderRadius:14,overflow:'hidden',marginBottom:8,position:'relative',cursor:'zoom-in',background:'#0a0a0a'}} onClick={()=>setShowGallery(true)}>
-              {images[activeImg]?<img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`} style={{width:'100%',height:340,objectFit:'cover',display:'block',transition:'transform .3s'}} onMouseEnter={e=>(e.currentTarget.style.transform='scale(1.02)')} onMouseLeave={e=>(e.currentTarget.style.transform='scale(1)')} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}}/>:<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:340,fontSize:60}}>🚗</div>}
+            <div style={{borderRadius:14,overflow:'hidden',marginBottom:8,position:'relative',background:'#0b0b12',userSelect:'none'}}>
+              {images[activeImg]
+                ?<img src={fullImg(images[activeImg])} alt={`${listing.make} ${listing.model}`}
+                    onClick={()=>setShowGallery(true)}
+                    style={{width:'100%',maxHeight:'75vh',minHeight:320,objectFit:'contain',display:'block',cursor:'zoom-in',transition:'opacity .2s ease,transform .2s ease'}}
+                    onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}}/>
+                :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:400,fontSize:60}}>🚗</div>
+              }
               <div style={{position:'absolute',bottom:8,left:8,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 9px',fontSize:11,color:'rgba(255,255,255,.85)'}}>{countryBadge(listing.country||'')}</div>
               {images.length>1&&<>
-                <button onClick={e=>{e.stopPropagation();setActiveImg(i=>Math.max(i-1,0))}} style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.6)',border:'1px solid rgba(255,255,255,.15)',borderRadius:'50%',width:36,height:36,color:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>‹</button>
-                <button onClick={e=>{e.stopPropagation();setActiveImg(i=>Math.min(i+1,images.length-1))}} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.6)',border:'1px solid rgba(255,255,255,.15)',borderRadius:'50%',width:36,height:36,color:'#fff',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>›</button>
-                <div style={{position:'absolute',top:8,right:8,background:'rgba(0,0,0,.7)',borderRadius:20,padding:'4px 10px',fontSize:12,color:'#fff',fontWeight:600}}>{activeImg+1}/{images.length}</div>
+                <button onClick={e=>{e.stopPropagation();setActiveImg(i=>Math.max(i-1,0))}} style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.55)',border:'1px solid rgba(255,255,255,.18)',borderRadius:'50%',width:42,height:42,color:'#fff',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(6px)',transition:'all .15s'}}>‹</button>
+                <button onClick={e=>{e.stopPropagation();setActiveImg(i=>Math.min(i+1,images.length-1))}} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.55)',border:'1px solid rgba(255,255,255,.18)',borderRadius:'50%',width:42,height:42,color:'#fff',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(6px)',transition:'all .15s'}}>›</button>
+                <div onClick={()=>setShowGallery(true)} style={{position:'absolute',top:10,right:10,background:'rgba(0,0,0,.7)',borderRadius:20,padding:'5px 12px',fontSize:12,color:'#fff',fontWeight:600,cursor:'pointer',backdropFilter:'blur(6px)',border:'1px solid rgba(255,255,255,.12)'}}>{activeImg+1} / {images.length}</div>
               </>}
             </div>
-            {images.length>1&&<div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:4,marginBottom:16}}>{images.slice(0,10).map((img:string,i:number)=><div key={i} onClick={()=>setActiveImg(i)} style={{aspectRatio:'4/3',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${activeImg===i?'var(--accent)':'transparent'}`,opacity:activeImg===i?1:.7,transition:'all .15s'}}><img src={img} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/></div>)}</div>}
+            {images.length>1&&(
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,padding:'0 2px'}}>
+                <span style={{fontSize:12,color:'var(--text3)'}}>{images.length} fotografija vozila</span>
+                <button onClick={()=>setShowGallery(true)} style={{background:'rgba(255,255,255,.05)',border:'1px solid var(--border)',borderRadius:8,padding:'5px 14px',fontSize:12,color:'var(--text2)',cursor:'pointer'}}>🖼 Prikaži sve slike →</button>
+              </div>
+            )}
 
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:16,marginBottom:12}}>
               <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:12}}>SPECIFIKACIJE</div>
