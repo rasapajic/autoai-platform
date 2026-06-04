@@ -593,7 +593,7 @@ function SearchPage() {
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',zIndex:1000,display:'flex',alignItems:'flex-end'}} onClick={()=>setShowMakeModal(false)}>
           <div style={{background:'var(--bg2)',borderRadius:'20px 20px 0 0',padding:'20px 16px 40px',width:'100%',border:'1px solid var(--border)',maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <div><h3 style={{fontSize:16,margin:0}}>Sve marke</h3><p style={{fontSize:12,color:'var(--text3)',margin:'4px 0 0'}}>{makes.length} marki — sortirano abecedno</p></div>
+              <div><h3 style={{fontSize:16,margin:0}}>Sve marke</h3><p style={{fontSize:12,color:'var(--text3)',margin:'4px 0 0'}}>{makes.length} marki — po popularnosti</p></div>
               <button onClick={()=>setShowMakeModal(false)} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
