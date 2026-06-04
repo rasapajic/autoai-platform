@@ -139,7 +139,8 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
             # ── Grad ──────────────────────────────────────────────
             # Kleinanzeigen prikazuje grad u vise mjesta
             for city_pat in [
-                r'<span[^>]+itemprop="addressLocality"[^>]*>([^<]+)</span>',
+    r'\d{5}\s+\w[\w\s]+-\s*([\w\s]+)',
+    r'<span[^>]+itemprop="addressLocality"[^>]*>([^<]+)</span>',
                 r'class="[^"]*breadcrump-link[^"]*"[^>]*>([^<]{4,50})</a>',
                 r'"addressLocality"\s*:\s*"([^"]+)"',
                 r'class="addetail-user--city"[^>]*>([^<]+)<',
