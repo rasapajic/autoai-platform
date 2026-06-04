@@ -175,14 +175,15 @@ function fmtKm(km: any) {
   if (!n||n<1||n>999999) return null
   return n.toLocaleString('de-DE')+' km'
 }
-function fullImg(url: string) {
+function fullImg(url: string): string {
   if (!url) return url
-  // Kleinanzeigen: zamijeni malu rezoluciju sa velikom
   if (url.includes('img.kleinanzeigen.de')) {
     return url.replace(/rule=\$_\w+/, 'rule=$_57.AUTO')
   }
-  // AutoScout24, Willhaben, ostali
-  return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i, '/800x600.$1')
+  if (url.includes('images.marktplaats.com')) {
+    return url.replace(/rule=ecg_mp_eps\$_\d+/, 'rule=ecg_mp_eps$_57')
+  }
+  return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i,'/800x600.$1')
 }
 
 function BottomSheet({ open, onClose, title, children }: {open:boolean; onClose:()=>void; title:string; children:any}) {
