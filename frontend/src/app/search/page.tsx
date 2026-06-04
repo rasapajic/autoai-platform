@@ -350,6 +350,9 @@ function fullImg(url: string): string {
   if (url.includes('img.kleinanzeigen.de')) {
     return url.replace(/rule=\$_\w+/, 'rule=$_57.AUTO')
   }
+  if (url.includes('images.marktplaats.com')) {
+    return url.replace(/rule=ecg_mp_eps\$_\d+/, 'rule=ecg_mp_eps$_57')
+  }
   return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i,'/800x600.$1')
 }
 
