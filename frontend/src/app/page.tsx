@@ -590,3 +590,10 @@ const IS: React.CSSProperties = {
   borderRadius: 8, padding: '9px 11px', color: 'var(--text)', fontSize: 13,
   outline: 'none', minWidth: 0,
 }
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPage />
+    </Suspense>
+  )
+}
