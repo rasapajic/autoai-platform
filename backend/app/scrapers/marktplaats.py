@@ -12,9 +12,15 @@ HEADERS = {
     "Referer": "https://www.marktplaats.nl/c/auto-s/c91.html",
 }
 
+DETAIL_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8",
+    "Referer": "https://www.marktplaats.nl/",
+}
+
 
 def _hq_image(url: str) -> str:
-    """Zameni bilo koji rule sa HQ verzijom na Marktplaats."""
     if not url:
         return url
     url = re.sub(r'ecg_mp_eps\$_\d+\.jpg', 'ecg_mp_eps$_57.jpg', url)
@@ -22,6 +28,7 @@ def _hq_image(url: str) -> str:
     url = re.sub(r'rule=\d+', 'rule=ecg_mp_eps$_57.jpg', url)
     url = re.sub(r'[?&]s=\d+x\d+', '', url)
     return url
+
 
 def _parse_price(val) -> float | None:
     if val is None:
@@ -112,7 +119,81 @@ def _extract_price(item: dict) -> float | None:
     return None
 
 
-def _parse_listing(item: dict) -> dict | None:
+async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list:
+    """Dohvati sve slike sa stranice oglasa."""
+    images = []
+    try:
+        async with session.get(url, headers=DETAIL_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status != 200:
+                return images
+            html = await resp.text()
+
+            # Metoda 1: JSON u window.__NUXT__ ili __INITIAL_STATE__
+            for pattern in [
+                r'"imageUrls"\s*:\s*(\[[^\]]+\])',
+                r'"pictures"\s*:\s*(\[[^\]]{20,}\])',
+                r'"images"\s*:\s*(\[[^\]]{20,}\])',
+            ]:
+                m = re.search(pattern, html)
+                if m:
+                    try:
+                        urls = json.loads(m.group(1))
+                        for u in urls:
+                            if isinstance(u, str) and u.startswith('http'):
+                                images.append(_hq_image(u))
+                            elif isinstance(u, dict):
+                                for key in ['largeUrl', 'mediumUrl', 'url', 'src']:
+                                    if u.get(key):
+                                        images.append(_hq_image(u[key]))
+                                        break
+                        if images:
+                            break
+                    except Exception:
+                        pass
+
+            # Metoda 2: LD+JSON
+            if not images:
+                for ld_match in re.finditer(
+                    r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+                    html, re.DOTALL
+                ):
+                    try:
+                        ld = json.loads(ld_match.group(1))
+                        ld_type = ld.get("@type", "")
+                        if ld_type in ("Vehicle", "Product", "ItemPage", "Offer") or not ld_type:
+                            if ld.get("image"):
+                                imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
+                                images += [_hq_image(i) for i in imgs if isinstance(i, str) and i.startswith('http')]
+                            if images:
+                                break
+                    except Exception:
+                        pass
+
+            # Metoda 3: img tagovi sa marktplaats CDN
+            if not images:
+                for m in re.finditer(
+                    r'<img[^>]+(?:src|data-src)="(https://images\.marktplaats\.com[^"]+)"',
+                    html
+                ):
+                    images.append(_hq_image(m.group(1)))
+
+            # Deduplikacija
+            seen = set()
+            unique = []
+            for img in images:
+                key = re.sub(r'ecg_mp_eps\$_\d+', '', img)
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(img)
+            images = unique
+
+    except Exception as e:
+        print(f"[Marktplaats] Detail greška {url}: {e}")
+
+    return images
+
+
+def _parse_listing(item: dict, detail_images: list = None) -> dict | None:
     try:
         item_id = str(item.get("itemId", "") or item.get("id", ""))
         if not item_id:
@@ -150,18 +231,21 @@ def _parse_listing(item: dict) -> dict | None:
         if year and year < 1970:
             return None
 
-        # Sve slike u HQ (bez limita)
-        images = []
-        for img in (item.get("pictures", []) or item.get("images", []) or []):
-            if isinstance(img, dict):
-                url = (img.get("largeUrl") or img.get("mediumUrl") or
-                       img.get("url") or img.get("src") or "")
-                if not url and img.get("id"):
-                    url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_14.jpg&imageVariantName=MASTER"
-            else:
-                url = str(img)
-            if url and url.startswith("http"):
-                images.append(_hq_image(url))
+        # Slike: detalji > API thumbnail
+        if detail_images:
+            images = detail_images
+        else:
+            images = []
+            for img in (item.get("pictures", []) or item.get("images", []) or []):
+                if isinstance(img, dict):
+                    url = (img.get("largeUrl") or img.get("mediumUrl") or
+                           img.get("url") or img.get("src") or "")
+                    if not url and img.get("id"):
+                        url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_57.jpg&imageVariantName=MASTER"
+                else:
+                    url = str(img)
+                if url and url.startswith("http"):
+                    images.append(_hq_image(url))
 
         vip_url = item.get("vipUrl") or item.get("url") or ""
         if vip_url and not vip_url.startswith("http"):
@@ -186,7 +270,7 @@ def _parse_listing(item: dict) -> dict | None:
             "country":         "NL",
             "city":            city.strip() if city else None,
             "description":     title,
-            "images":          images,  # sve slike, bez [:6] limita
+            "images":          images,
             "url":             vip_url,
         }
     except Exception as e:
@@ -199,7 +283,6 @@ class MarktplaatsScraper:
         all_listings = []
         seen_ids = set()
         limit = 30
-        first_run = True
 
         async with aiohttp.ClientSession(headers=HEADERS) as session:
             for page_num in range(max_pages):
@@ -238,15 +321,29 @@ class MarktplaatsScraper:
                         if not all_items:
                             break
 
-                        if first_run and all_items:
-                            first_run = False
-                            pics = all_items[0].get("pictures", []) or []
-                            if pics:
-                                print(f"[Marktplaats] Slika primer: {json.dumps(pics[0])[:200]}")
+                        # Dohvati detalje paralelno (max 5 odjednom)
+                        semaphore = asyncio.Semaphore(5)
+
+                        async def fetch_images(item):
+                            vip = item.get("vipUrl") or ""
+                            if vip and not vip.startswith("http"):
+                                vip = f"https://www.marktplaats.nl{vip}"
+                            if not vip:
+                                return []
+                            async with semaphore:
+                                await asyncio.sleep(0.3)
+                                return await _fetch_detail_images(session, vip)
+
+                        detail_images_list = await asyncio.gather(
+                            *[fetch_images(it) for it in all_items],
+                            return_exceptions=True
+                        )
 
                         before = len(all_listings)
-                        for item in all_items:
-                            parsed = _parse_listing(item)
+                        for item, det_imgs in zip(all_items, detail_images_list):
+                            if isinstance(det_imgs, Exception):
+                                det_imgs = []
+                            parsed = _parse_listing(item, det_imgs if det_imgs else None)
                             if parsed and parsed["external_id"] not in seen_ids:
                                 seen_ids.add(parsed["external_id"])
                                 all_listings.append(parsed)
@@ -258,7 +355,7 @@ class MarktplaatsScraper:
                         if offset + limit >= total or len(all_items) < limit:
                             break
 
-                        await asyncio.sleep(1.5)
+                        await asyncio.sleep(2.0)
 
                 except Exception as e:
                     print(f"[Marktplaats] Greška str.{page_num+1}: {e}")
