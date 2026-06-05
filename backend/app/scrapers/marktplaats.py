@@ -130,13 +130,11 @@ async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list
             html = await resp.text()
 
             # Decode unicode escape karaktere
-            html_decoded = html.replace('\\u002F', '/').replace('\u002F', '/')
-
-            # Izvuci sve jedinstvene image UUID-ove
+            # Izvuci sve jedinstvene image UUID-ove (direktno, bez decode)
             seen_ids = set()
             for m in re.finditer(
-                r'images\.marktplaats\.com/api/v1/(?:hz-mp-pro-listing|listing-mp-p)/images/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})',
-                html_decoded
+                r'images\.marktplaats\.com(?:\\u002F|/|%2F)api(?:\\u002F|/|%2F)v1(?:\\u002F|/|%2F)(?:hz-mp-pro-listing|listing-mp-p)(?:\\u002F|/|%2F)images(?:\\u002F|/|%2F)([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})',
+                html
             ):
                 img_id = m.group(1)
                 if img_id not in seen_ids:
