@@ -290,7 +290,7 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
       const res = await fetch(`${API_BASE}/ai/parse-query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: aiText })
+        body: JSON.stringify({ query: aiText })
       })
       if (res.ok) {
         const data = await res.json()
