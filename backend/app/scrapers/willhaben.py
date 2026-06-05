@@ -129,7 +129,7 @@ def _parse_ad(ad: dict) -> dict | None:
         make         = g("CAR_MODEL/MAKE")
         model        = g("CAR_MODEL/MODEL")
         variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
-        year_str     = g("YEAR")
+        year_str     = g("YEAR_MODEL") or g("YEAR")
         # ✅ PRICE je cisti broj bez formatiranja (npr. 6990)
         price_str    = g("PRICE") or g("PRICE_FOR_DISPLAY")
         mileage_str  = g("MILEAGE")
