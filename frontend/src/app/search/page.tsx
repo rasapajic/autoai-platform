@@ -22,7 +22,6 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
   eligible: '#22C55E', needs_check: '#F97316',
   not_recommended: '#EF4444', oldtimer: '#A855F7',
 }
-
 const COUNTRIES = [
   { code:'AT', flag:'🇦🇹', label:'Austrija' },
   { code:'DE', flag:'🇩🇪', label:'Nemačka' },
@@ -36,123 +35,71 @@ const COUNTRIES = [
   { code:'DK', flag:'🇩🇰', label:'Danska' },
   { code:'SE', flag:'🇸🇪', label:'Švedska' },
 ]
-
 const DEFAULT_FILTERS = {
   make: '', model: '', min_price: '', max_price: '',
   min_year: '', max_year: '', max_km: '', fuel_type: '',
   country: '', countries: [] as string[], price_rating: '', sort_by: 'date', page: 1,
 }
-
-// =====================================================
-// TOOLTIP TEKSTOVI
-// =====================================================
 const TOOLTIPS = {
-  aiScore: `AI Score je automatska ocena oglasa od 0 do 100. Računa se na osnovu kompletnosti podataka, realnosti cene u odnosu na tržište, kilometraže i podobnosti vozila za uvoz u Srbiju. Što je score viši, oglas je pouzdaniji i vozilo pogodnije za kupovinu.`,
+  aiScore: `AI Score je automatska ocena oglasa od 0 do 100.`,
   uvozSrbija: `Ovaj indikator pokazuje da li vozilo može da se uveze u Srbiju bez problema. Srbija zahteva minimum Euro 4 emisijsku normu (za benzince godište 2006+, dizele treba posebno proveriti). Električna vozila su oslobođena carine i nemaju ograničenja.`,
   ukupnoSrbija: `Prikazuje procenu ukupnog troška kupovine vozila iz EU i dovoženja u Srbiju. Uključuje: EU cenu vozila, carinu (0-5% zavisno od tipa), PDV (20%), transport od prodavca do Srbije (~420€) i troškove registracije (~280€). Ovo je procena — tačan iznos može da varira.`,
-  sacuvajPretragu: `Sačuvaj trenutne filtere i dobijaj email obaveštenje čim se pojavi novo vozilo koje odgovara tvojim kriterijumima. Korisno kada tražiš specifičan model — nema potrebe da svakodnevno pretražuješ ručno.`,
+  pronadi: `AutoAI prati nove oglase koji se pojave na svim portalima i šalje ti email čim pronađe vozilo koje odgovara tvojim kriterijumima. Ne moraš svakodnevno da pretražuješ ručno.`,
   kontaktirajProdavca: `AI automatski generiše profesionalnu poruku prodavcu na njegovom jeziku (nemački, holandski, francuski...). Poruka pita za sve važne detalje — VIN broj, servisnu istoriju, razlog prodaje i dostupnost za pregled. Ne moraš da znaš strani jezik.`,
 }
 
-// =====================================================
-// INFO IKONICA
-// =====================================================
 function InfoIcon({ id, text }: { id: string; text: string }) {
-  const [show, setShow]         = useState(false)
+  const [show, setShow] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const [mounted, setMounted]   = useState(false)
+  const [mounted, setMounted] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
-
   useEffect(() => {
     setMounted(true)
     const check = () => setIsMobile(window.innerWidth < 769)
-    check()
-    window.addEventListener('resize', check)
+    check(); window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
-
   useEffect(() => {
     if (!show || isMobile) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setShow(false)
-    }
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setShow(false) }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [show, isMobile])
-
   const btnStyle: React.CSSProperties = {
     background: show ? 'rgba(239,68,68,.2)' : 'rgba(239,68,68,.1)',
     border: `1px solid ${show ? 'rgba(239,68,68,.6)' : 'rgba(239,68,68,.35)'}`,
     borderRadius: 20, width: 16, height: 16, cursor: 'pointer',
-    fontSize: 10, color: show ? '#EF4444' : '#EF4444',
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
+    fontSize: 10, color: '#EF4444', display: 'inline-flex', alignItems: 'center',
+    justifyContent: 'center', fontWeight: 700, lineHeight: 1, flexShrink: 0, transition: 'all .15s',
   }
-
-  if (!mounted) return (
-    <span style={{ display:'inline-flex', alignItems:'center', marginLeft:5 }}>
-      <span style={btnStyle}>ℹ</span>
-    </span>
-  )
-
+  if (!mounted) return <span style={{ display:'inline-flex', alignItems:'center', marginLeft:5 }}><span style={btnStyle}>ℹ</span></span>
   return (
     <span ref={ref} style={{ display:'inline-flex', alignItems:'center', marginLeft:5, position:'relative' }}>
-      <button
-        onMouseEnter={() => !isMobile && setShow(true)}
-        onMouseLeave={() => !isMobile && setShow(false)}
-        onClick={e => { e.stopPropagation(); setShow(v => !v) }}
-        style={btnStyle}
-        aria-label="Info"
-      >ℹ</button>
-
-      {/* Desktop tooltip */}
+      <button onMouseEnter={() => !isMobile && setShow(true)} onMouseLeave={() => !isMobile && setShow(false)}
+        onClick={e => { e.stopPropagation(); setShow(v => !v) }} style={btnStyle} aria-label="Info">ℹ</button>
       {show && !isMobile && (
-        <span style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--bg2)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: '10px 14px',
-          fontSize: 12, color: 'var(--text2)', lineHeight: 1.6,
-          width: 240, zIndex: 1000, pointerEvents: 'none',
-          boxShadow: '0 8px 32px rgba(0,0,0,.5)',
-        }}>
+        <span style={{ position:'absolute', bottom:'calc(100% + 8px)', left:'50%', transform:'translateX(-50%)',
+          background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px',
+          fontSize:12, color:'var(--text2)', lineHeight:1.6, width:240, zIndex:1000, pointerEvents:'none',
+          boxShadow:'0 8px 32px rgba(0,0,0,.5)' }}>
           {text}
-          <span style={{
-            position: 'absolute', top: '100%', left: '50%',
-            transform: 'translateX(-50%)',
-            borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
-            borderTop: '6px solid var(--border)',
-          }} />
+          <span style={{ position:'absolute', top:'100%', left:'50%', transform:'translateX(-50%)',
+            borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'6px solid var(--border)' }} />
         </span>
       )}
-
-      {/* Mobilni modal overlay */}
       {show && isMobile && (
-        <span
-          onClick={e => { e.stopPropagation(); setShow(false) }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(4px)',
-          }}
-        >
-          <span
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'var(--bg2)', border: '1px solid rgba(255,107,0,.3)',
-              borderRadius: 16, padding: '20px 18px',
-              fontSize: 14, color: 'var(--text2)', lineHeight: 1.7,
-              maxWidth: 320, width: '88vw',
-              boxShadow: '0 16px 48px rgba(0,0,0,.6)',
-            }}
-          >
-            <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, marginBottom: 8, letterSpacing: '.06em' }}>ℹ VIŠE INFO</div>
+        <span onClick={e => { e.stopPropagation(); setShow(false) }}
+          style={{ position:'fixed', inset:0, zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center',
+            background:'rgba(0,0,0,.6)', backdropFilter:'blur(4px)' }}>
+          <span onClick={e => e.stopPropagation()}
+            style={{ background:'var(--bg2)', border:'1px solid rgba(255,107,0,.3)', borderRadius:16, padding:'20px 18px',
+              fontSize:14, color:'var(--text2)', lineHeight:1.7, maxWidth:320, width:'88vw',
+              boxShadow:'0 16px 48px rgba(0,0,0,.6)' }}>
+            <div style={{ fontSize:11, color:'var(--accent)', fontWeight:700, marginBottom:8, letterSpacing:'.06em' }}>ℹ VIŠE INFO</div>
             {text}
-            <div style={{ marginTop: 14, textAlign: 'right' }}>
-              <button
-                onClick={e => { e.stopPropagation(); setShow(false) }}
-                style={{ background: 'var(--accent)', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, color: '#fff', fontWeight: 700, cursor: 'pointer' }}
-              >Zatvori</button>
+            <div style={{ marginTop:14, textAlign:'right' }}>
+              <button onClick={e => { e.stopPropagation(); setShow(false) }}
+                style={{ background:'var(--accent)', border:'none', borderRadius:8, padding:'8px 18px', fontSize:13, color:'#fff', fontWeight:700, cursor:'pointer' }}>Zatvori</button>
             </div>
           </span>
         </span>
@@ -162,142 +109,60 @@ function InfoIcon({ id, text }: { id: string; text: string }) {
 }
 
 const CDN = 'https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/thumb'
-
 const MAKE_LOGOS: Record<string, string> = {
-  // Top 19 + grid
-  'Volkswagen':    `${CDN}/volkswagen.png`,
-  'BMW':           `${CDN}/bmw.png`,
-  'Mercedes-Benz': `${CDN}/mercedes-benz.png`,
-  'Audi':          `${CDN}/audi.png`,
-  'Ford':          `${CDN}/ford.png`,
-  'Opel':          `${CDN}/opel.png`,
-  'Renault':       `${CDN}/renault.png`,
-  'Peugeot':       `${CDN}/peugeot.png`,
-  'Citroën':       `${CDN}/citroen.png`,
-  'Škoda':         `${CDN}/skoda.png`,
-  'Toyota':        `${CDN}/toyota.png`,
-  'Hyundai':       `${CDN}/hyundai.png`,
-  'Kia':           `${CDN}/kia.png`,
-  'Volvo':         `${CDN}/volvo.png`,
-  'SEAT':          `${CDN}/seat.png`,
-  'Fiat':          `${CDN}/fiat.png`,
-  'Nissan':        `${CDN}/nissan.png`,
-  'Mazda':         `${CDN}/mazda.png`,
-  'Honda':         `${CDN}/honda.png`,
-  // Ostale popularne marke
-  'Tesla':         `${CDN}/tesla.png`,
-  'Porsche':       `${CDN}/porsche.png`,
-  'MINI':          `${CDN}/mini.png`,
-  'Mini':          `${CDN}/mini.png`,
-  'Mitsubishi':    `${CDN}/mitsubishi.png`,
-  'Suzuki':        `${CDN}/suzuki.png`,
-  'Subaru':        `${CDN}/subaru.png`,
-  'Dacia':         `${CDN}/dacia.png`,
-  'Alfa Romeo':    `${CDN}/alfa-romeo.png`,
-  'Jeep':          `${CDN}/jeep.png`,
-  'Land Rover':    `${CDN}/land-rover.png`,
-  'Cupra':         `${CDN}/cupra.png`,
-  'Lexus':         `${CDN}/lexus.png`,
-  'Dodge':         `${CDN}/dodge.png`,
-  'Chevrolet':     `${CDN}/chevrolet.png`,
-  'Bentley':       `${CDN}/bentley.png`,
-  'Ferrari':       `${CDN}/ferrari.png`,
-  'Lamborghini':   `${CDN}/lamborghini.png`,
-  'Maserati':      `${CDN}/maserati.png`,
-  'Aston Martin':  `${CDN}/aston-martin.png`,
-  // Dodatne marke
-  'Cadillac':      `${CDN}/cadillac.png`,
-  'Rolls-Royce':   `${CDN}/rolls-royce.png`,
-  'Smart':         `${CDN}/smart.png`,
-  'Saab':          `${CDN}/saab.png`,
-  'SsangYong':     `${CDN}/ssangyong.png`,
-  'Lancia':        `${CDN}/lancia.png`,
-  'Jaguar':        `${CDN}/jaguar.png`,
-  'Abarth':        `${CDN}/abarth.png`,
-  'Aixam':         `${CDN}/aixam.png`,
-  'BYD':           `${CDN}/byd.png`,
-  'DS':            `${CDN}/ds.png`,
-  'Chrysler':      `${CDN}/chrysler.png`,
-  'Isuzu':         `${CDN}/isuzu.png`,
-  'Infiniti':      `${CDN}/infiniti.png`,
-  'Genesis':       `${CDN}/genesis.png`,
-  'Lincoln':       `${CDN}/lincoln.png`,
-  'Buick':         `${CDN}/buick.png`,
-  // Marke sa slike koje su sada pokrivene
-  'Maxus':         `${CDN}/maxus.png`,
-  'McLaren':       `${CDN}/mclaren.png`,
-  'Lotus':         `${CDN}/lotus.png`,
-  'MAN':           `${CDN}/man.png`,
-  'Microcar':      `${CDN}/microcar.png`,
-  'KTM':           `${CDN}/ktm.png`,
-  'Pontiac':       `${CDN}/pontiac.png`,
-  'BAIC':          `${CDN}/baic-motor.png`,
-  // Kineski i novi EV brendovi
-  'Polestar':      `${CDN}/polestar.png`,
-  'Rivian':        `${CDN}/rivian.png`,
-  'Lucid':         `${CDN}/lucid.png`,
-  'Nio':           `${CDN}/nio.png`,
-  'Xpeng':         `${CDN}/xpeng.png`,
-  'Li Auto':       `${CDN}/li-auto.png`,
-  'Zeekr':         `${CDN}/zeekr.png`,
-  'Great Wall':    `${CDN}/great-wall.png`,
-  'Haval':         `${CDN}/haval.png`,
-  'Geely':         `${CDN}/geely.png`,
-  'Chery':         `${CDN}/chery.png`,
-  'MG':            `${CDN}/mg.png`,
-  'Roewe':         `${CDN}/roewe.png`,
-  'Omoda':         `${CDN}/omoda.png`,
-  'Exeed':         `${CDN}/exeed.png`,
-  'Dongfeng':      `${CDN}/dongfeng.png`,
-  'Lynk & Co':     `${CDN}/lynk-and-co.png`,
-  'Leapmotor':     `${CDN}/leapmotor.png`,
+  'Volkswagen':`${CDN}/volkswagen.png`,'BMW':`${CDN}/bmw.png`,'Mercedes-Benz':`${CDN}/mercedes-benz.png`,
+  'Audi':`${CDN}/audi.png`,'Ford':`${CDN}/ford.png`,'Opel':`${CDN}/opel.png`,'Renault':`${CDN}/renault.png`,
+  'Peugeot':`${CDN}/peugeot.png`,'Citroën':`${CDN}/citroen.png`,'Škoda':`${CDN}/skoda.png`,
+  'Toyota':`${CDN}/toyota.png`,'Hyundai':`${CDN}/hyundai.png`,'Kia':`${CDN}/kia.png`,
+  'Volvo':`${CDN}/volvo.png`,'SEAT':`${CDN}/seat.png`,'Fiat':`${CDN}/fiat.png`,
+  'Nissan':`${CDN}/nissan.png`,'Mazda':`${CDN}/mazda.png`,'Honda':`${CDN}/honda.png`,
+  'Tesla':`${CDN}/tesla.png`,'Porsche':`${CDN}/porsche.png`,'MINI':`${CDN}/mini.png`,'Mini':`${CDN}/mini.png`,
+  'Mitsubishi':`${CDN}/mitsubishi.png`,'Suzuki':`${CDN}/suzuki.png`,'Subaru':`${CDN}/subaru.png`,
+  'Dacia':`${CDN}/dacia.png`,'Alfa Romeo':`${CDN}/alfa-romeo.png`,'Jeep':`${CDN}/jeep.png`,
+  'Land Rover':`${CDN}/land-rover.png`,'Cupra':`${CDN}/cupra.png`,'Lexus':`${CDN}/lexus.png`,
+  'Dodge':`${CDN}/dodge.png`,'Chevrolet':`${CDN}/chevrolet.png`,'Bentley':`${CDN}/bentley.png`,
+  'Ferrari':`${CDN}/ferrari.png`,'Lamborghini':`${CDN}/lamborghini.png`,'Maserati':`${CDN}/maserati.png`,
+  'Aston Martin':`${CDN}/aston-martin.png`,'Cadillac':`${CDN}/cadillac.png`,'Rolls-Royce':`${CDN}/rolls-royce.png`,
+  'Smart':`${CDN}/smart.png`,'Saab':`${CDN}/saab.png`,'SsangYong':`${CDN}/ssangyong.png`,
+  'Lancia':`${CDN}/lancia.png`,'Jaguar':`${CDN}/jaguar.png`,'BYD':`${CDN}/byd.png`,
+  'DS':`${CDN}/ds.png`,'Polestar':`${CDN}/polestar.png`,'MG':`${CDN}/mg.png`,
 }
-
 const TOP_19_MAKES = [
   'Volkswagen','BMW','Mercedes-Benz','Audi','Ford',
   'Opel','Renault','Peugeot','Citroën','Škoda',
   'Toyota','Hyundai','Kia','Volvo','SEAT',
   'Fiat','Nissan','Mazda','Honda',
 ]
-
 const ENGINE_SUFFIXES = /\s+(BlueHDI|BlueHDi|HDi|HDI|TDi|TDI|CDI|SDi|dCi|dci|TSI|TFSI|FSI|GTI|GTE|GTD|STI|MHEV|PHEV|HEV|EV|e-tron|4Motion|xDrive|sDrive|AWD|FWD|4WD|quattro|Hybrid|Electric)\b.*/i
 const ENGINE_DISPLACEMENT = /\s+\d+[.,]\d+\s*(L|l|T|D)?\s*.*$/
-
 function normalizeModel(model: string): string {
   if (!model) return model
   return model.replace(ENGINE_SUFFIXES,'').replace(ENGINE_DISPLACEMENT,'').trim()
 }
-
 function groupModels(raw: {model:string;count:number}[]): {model:string;count:number;raw:string[]}[] {
   const map = new Map<string,{count:number;raw:string[]}>()
   for (const {model,count} of raw) {
-    const norm = normalizeModel(model)
-    if (!norm) continue
+    const norm = normalizeModel(model); if (!norm) continue
     const ex = map.get(norm)
-    if (ex) { ex.count+=count; ex.raw.push(model) }
-    else map.set(norm,{count,raw:[model]})
+    if (ex) { ex.count+=count; ex.raw.push(model) } else map.set(norm,{count,raw:[model]})
   }
   return Array.from(map.entries()).map(([model,{count,raw}])=>({model,count,raw})).sort((a,b)=>b.count-a.count)
 }
-
 const MAKE_CANONICAL: Record<string,string> = {
   'vw':'Volkswagen','volkswagen':'Volkswagen','bmw':'BMW',
   'mercedes':'Mercedes-Benz','mercedes-benz':'Mercedes-Benz','mercedes benz':'Mercedes-Benz',
-  'audi':'Audi','ford':'Ford','opel':'Opel','renault':'Renault',
-  'peugeot':'Peugeot','citroen':'Citroën','skoda':'Škoda',
-  'toyota':'Toyota','honda':'Honda','mazda':'Mazda','nissan':'Nissan',
-  'hyundai':'Hyundai','kia':'Kia','seat':'SEAT','fiat':'Fiat',
+  'audi':'Audi','ford':'Ford','opel':'Opel','renault':'Renault','peugeot':'Peugeot',
+  'citroen':'Citroën','skoda':'Škoda','toyota':'Toyota','honda':'Honda','mazda':'Mazda',
+  'nissan':'Nissan','hyundai':'Hyundai','kia':'Kia','seat':'SEAT','fiat':'Fiat',
   'volvo':'Volvo','mini':'MINI','porsche':'Porsche','jaguar':'Jaguar',
   'land rover':'Land Rover','landrover':'Land Rover','jeep':'Jeep',
-  'subaru':'Subaru','mitsubishi':'Mitsubishi','suzuki':'Suzuki',
-  'tesla':'Tesla','dacia':'Dacia','alfa romeo':'Alfa Romeo','alfa':'Alfa Romeo',
-  'cupra':'Cupra','lexus':'Lexus','dodge':'Dodge','chevrolet':'Chevrolet',
-  'cadillac':'Cadillac','bentley':'Bentley','maserati':'Maserati',
-  'ferrari':'Ferrari','lamborghini':'Lamborghini','aston martin':'Aston Martin',
-  'rolls-royce':'Rolls-Royce','rolls royce':'Rolls-Royce','smart':'Smart',
-  'saab':'Saab','ssangyong':'SsangYong','lancia':'Lancia',
+  'subaru':'Subaru','mitsubishi':'Mitsubishi','suzuki':'Suzuki','tesla':'Tesla',
+  'dacia':'Dacia','alfa romeo':'Alfa Romeo','alfa':'Alfa Romeo','cupra':'Cupra',
+  'lexus':'Lexus','dodge':'Dodge','chevrolet':'Chevrolet','cadillac':'Cadillac',
+  'bentley':'Bentley','maserati':'Maserati','ferrari':'Ferrari','lamborghini':'Lamborghini',
+  'aston martin':'Aston Martin','rolls-royce':'Rolls-Royce','rolls royce':'Rolls-Royce',
+  'smart':'Smart','saab':'Saab','ssangyong':'SsangYong','lancia':'Lancia',
 }
-
 function canonicalMake(make: string): string {
   const lower = make.toLowerCase().trim()
     .replace(/ë/g,'e').replace(/é/g,'e').replace(/è/g,'e')
@@ -305,7 +170,6 @@ function canonicalMake(make: string): string {
     .replace(/š/g,'s').replace(/č/g,'c').replace(/ž/g,'z')
   return MAKE_CANONICAL[lower] || make.trim()
 }
-
 function groupMakes(raw:{make:string;count:number}[]): {make:string;count:number}[] {
   const map = new Map<string,number>()
   for (const {make,count} of raw) {
@@ -315,48 +179,41 @@ function groupMakes(raw:{make:string;count:number}[]): {make:string;count:number
   }
   return Array.from(map.entries()).map(([make,count])=>({make,count})).sort((a,b)=>a.make.localeCompare(b.make))
 }
-
 function calcBreakdown(price: number, carinaPct: number) {
   const carina = Math.round(price*(carinaPct/100))
-  const pdv    = Math.round((price+carina)*0.20)
+  const pdv = Math.round((price+carina)*0.20)
   return {carina,pdv,transport:420,reg:280,total:price+carina+pdv+420+280,carinaPct}
 }
-
 function getInsight(listing: any): string|null {
   const delta = listing.price_delta_pct ? Number(listing.price_delta_pct) : null
-  const km    = listing.mileage ? Number(listing.mileage) : null
-  const year  = listing.year ? Number(listing.year) : null
+  const km = listing.mileage ? Number(listing.mileage) : null
+  const year = listing.year ? Number(listing.year) : null
   if (delta!==null) {
     if (delta<-10) return `${Math.abs(delta).toFixed(0)}% ispod tržišne cene`
-    if (delta<-3)  return 'Malo ispod tržišne vrednosti'
-    if (delta>15)  return 'Cena znatno iznad tržišta'
-    if (delta>5)   return 'Cena iznad proseka za godište'
+    if (delta<-3) return 'Malo ispod tržišne vrednosti'
+    if (delta>15) return 'Cena znatno iznad tržišta'
+    if (delta>5) return 'Cena iznad proseka za godište'
   }
   if (year&&2026-year<=2) return 'Mlado vozilo, niska amortizacija'
-  if (km&&km<50000)       return 'Niska kilometraža za godište'
-  if (km&&km>200000)      return 'Visoka kilometraža — pažljivo proveriti'
+  if (km&&km<50000) return 'Niska kilometraža za godište'
+  if (km&&km>200000) return 'Visoka kilometraža — pažljivo proveriti'
   if (listing.fuel_type==='electric') return 'Električno — bez carine u Srbiji'
   return null
 }
-
 function formatMileage(raw: any): string|null {
   const km = Number(raw)
   if (!km||km<1||km>999999) return null
   return km.toLocaleString('de-DE')+' km'
 }
-
 function fullImg(url: string): string {
   if (!url) return url
-  if (url.includes('img.kleinanzeigen.de')) {
-    return url.replace(/rule=\$_\w+/, 'rule=$_57.AUTO')
-  }
+  if (url.includes('img.kleinanzeigen.de')) return url.replace(/rule=\$_\w+/, 'rule=$_57.AUTO')
   return url.replace(/\/\d+x\d+\.(webp|jpg|jpeg|png)/i,'/800x600.$1')
 }
-
 function getSerbiaEligibility(listing: any) {
   const year = listing.year ? Number(listing.year) : null
   const fuel = listing.fuel_type || null
-  const age  = year ? (2026-year) : null
+  const age = year ? (2026-year) : null
   if (fuel==='electric') return {status:'eligible',emoji:'🟢',label:'Može uvoz u Srbiju',tooltip:'Električna vozila su oslobođena carine.',carinaPct:0}
   if (age!==null&&age>=30) return {status:'oldtimer',emoji:'🟣',label:'Oldtimer izuzetak',tooltip:'Poseban režim uvoza.',carinaPct:5}
   if (!year) return null
@@ -373,57 +230,205 @@ function MakeTile({ makeName, count, isSelected, onClick, logoFailed, onLogoErro
   const logoUrl = MAKE_LOGOS[makeName]
   const initials = makeName.split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()
   const hasBgLogo = logoUrl && !logoFailed
-
   return (
     <button onClick={onClick} className="make-tile" style={{
-      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-      gap:4, padding:'10px 4px 8px', borderRadius:14, cursor:'pointer',
-      background: isSelected ? 'rgba(255,107,0,.12)' : 'var(--bg2)',
-      border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-      transition:'all .15s',
-      height: 100, width:'100%', boxSizing:'border-box' as any,
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      gap:4,padding:'10px 4px 8px',borderRadius:14,cursor:'pointer',
+      background:isSelected?'rgba(255,107,0,.12)':'var(--bg2)',
+      border:`2px solid ${isSelected?'var(--accent)':'var(--border)'}`,
+      transition:'all .15s',height:100,width:'100%',boxSizing:'border-box' as any,
     }}>
-      {/* Logo ili inicijali — fiksna veličina za sve */}
       <div style={{
-        width:48, height:48, flexShrink:0,
-        display:'flex', alignItems:'center', justifyContent:'center',
-        borderRadius:10, overflow:'hidden',
-        background: hasBgLogo ? 'rgba(255,255,255,.97)' : (isSelected ? 'rgba(255,107,0,.18)' : 'rgba(255,255,255,.07)'),
-        padding: hasBgLogo ? 4 : 0,
-        boxSizing:'border-box' as any,
+        width:48,height:48,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',
+        borderRadius:10,overflow:'hidden',
+        background:hasBgLogo?'rgba(255,255,255,.97)':(isSelected?'rgba(255,107,0,.18)':'rgba(255,255,255,.07)'),
+        padding:hasBgLogo?4:0,boxSizing:'border-box' as any,
       }}>
-        {hasBgLogo ? (
-          <img
-            src={logoUrl} alt={makeName}
-            style={{ width:40, height:40, objectFit:'contain' }}
-            onError={onLogoError}
-          />
-        ) : (
-          <span style={{ fontSize:15, fontWeight:800, color: isSelected ? 'var(--accent)' : 'var(--text3)', lineHeight:1 }}>{initials}</span>
-        )}
+        {hasBgLogo
+          ? <img src={logoUrl} alt={makeName} style={{width:40,height:40,objectFit:'contain'}} onError={onLogoError} />
+          : <span style={{fontSize:15,fontWeight:800,color:isSelected?'var(--accent)':'var(--text3)',lineHeight:1}}>{initials}</span>
+        }
       </div>
-
-      {/* Naziv marke — 2 reda max, isti font za sve */}
       <div style={{
-        fontSize: 10, fontWeight: 600, lineHeight: 1.25,
-        color: isSelected ? 'var(--accent)' : 'var(--text2)',
-        textAlign:'center', width:'100%',
-        display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any,
-        overflow:'hidden',
-        paddingLeft:3, paddingRight:3,
-        minHeight:24,
+        fontSize:10,fontWeight:600,lineHeight:1.25,
+        color:isSelected?'var(--accent)':'var(--text2)',
+        textAlign:'center',width:'100%',
+        display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical' as any,
+        overflow:'hidden',paddingLeft:3,paddingRight:3,minHeight:24,
       }}>{makeName}</div>
-
-      {/* Broj oglasa */}
-      <div style={{ fontSize:9, color:'var(--text3)', opacity:.6, lineHeight:1 }}>{count}</div>
+      <div style={{fontSize:9,color:'var(--text3)',opacity:.6,lineHeight:1}}>{count}</div>
     </button>
   )
 }
 
+// ── Pronađi modal ────────────────────────────────────────────────
+function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any }) {
+  const [form, setForm] = useState({
+    name: filters.make ? `${filters.make}${filters.model?' '+filters.model:''}` : '',
+    make: filters.make || '',
+    model: filters.model || '',
+    max_price: filters.max_price || '',
+    max_km: filters.max_km || '',
+    min_year: filters.min_year || '',
+    fuel_type: filters.fuel_type || '',
+    transmission: '',
+    countries: filters.countries?.length ? filters.countries.join(',') : '',
+    min_ai_score: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [success, setSuccess] = useState(false)
+
+  const handleSubmit = async () => {
+    const token = localStorage.getItem('autoai_token')
+    if (!token) { window.location.href = '/login'; return }
+    setSaving(true)
+    try {
+      const res = await fetch(`${API_BASE}/alerts/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: form.name || 'Moja potraga', filters: form, frequency: 'daily' })
+      })
+      if (res.ok) setSuccess(true)
+    } catch {}
+    finally { setSaving(false) }
+  }
+
+  const IS2: React.CSSProperties = {
+    width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)',
+    border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px',
+    color:'var(--text)', fontSize:14, outline:'none',
+  }
+
+  if (success) return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}} onClick={onClose}>
+      <div style={{background:'var(--bg2)',border:'1px solid rgba(34,197,94,.3)',borderRadius:20,padding:'40px 32px',width:400,maxWidth:'92vw',textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:52,marginBottom:16}}>✅</div>
+        <h3 style={{fontSize:20,fontWeight:800,margin:'0 0 10px'}}>AutoAI traži vozilo za vas</h3>
+        <p style={{fontSize:14,color:'var(--text3)',lineHeight:1.6,margin:'0 0 24px'}}>Dobićete obaveštenje čim pronađemo odgovarajući oglas. Možete pratiti status u sekciji <strong style={{color:'var(--accent)'}}>Moje potrage</strong> u profilu.</p>
+        <button onClick={onClose} style={{padding:'12px 32px',borderRadius:12,background:'var(--accent)',color:'#fff',border:'none',fontSize:15,fontWeight:700,cursor:'pointer'}}>Odlično!</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:1000}} onClick={onClose}>
+      <div style={{background:'var(--bg2)',borderRadius:'20px 20px 0 0',padding:'24px 20px 40px',width:'100%',maxWidth:520,border:'1px solid var(--border)',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+          <div>
+            <h3 style={{fontSize:18,fontWeight:800,margin:0}}>🔎 Šta tačno tražite?</h3>
+            <p style={{fontSize:12,color:'var(--text3)',margin:'4px 0 0'}}>AutoAI prati oglase i javlja čim pronađe odgovarajuće vozilo</p>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:22,cursor:'pointer',lineHeight:1}}>✕</button>
+        </div>
+
+        <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:20}}>
+          <div>
+            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>NAZIV POTRAGE</div>
+            <input placeholder="npr. BMW 3 do 15.000€" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={IS2} />
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MARKA</div>
+              <input placeholder="npr. BMW" value={form.make} onChange={e=>setForm(p=>({...p,make:e.target.value}))} style={IS2} />
+            </div>
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MODEL</div>
+              <input placeholder="npr. Serija 3" value={form.model} onChange={e=>setForm(p=>({...p,model:e.target.value}))} style={IS2} />
+            </div>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MAKS. BUDŽET (€)</div>
+              <input type="number" placeholder="npr. 15000" value={form.max_price} onChange={e=>setForm(p=>({...p,max_price:e.target.value}))} style={IS2} />
+            </div>
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MAKS. KM</div>
+              <input type="number" placeholder="npr. 150000" value={form.max_km} onChange={e=>setForm(p=>({...p,max_km:e.target.value}))} style={IS2} />
+            </div>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MIN. GODIŠTE</div>
+              <input type="number" placeholder="npr. 2015" value={form.min_year} onChange={e=>setForm(p=>({...p,min_year:e.target.value}))} style={IS2} />
+            </div>
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MIN. AI SCORE</div>
+              <input type="number" placeholder="npr. 60" min="0" max="100" value={form.min_ai_score} onChange={e=>setForm(p=>({...p,min_ai_score:e.target.value}))} style={IS2} />
+            </div>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>GORIVO</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {[['','Sve'],['diesel','Dizel'],['petrol','Benzin'],['electric','Električni'],['hybrid','Hibrid']].map(([v,l])=>(
+                <button key={v} onClick={()=>setForm(p=>({...p,fuel_type:v}))}
+                  style={{padding:'6px 12px',borderRadius:20,fontSize:13,cursor:'pointer',
+                    background:form.fuel_type===v?'rgba(255,107,0,.15)':'transparent',
+                    border:`1px solid ${form.fuel_type===v?'var(--accent)':'var(--border)'}`,
+                    color:form.fuel_type===v?'var(--accent)':'var(--text3)'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MENJAČ</div>
+            <div style={{display:'flex',gap:6}}>
+              {[['','Sve'],['automatic','Automatik'],['manual','Manuel']].map(([v,l])=>(
+                <button key={v} onClick={()=>setForm(p=>({...p,transmission:v}))}
+                  style={{padding:'6px 12px',borderRadius:20,fontSize:13,cursor:'pointer',
+                    background:form.transmission===v?'rgba(255,107,0,.15)':'transparent',
+                    border:`1px solid ${form.transmission===v?'var(--accent)':'var(--border)'}`,
+                    color:form.transmission===v?'var(--accent)':'var(--text3)'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>DRŽAVA</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4}}>
+              {COUNTRIES.map(({code,flag,label})=>{
+                const active = form.countries.includes(code)
+                return (
+                  <button key={code} onClick={()=>{
+                    const cur = form.countries ? form.countries.split(',').filter(Boolean) : []
+                    const next = active ? cur.filter(c=>c!==code) : [...cur,code]
+                    setForm(p=>({...p,countries:next.join(',')}))
+                  }} style={{padding:'5px 4px',borderRadius:8,fontSize:11,cursor:'pointer',
+                    background:active?'rgba(255,107,0,.15)':'transparent',
+                    border:`1px solid ${active?'var(--accent)':'var(--border)'}`,
+                    color:active?'var(--accent)':'var(--text3)'}}>
+                    {flag} {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        <button onClick={handleSubmit} disabled={saving}
+          style={{width:'100%',marginTop:20,padding:'15px',borderRadius:14,
+            background:saving?'var(--bg3)':'var(--accent)',color:saving?'var(--text3)':'#fff',
+            border:'none',fontSize:16,fontWeight:800,cursor:saving?'default':'pointer',
+            boxShadow:saving?'none':'0 4px 20px rgba(255,107,0,.35)'}}>
+          {saving ? '⏳ Aktiviram...' : '🔎 Počni da tražiš'}
+        </button>
+        <p style={{fontSize:11,color:'var(--text3)',textAlign:'center',marginTop:10,opacity:.7}}>
+          Dobijaš email obaveštenje čim se pojavi odgovarajući oglas
+        </p>
+      </div>
+    </div>
+  )
+}
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
-
   const getInitialFilters = () => {
     if (typeof window!=='undefined') {
       try {
@@ -449,11 +454,9 @@ export default function SearchPage() {
   const [aiLoading,setAiLoading]=useState(false)
   const [sidebarOpen,setSidebarOpen]=useState(false)
   const [contactListing,setContactListing]=useState<any>(null)
-  const [showSaveModal,setShowSaveModal]=useState(false)
+  const [showPronadiModal,setShowPronadiModal]=useState(false)
   const [showMakeModal,setShowMakeModal]=useState(false)
-  const [saveName,setSaveName]=useState('')
-  const [saving,setSaving]=useState(false)
-  const [saveSuccess,setSaveSuccess]=useState(false)
+  const [pronadiSuccess,setPronadiSuccess]=useState(false)
   const [searchHistory,setSearchHistory]=useState<string[]>([])
   const [compareList,setCompareList]=useState<any[]>([])
   const [makes,setMakes]=useState<{make:string;count:number}[]>([])
@@ -462,6 +465,8 @@ export default function SearchPage() {
   const [modelSearch,setModelSearch]=useState('')
   const [filters,setFilters]=useState(DEFAULT_FILTERS)
   const [logoErrors,setLogoErrors]=useState<Record<string,boolean>>({})
+
+  useEffect(()=>{ setFilters(getInitialFilters()) },[])
 
   useEffect(()=>{
     setMakesLoading(true)
@@ -496,13 +501,11 @@ export default function SearchPage() {
     if(key==='make')next.model=''
     setFilters(next);doSearch(next)
   }
-
   const handleModelSelect=(normalizedModel:string,rawVariants:string[])=>{
     const isDeselect=filters.model===normalizedModel
     const next:any={...filters,model:isDeselect?'':normalizedModel,page:1}
     setFilters(next);doSearch(next)
   }
-
   const handleAiSearch=async(e:React.FormEvent)=>{
     e.preventDefault();if(!aiQuery.trim())return;setAiLoading(true)
     try{
@@ -512,23 +515,11 @@ export default function SearchPage() {
       setSearchHistory(newHistory);localStorage.setItem('autoai_search_history',JSON.stringify(newHistory))
     }finally{setAiLoading(false)}
   }
-
-  const handleSaveSearch=async()=>{
-    const token=localStorage.getItem('autoai_token')
-    if(!token){window.location.href='/login';return}
-    setSaving(true)
-    try{
-      const res=await fetch(`${API_BASE}/alerts/`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({name:saveName||'Moja pretraga',filters,frequency:'daily'})})
-      if(res.ok){setSaveSuccess(true);setShowSaveModal(false);setSaveName('')}
-    }catch{}finally{setSaving(false)}
-  }
-
   const handleListingClick=()=>{
     try{sessionStorage.setItem('autoai_from_listing','1');sessionStorage.setItem('autoai_filters',JSON.stringify(filters))}catch{}
   }
 
   const activeCount=[filters.make,filters.model,filters.min_price,filters.max_price,filters.min_year,filters.max_year,filters.max_km,filters.fuel_type,filters.price_rating,...(filters.countries||[])].filter(Boolean).length
-
   const makesCountMap=new Map(makes.map(m=>[m.make,m.count]))
   const gridMakes:{make:string;count:number}[]=TOP_19_MAKES.filter(m=>makesCountMap.has(m)).map(m=>({make:m,count:makesCountMap.get(m)!}))
   const inGrid=new Set(gridMakes.map(m=>m.make))
@@ -561,25 +552,12 @@ export default function SearchPage() {
         .mkbtn:hover{border-color:var(--accent)!important;color:var(--accent)!important}
         .make-tile:hover{border-color:var(--accent)!important;background:rgba(255,107,0,.08)!important;transform:translateY(-2px)!important;box-shadow:0 8px 24px rgba(0,0,0,.3)!important}
         .make-tile{transition:all .15s ease!important}
+        .pronadi-btn{transition:all .2s!important}
+        .pronadi-btn:hover{transform:translateY(-2px)!important;box-shadow:0 8px 28px rgba(255,107,0,.4)!important}
       `}} />
 
       {contactListing&&<ContactModal listing={contactListing} onClose={()=>setContactListing(null)} />}
-
-      {/* Save modal */}
-      {showSaveModal&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}} onClick={()=>setShowSaveModal(false)}>
-          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:28,width:380,maxWidth:'90vw'}} onClick={e=>e.stopPropagation()}>
-            <h3 style={{margin:'0 0 8px',fontSize:17}}>🔔 Sačuvaj pretragu</h3>
-            <p style={{fontSize:13,color:'var(--text3)',margin:'0 0 4px'}}>{TOOLTIPS.sacuvajPretragu}</p>
-            <p style={{fontSize:13,color:'var(--text3)',margin:'0 0 16px',opacity:.7}}>Dobijaš email čim se pojavi novi oglas koji odgovara ovim filterima.</p>
-            <input placeholder="Naziv pretrage (npr. BMW 3 do 10k)" value={saveName} onChange={e=>setSaveName(e.target.value)}
-              style={{width:'100%',boxSizing:'border-box' as any,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 14px',color:'var(--text)',fontSize:14,outline:'none',marginBottom:14}} />
-            <button onClick={handleSaveSearch} disabled={saving} style={{width:'100%',padding:'12px',borderRadius:10,background:'var(--accent)',color:'#fff',border:'none',fontSize:14,fontWeight:700,cursor:'pointer'}}>
-              {saving?'Čuvam...':'✅ Sačuvaj i aktiviraj alert'}
-            </button>
-          </div>
-        </div>
-      )}
+      {showPronadiModal&&<PronadiModal onClose={()=>setShowPronadiModal(false)} filters={filters} />}
 
       {/* Make modal */}
       {showMakeModal&&(
@@ -601,7 +579,6 @@ export default function SearchPage() {
       )}
 
       <div className="container" style={{padding:'16px 16px 80px'}}>
-
         {/* Hero */}
         <div className="hero" style={{background:'linear-gradient(135deg,rgba(255,107,0,.09),rgba(255,107,0,.03))',border:'1px solid rgba(255,107,0,.22)',borderRadius:16,padding:'18px 22px',marginBottom:18,display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
           <div style={{flex:1,minWidth:180}}>
@@ -673,9 +650,9 @@ export default function SearchPage() {
             ))}
             <button onClick={()=>setShowMakeModal(true)} className="make-tile" style={{
               display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-              gap:4, padding:'10px 4px 8px', borderRadius:14, cursor:'pointer',
-              background:'var(--bg2)', border:'2px dashed var(--border)',
-              height:100, width:'100%', boxSizing:'border-box' as any,
+              gap:4,padding:'10px 4px 8px',borderRadius:14,cursor:'pointer',
+              background:'var(--bg2)',border:'2px dashed var(--border)',
+              height:100,width:'100%',boxSizing:'border-box' as any,
             }}>
               <div style={{width:48,height:48,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(255,107,0,.08)',fontSize:22,flexShrink:0}}>🔍</div>
               <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',textAlign:'center',lineHeight:1.25,minHeight:24}}>Sve marke</div>
@@ -712,14 +689,18 @@ export default function SearchPage() {
           )}
         </div>
 
-        {/* Sačuvaj pretragu */}
-        <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center',gap:10,marginBottom:12}}>
-          {saveSuccess&&<span style={{fontSize:13,color:'#22C55E',fontWeight:600}}>✅ Pretraga sačuvana!</span>}
+        {/* Pronađi mi ovakav auto dugme */}
+        <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center',gap:8,marginBottom:12}}>
+          {pronadiSuccess&&<span style={{fontSize:13,color:'#22C55E',fontWeight:600}}>✅ AutoAI traži vozilo za vas!</span>}
           <div style={{display:'flex',alignItems:'center',gap:4}}>
-            <button onClick={()=>setShowSaveModal(true)} style={{padding:'9px 16px',borderRadius:10,fontSize:13,fontWeight:600,background:'rgba(99,102,241,.12)',border:'1px solid rgba(99,102,241,.35)',color:'#818CF8',cursor:'pointer'}}>
-              🔔 Sačuvaj pretragu
+            <button onClick={()=>setShowPronadiModal(true)} className="pronadi-btn"
+              style={{padding:'10px 18px',borderRadius:12,fontSize:13,fontWeight:700,
+                background:'linear-gradient(135deg,rgba(255,107,0,.15),rgba(255,107,0,.08))',
+                border:'1px solid rgba(255,107,0,.4)',color:'var(--accent)',cursor:'pointer',
+                display:'flex',alignItems:'center',gap:8}}>
+              🔎 Pronađi mi ovakav auto
             </button>
-            <InfoIcon id="sacuvajPretragu" text={TOOLTIPS.sacuvajPretragu} />
+            <InfoIcon id="pronadi" text={TOOLTIPS.pronadi} />
           </div>
         </div>
 
@@ -799,10 +780,23 @@ export default function SearchPage() {
                 )}
               </>
             ) : (
-              <div style={{textAlign:'center',padding:'80px 20px',background:'var(--bg2)',borderRadius:16,border:'1px solid var(--border)'}}>
+              /* ── EMPTY STATE sa Pronađi CTA ── */
+              <div style={{textAlign:'center',padding:'60px 20px 40px',background:'var(--bg2)',borderRadius:16,border:'1px solid var(--border)'}}>
                 <div style={{fontSize:52,marginBottom:16}}>🔍</div>
-                <p style={{fontSize:17,fontWeight:600,marginBottom:8}}>Nema rezultata</p>
-                <p style={{color:'var(--text3)',fontSize:14}}>Pokušaj sa različitim filterima ili AI pretragom</p>
+                <p style={{fontSize:18,fontWeight:700,marginBottom:8}}>Nismo našli odgovarajuće vozilo</p>
+                <p style={{color:'var(--text3)',fontSize:14,marginBottom:32,lineHeight:1.6}}>
+                  Pokušaj sa različitim filterima ili AI pretragom.<br/>
+                  AutoAI može da prati nove oglase i pronađe ga za vas.
+                </p>
+                <button onClick={()=>setShowPronadiModal(true)} className="pronadi-btn"
+                  style={{padding:'16px 32px',borderRadius:16,fontSize:16,fontWeight:800,
+                    background:'var(--accent)',color:'#fff',border:'none',cursor:'pointer',
+                    boxShadow:'0 6px 24px rgba(255,107,0,.4)',display:'inline-flex',alignItems:'center',gap:10}}>
+                  🔎 Pronađi mi ovakav auto
+                </button>
+                <p style={{fontSize:12,color:'var(--text3)',marginTop:14,opacity:.7}}>
+                  Dobijate email čim se pojavi odgovarajući oglas
+                </p>
               </div>
             )}
           </div>
@@ -869,7 +863,6 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
   const mileage=formatMileage(listing.mileage)
   const eligColor=eligibility?ELIGIBILITY_COLORS[eligibility.status]:null
   const [showBd,setShowBd]=useState(false)
-
   return (
     <div className="ch" style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,overflow:'hidden'}}>
       {badge?(
@@ -882,7 +875,6 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
           <span style={{color:'#818CF8',fontSize:12,fontWeight:700}}>🤖 AI ANALIZA U TOKU</span>
         </div>
       )}
-
       <a href={`/listing/${listing.id}`} onClick={onListingClick} style={{display:'block',textDecoration:'none'}}>
         <div style={{height:220,background:'#0a0a0a',position:'relative',overflow:'hidden'}}>
           {img
@@ -890,7 +882,7 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
             :<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',fontSize:48,opacity:.35}}>🚗</div>
           }
           <span style={{position:'absolute',bottom:10,left:10,background:'rgba(0,0,0,.75)',borderRadius:6,padding:'3px 8px',fontSize:11,color:'rgba(255,255,255,.85)',backdropFilter:'blur(4px)'}}>
-            {listing.country === 'DE' ? '🇩🇪' : listing.country === 'AT' ? '🇦🇹' : listing.country === 'NL' ? '🇳🇱' : listing.country === 'BE' ? '🇧🇪' : listing.country === 'FR' ? '🇫🇷' : listing.country === 'IT' ? '🇮🇹' : listing.country === 'CH' ? '🇨🇭' : listing.country === 'ES' ? '🇪🇸' : listing.country === 'PL' ? '🇵🇱' : listing.country === 'DK' ? '🇩🇰' : listing.country === 'SE' ? '🇸🇪' : '✓'} Verifikovan izvor
+            {listing.country==='DE'?'🇩🇪':listing.country==='AT'?'🇦🇹':listing.country==='NL'?'🇳🇱':listing.country==='BE'?'🇧🇪':listing.country==='FR'?'🇫🇷':listing.country==='IT'?'🇮🇹':listing.country==='CH'?'🇨🇭':listing.country==='ES'?'🇪🇸':listing.country==='PL'?'🇵🇱':listing.country==='DK'?'🇩🇰':listing.country==='SE'?'🇸🇪':'✓'} Verifikovan izvor
           </span>
         </div>
         <div style={{padding:'14px 18px 0'}}>
@@ -904,7 +896,6 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
           )}
         </div>
       </a>
-
       <div style={{padding:'0 18px 18px'}}>
         {eligibility&&eligColor&&(
           <div style={{background:`${eligColor}11`,border:`1px solid ${eligColor}44`,borderRadius:10,padding:'9px 12px',marginBottom:10}}>
@@ -965,7 +956,6 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
         <button onClick={onCompare} style={{width:'100%',padding:'9px',marginBottom:8,background:inCompare?'rgba(99,102,241,.15)':'transparent',border:`1px solid ${inCompare?'rgba(99,102,241,.5)':'var(--border)'}`,color:inCompare?'#818CF8':'var(--text3)',borderRadius:10,fontSize:13,cursor:'pointer',fontWeight:500}}>
           {inCompare?'✓ Dodato za poređenje':'⚖️ Uporedi'}
         </button>
-        {/* Kontaktiraj sa info */}
         <div style={{display:'flex',alignItems:'center',gap:4}}>
           <button onClick={onContact} className="cb" style={{flex:1,padding:'11px',background:'rgba(99,102,241,.1)',border:'1px solid rgba(99,102,241,.3)',color:'#818CF8',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer'}}>
             🤖 Kontaktiraj prodavca
@@ -1036,7 +1026,6 @@ function FS({label,children}:any) {
     </div>
   )
 }
-
 function FC({label,active,onClick,color,full}:any) {
   return (
     <button className="cb" onClick={onClick} style={{
@@ -1050,7 +1039,6 @@ function FC({label,active,onClick,color,full}:any) {
     }}>{label}</button>
   )
 }
-
 const IS: React.CSSProperties = {
   flex:1,background:'var(--bg3)',border:'1px solid var(--border)',
   borderRadius:8,padding:'9px 11px',color:'var(--text)',fontSize:13,outline:'none',minWidth:0,
