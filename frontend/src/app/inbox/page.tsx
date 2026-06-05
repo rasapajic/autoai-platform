@@ -79,7 +79,7 @@ export default function InboxPage() {
     const token = localStorage.getItem('autoai_token')
     if (!token) { setLoading(false); return }
     try {
-      const res = await fetch(`${API_BASE}/inbox/conversations`, {
+      const res = await fetch(`/api/inbox`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (res.ok) {
