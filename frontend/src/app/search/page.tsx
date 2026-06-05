@@ -280,7 +280,7 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
 
   const handleSubmit = async () => {
     const token = localStorage.getItem('autoai_token')
-    if (!token) { window.location.href = '/login'; return }
+    if (!token) { setShowLogin(true); return }
     setSaving(true)
     try {
       const res = await fetch(`${API_BASE}/alerts/`, {
