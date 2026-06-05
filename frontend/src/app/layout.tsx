@@ -55,7 +55,7 @@ function Navbar() {
   }
 
   const links = [
-    { href:'/search',            label:'Pretraga',      icon:'🔍' },
+    { href:'/search',            label:'Pretraga',      icon:'🔍', primary:true },
     { href:'/searches',          label:'Moje potrage',  icon:'🎯', badge: newSearches },
     { href:'/analyze',           label:'Proveri oglas', icon:'✓'  },
     { href:'/import-calculator', label:'Kalkulator',    icon:'🧮' },
@@ -91,6 +91,8 @@ function Navbar() {
             }}>
               {link.href === '/searches' ? (
                 <span style={{ fontWeight:600, color:'var(--text2)' }}>🎯 Moje potrage</span>
+              ) : link.href === '/search' ? (
+                <span style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>🔍 Pretraga</span>
               ) : link.label}
               {(link.badge || 0) > 0 && (
                 <span style={{
