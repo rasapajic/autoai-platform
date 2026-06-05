@@ -294,16 +294,17 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
       })
       if (res.ok) {
         const data = await res.json()
+        const f = data.filters || data
         setForm(prev => ({
           ...prev,
-          make: data.make || prev.make,
-          model: data.model || prev.model,
-          max_price: data.max_price ? String(data.max_price) : prev.max_price,
-          max_km: data.max_km ? String(data.max_km) : prev.max_km,
-          min_year: data.min_year ? String(data.min_year) : prev.min_year,
-          fuel_type: data.fuel_type || prev.fuel_type,
-          transmission: data.transmission || prev.transmission,
-          name: data.name || (data.make ? `${data.make}${data.model?' '+data.model:''}` : prev.name),
+          make: f.make || prev.make,
+          model: f.model || prev.model,
+          max_price: f.max_price ? String(f.max_price) : prev.max_price,
+          max_km: f.max_km ? String(f.max_km) : prev.max_km,
+          min_year: f.min_year ? String(f.min_year) : prev.min_year,
+          fuel_type: f.fuel_type || prev.fuel_type,
+          transmission: f.transmission || prev.transmission,
+          name: prev.name || (f.make ? `${f.make}${f.model?' '+f.model:''}` : ''),
         }))
         setShowAdvanced(true)
       }
