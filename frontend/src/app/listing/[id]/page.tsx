@@ -118,8 +118,9 @@ function SwipeableImage({images,activeImg,setActiveImg,alt,trust,onScoreClick,en
   const [hov,setHov]=useState(false)
   const sc=trust?(trust.score>=70?'#22C55E':trust.score>=40?'#F97316':'#EF4444'):'#9CA3AF'
   const vb=enriched?{text:'✓ Podaci provereni',color:'#22C55E'}:{text:'⚠ Delimično potvrđeno',color:'#F97316'}
+  const handleTouch=(e:React.TouchEvent)=>{const d=tx.current-e.changedTouches[0].clientX;if(Math.abs(d)>40){if(d>0){setActiveImg(Math.min(activeImg+1,images.length-1))}else{setActiveImg(Math.max(activeImg-1,0))}}}
   return(
-    <div onTouchStart={e=>{tx.current=e.changedTouches[0].clientX}} onTouchEnd={e=>{const d=tx.current-e.changedTouches[0].clientX;if(Math.abs(d)>40){if(d>0){setActiveImg((i:number)=>Math.min(i+1,images.length-1))}else{setActiveImg((i:number)=>Math.max(i-1,0))}}}} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+    <div onTouchStart={e=>{tx.current=e.changedTouches[0].clientX}} onTouchEnd={handleTouch} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{position:'relative',width:'calc(100% + 32px)',marginLeft:-16,marginRight:-16,background:'#0d0d0d',overflow:'hidden',touchAction:'pan-y',borderRadius:'0 0 22px 22px'}}>
       {images[activeImg]?<img src={fullImg(images[activeImg])} alt={alt} onClick={onImageClick} style={{display:'block',width:'100%',height:'min(58vh,620px)',objectFit:'cover',objectPosition:'center 40%',userSelect:'none',cursor:'zoom-in',transition:'transform .3s',transform:hov?'scale(1.02)':'scale(1)'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}}/>:<div style={{width:'100%',height:220,display:'flex',alignItems:'center',justifyContent:'center',fontSize:60}}>🚗</div>}
       <div style={{position:'absolute',top:12,left:12,display:'flex',flexDirection:'column',gap:7}}>
@@ -139,7 +140,7 @@ function SwipeableImage({images,activeImg,setActiveImg,alt,trust,onScoreClick,en
       </div>
       {images.length>1&&<div style={{position:'absolute',top:10,right:10,background:'rgba(0,0,0,.72)',backdropFilter:'blur(6px)',borderRadius:20,padding:'5px 12px',border:'1px solid rgba(255,255,255,.15)'}}><span style={{fontSize:13,fontWeight:600,color:'#fff'}}>{activeImg+1} / {images.length}</span></div>}
       {images.length>1&&<div style={{position:'absolute',bottom:10,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6,alignItems:'center'}}>{images.slice(0,8).map((_:string,i:number)=><div key={i} onClick={()=>setActiveImg(i)} style={{width:activeImg===i?22:7,height:7,borderRadius:4,background:activeImg===i?'var(--accent)':'rgba(255,255,255,.35)',cursor:'pointer',transition:'all .25s'}}/>)}</div>}
-      {images.length>1&&activeImg>0&&<div onClick={e=>{e.stopPropagation();setActiveImg(activeImg-1)}}
+      {images.length>1&&activeImg>0&&<div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i-1)}} style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:36,height:36,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#fff',fontSize:18}}>‹</div>}
       {images.length>1&&activeImg<images.length-1&&<div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i+1)}} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:36,height:36,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#fff',fontSize:18}}>›</div>}
     </div>
   )
