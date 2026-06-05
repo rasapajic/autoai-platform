@@ -129,7 +129,7 @@ export default function InboxPage() {
     const token = localStorage.getItem('autoai_token')
     setStatusUpdating(true)
     try {
-      const res = await fetch(`${API_BASE}/inbox/conversations/${selected.id}`, {
+      const res = await fetch(`/api/inbox/${selected.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus }),
