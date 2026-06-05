@@ -287,7 +287,7 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
     if (!aiText.trim()) return
     setAiParsing(true)
     try {
-      const res = await fetch(`${API_BASE}/ai/parse-search/`, {
+      const res = await fetch(`${API_BASE}/ai/parse-query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: aiText })
