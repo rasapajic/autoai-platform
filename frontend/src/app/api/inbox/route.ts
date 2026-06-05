@@ -1,32 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
+const BACKEND = 'https://autoai-platform-production.up.railway.app/api/v1'
 
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('Authorization') || request.headers.get('authorization') || ''
-  const token = authHeader
-  const body = await request.text()
-  
-  const res = await fetch(`${API_BASE}/inbox/conversations/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': authHeader,
-    },
-    body,
-  })
-  
-  const data = await res.json()
-  return NextResponse.json(data, { status: res.status })
+  try {
+    const body = await request.text()
+    const auth = request.headers.get('authorization') || request.headers.get('Authorization') || ''
+    
+    const res = await fetch(`${BACKEND}/inbox/conversations/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': auth,
+      },
+      body,
+    })
+    
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (e) {
+    return NextResponse.json({ error: 'Proxy error' }, { status: 500 })
+  }
 }
 
 export async function GET(request: NextRequest) {
-  const token = request.headers.get('Authorization')
-  
-  const res = await fetch(`${API_BASE}/inbox/conversations/`, {
-    headers: { 'Authorization': token || '' },
-  })
-  
-  const data = await res.json()
-  return NextResponse.json(data, { status: res.status })
+  try {
+    const auth = request.headers.get('authorization') || request.headers.get('Authorization') || ''
+    
+    const res = await fetch(`${BACKEND}/inbox/conversations/`, {
+      headers: { 'Authorization': auth },
+    })
+    
+    const data = await res.json()
+    return NextResponse.json(data, { status: res.status })
+  } catch (e) {
+    return NextResponse.json({ error: 'Proxy error' }, { status: 500 })
+  }
 }
