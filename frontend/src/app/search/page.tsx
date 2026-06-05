@@ -460,7 +460,7 @@ export default function SearchPage() {
   const [rawModels,setRawModels]=useState<{model:string;count:number}[]>([])
   const [makesLoading,setMakesLoading]=useState(false)
   const [modelSearch,setModelSearch]=useState('')
-  const [filters,setFilters]=useState(getInitialFilters)
+  const [filters,setFilters]=useState(DEFAULT_FILTERS)
   const [logoErrors,setLogoErrors]=useState<Record<string,boolean>>({})
 
   useEffect(()=>{
