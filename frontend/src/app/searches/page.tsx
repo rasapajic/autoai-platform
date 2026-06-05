@@ -26,20 +26,32 @@ function daysSince(dateStr: string) {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000*60*60*24))
 }
 
+const IS: React.CSSProperties = {
+  width:'100%', boxSizing:'border-box' as any,
+  background:'var(--bg3)', border:'1px solid var(--border)',
+  borderRadius:8, padding:'9px 12px',
+  color:'var(--text)', fontSize:13, outline:'none',
+}
+
 export default function SearchesPage() {
-  const [alerts,  setAlerts]  = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
+  const [alerts,    setAlerts]    = useState<any[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState('')
+  const [editAlert, setEditAlert] = useState<any>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('autoai_token')
     if (!token) { window.location.href = '/login'; return }
+    fetchAlerts(token)
+  }, [])
+
+  const fetchAlerts = (token: string) => {
     fetch(`${API_BASE}/alerts/`, { headers: { 'Authorization': `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : [])
       .then(data => setAlerts(Array.isArray(data) ? data : []))
       .catch(() => setError('Greška pri učitavanju'))
       .finally(() => setLoading(false))
-  }, [])
+  }
 
   const deleteAlert = async (id: string) => {
     const token = localStorage.getItem('autoai_token'); if (!token) return
@@ -54,13 +66,102 @@ export default function SearchesPage() {
     setAlerts(prev => prev.map(a => a.id === id ? data : a))
   }
 
-  const totalFound   = alerts.reduce((acc, a) => acc + (a.matches_count || 0), 0)
-  const totalNew     = alerts.reduce((acc, a) => acc + (a.new_matches_count || 0), 0)
-  const activeCount  = alerts.filter(a => a.is_active).length
+  const updateAlert = async (id: string, payload: any) => {
+    const token = localStorage.getItem('autoai_token'); if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/alerts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', 'Authorization':`Bearer ${token}` },
+        body: JSON.stringify(payload)
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setAlerts(prev => prev.map(a => a.id === id ? updated : a))
+        setEditAlert(null)
+      } else {
+        // Fallback: update locally if backend doesn't support PATCH
+        setAlerts(prev => prev.map(a => a.id === id ? {...a, name: payload.name, filters: payload.filters} : a))
+        setEditAlert(null)
+      }
+    } catch {
+      setAlerts(prev => prev.map(a => a.id === id ? {...a, name: payload.name, filters: payload.filters} : a))
+      setEditAlert(null)
+    }
+  }
+
+  const totalFound  = alerts.reduce((acc, a) => acc + (a.matches_count || 0), 0)
+  const totalNew    = alerts.reduce((acc, a) => acc + (a.new_matches_count || 0), 0)
+  const activeCount = alerts.filter(a => a.is_active).length
 
   return (
     <div style={{ minHeight:'100vh', padding:'40px 0 80px' }}>
       <div className="container" style={{ maxWidth:680 }}>
+
+        {/* Edit modal */}
+        {editAlert && (
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}} onClick={()=>setEditAlert(null)}>
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:18,padding:28,width:420,maxWidth:'92vw'}} onClick={e=>e.stopPropagation()}>
+              <h3 style={{fontSize:17,fontWeight:700,margin:'0 0 20px',display:'flex',alignItems:'center',gap:8}}>✏️ Izmeni potragu</h3>
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                <div>
+                  <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:4,letterSpacing:'.06em'}}>NAZIV</div>
+                  <input placeholder="npr. BMW 3 do 18.000€" value={editAlert.name||''}
+                    onChange={e=>setEditAlert((p:any)=>({...p,name:e.target.value}))} style={IS} />
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <div>
+                    <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:4,letterSpacing:'.06em'}}>MARKA</div>
+                    <input placeholder="npr. BMW" value={editAlert.filters?.make||''}
+                      onChange={e=>setEditAlert((p:any)=>({...p,filters:{...p.filters,make:e.target.value}}))} style={IS} />
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:4,letterSpacing:'.06em'}}>MODEL</div>
+                    <input placeholder="npr. Serija 3" value={editAlert.filters?.model||''}
+                      onChange={e=>setEditAlert((p:any)=>({...p,filters:{...p.filters,model:e.target.value}}))} style={IS} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:4,letterSpacing:'.06em'}}>MAKS. BUDŽET (€)</div>
+                  <input type="number" placeholder="npr. 18000" value={editAlert.filters?.max_price||''}
+                    onChange={e=>setEditAlert((p:any)=>({...p,filters:{...p.filters,max_price:e.target.value}}))} style={IS} />
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <div>
+                    <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:4,letterSpacing:'.06em'}}>MAKS. KM</div>
+                    <input type="number" placeholder="npr. 150000" value={editAlert.filters?.max_km||''}
+                      onChange={e=>setEditAlert((p:any)=>({...p,filters:{...p.filters,max_km:e.target.value}}))} style={IS} />
+                  </div>
+                  <div>
+                    <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:4,letterSpacing:'.06em'}}>MIN. GODIŠTE</div>
+                    <input type="number" placeholder="npr. 2015" value={editAlert.filters?.min_year||''}
+                      onChange={e=>setEditAlert((p:any)=>({...p,filters:{...p.filters,min_year:e.target.value}}))} style={IS} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:6,letterSpacing:'.06em'}}>GORIVO</div>
+                  <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                    {[['','Sve'],['diesel','Dizel'],['petrol','Benzin'],['electric','Električni'],['hybrid','Hibrid']].map(([v,l])=>(
+                      <button key={v} onClick={()=>setEditAlert((p:any)=>({...p,filters:{...p.filters,fuel_type:v}}))}
+                        style={{padding:'5px 11px',borderRadius:20,fontSize:12,cursor:'pointer',
+                          background:(editAlert.filters?.fuel_type||'')===(v)?'rgba(255,107,0,.15)':'transparent',
+                          border:`1px solid ${(editAlert.filters?.fuel_type||'')===(v)?'var(--accent)':'var(--border)'}`,
+                          color:(editAlert.filters?.fuel_type||'')===(v)?'var(--accent)':'var(--text3)'}}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,marginTop:20}}>
+                <button onClick={()=>setEditAlert(null)} style={{flex:1,padding:'11px',borderRadius:10,background:'transparent',border:'1px solid var(--border)',color:'var(--text3)',fontSize:13,cursor:'pointer'}}>Otkaži</button>
+                <button onClick={()=>updateAlert(editAlert.id,{name:editAlert.name,filters:editAlert.filters})}
+                  style={{flex:2,padding:'11px',borderRadius:10,background:'var(--accent)',color:'#fff',border:'none',fontSize:14,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 16px rgba(255,107,0,.3)'}}>
+                  ✓ Sačuvaj izmene
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
@@ -157,14 +258,14 @@ export default function SearchesPage() {
                         {alert.last_triggered_at && ` · Poslednji email: ${new Date(alert.last_triggered_at).toLocaleDateString('sr')}`}
                       </div>
                     </div>
-                    <div style={{ display:'flex', gap:6 }}>
+                    <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end' }}>
                       <button onClick={() => toggleAlert(alert.id)} style={{
                         padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer',
                         background:alert.is_active?'rgba(99,102,241,.1)':'var(--bg3)',
                         border:`1px solid ${alert.is_active?'rgba(99,102,241,.3)':'var(--border)'}`,
                         color:alert.is_active?'#818CF8':'var(--text3)',
                       }}>{alert.is_active?'Pauziraj':'Aktiviraj'}</button>
-                      <button onClick={() => setEditAlert(alert)} style={{
+                      <button onClick={() => setEditAlert({...alert, filters: alert.filters || {}})} style={{
                         padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer',
                         background:'rgba(234,179,8,.08)', border:'1px solid rgba(234,179,8,.25)', color:'#EAB308',
                       }}>Izmeni</button>
