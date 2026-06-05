@@ -294,7 +294,9 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
       })
       if (res.ok) {
         const data = await res.json()
+        console.log('AI parse result:', JSON.stringify(data))
         const f = data.filters || data
+        console.log('f:', JSON.stringify(f))
         setForm(prev => ({
           ...prev,
           make: f.make || prev.make,
