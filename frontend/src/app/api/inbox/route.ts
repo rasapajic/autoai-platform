@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
 export async function POST(request: NextRequest) {
-  const token = request.headers.get('Authorization')
+  const authHeader = request.headers.get('Authorization') || request.headers.get('authorization') || ''
+  const token = authHeader
   const body = await request.text()
   
   const res = await fetch(`${API_BASE}/inbox/conversations/`, {
