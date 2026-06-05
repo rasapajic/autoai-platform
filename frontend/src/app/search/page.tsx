@@ -261,8 +261,15 @@ function MakeTile({ makeName, count, isSelected, onClick, logoFailed, onLogoErro
   )
 }
 
-// ── Pronađi modal ────────────────────────────────────────────────
+// ── PronadiModal ─────────────────────────────────────────────────
 function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any }) {
+  const [aiText, setAiText] = useState('')
+  const [aiParsing, setAiParsing] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showCountryPicker, setShowCountryPicker] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [success, setSuccess] = useState(false)
   const [form, setForm] = useState({
     name: filters.make ? `${filters.make}${filters.model?' '+filters.model:''}` : '',
     make: filters.make || '',
@@ -272,16 +279,68 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
     min_year: filters.min_year || '',
     fuel_type: filters.fuel_type || '',
     transmission: '',
-    countries: filters.countries?.length ? filters.countries.join(',') : '',
+    countries: filters.countries?.length ? filters.countries : [] as string[],
     min_ai_score: '',
   })
-  const [saving, setSaving] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [showLogin, setShowLogin] = useState(false)
 
+  const parseWithAI = async () => {
+    if (!aiText.trim()) return
+    setAiParsing(true)
+    try {
+      const res = await fetch(`${API_BASE}/ai/parse-search/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: aiText })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setForm(prev => ({
+          ...prev,
+          make: data.make || prev.make,
+          model: data.model || prev.model,
+          max_price: data.max_price ? String(data.max_price) : prev.max_price,
+          max_km: data.max_km ? String(data.max_km) : prev.max_km,
+          min_year: data.min_year ? String(data.min_year) : prev.min_year,
+          fuel_type: data.fuel_type || prev.fuel_type,
+          transmission: data.transmission || prev.transmission,
+          name: data.name || (data.make ? `${data.make}${data.model?' '+data.model:''}` : prev.name),
+        }))
+        setShowAdvanced(true)
+      }
+    } catch {}
+    setAiParsing(false)
+  }
+
+  const handleSubmit = async () => {
+    const token = localStorage.getItem('autoai_token')
+    if (!token) { setShowLogin(true); return }
+    setSaving(true)
+    try {
+      const res = await fetch(`${API_BASE}/alerts/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          name: form.name || `${form.make} ${form.model}`.trim() || 'Moja potraga',
+          filters: { ...form, countries: form.countries.join(',') },
+          frequency: 'daily'
+        })
+      })
+      if (res.ok) setSuccess(true)
+    } catch {}
+    setSaving(false)
+  }
+
+  const IS2: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box' as any,
+    background: 'var(--bg3)', border: '1px solid var(--border)',
+    borderRadius: 10, padding: '10px 14px',
+    color: 'var(--text)', fontSize: 14, outline: 'none',
+  }
+
+  // Login gate
   if (showLogin) return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}} onClick={onClose}>
-      <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:20,padding:'36px 28px',width:380,maxWidth:'92vw',textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:2000}} onClick={onClose}>
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:20,padding:'36px 28px',width:360,maxWidth:'92vw',textAlign:'center'}} onClick={e=>e.stopPropagation()}>
         <div style={{fontSize:48,marginBottom:16}}>🔐</div>
         <h3 style={{fontSize:18,fontWeight:800,margin:'0 0 10px'}}>Potrebna je registracija</h3>
         <p style={{fontSize:14,color:'var(--text3)',lineHeight:1.6,margin:'0 0 24px'}}>AutoAI čuva vaše potrage i javlja kada pronađe odgovarajuće vozilo.</p>
@@ -293,58 +352,71 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
     </div>
   )
 
-  const handleSubmit = async () => {
-    const token = localStorage.getItem('autoai_token')
-    if (!token) { setShowLogin(true); return }
-    setSaving(true)
-    try {
-      const res = await fetch(`${API_BASE}/alerts/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ name: form.name || 'Moja potraga', filters: form, frequency: 'daily' })
-      })
-      if (res.ok) setSuccess(true)
-    } catch {}
-    finally { setSaving(false) }
-  }
-
-  const IS2: React.CSSProperties = {
-    width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)',
-    border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px',
-    color:'var(--text)', fontSize:14, outline:'none',
-  }
-
+  // Success
   if (success) return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}} onClick={onClose}>
-      <div style={{background:'var(--bg2)',border:'1px solid rgba(34,197,94,.3)',borderRadius:20,padding:'40px 32px',width:400,maxWidth:'92vw',textAlign:'center'}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontSize:52,marginBottom:16}}>✅</div>
-        <h3 style={{fontSize:20,fontWeight:800,margin:'0 0 10px'}}>AutoAI traži vozilo za vas</h3>
-        <p style={{fontSize:14,color:'var(--text3)',lineHeight:1.6,margin:'0 0 24px'}}>Dobićete obaveštenje čim pronađemo odgovarajući oglas. Možete pratiti status u sekciji <strong style={{color:'var(--accent)'}}>Moje potrage</strong> u profilu.</p>
-        <button onClick={onClose} style={{padding:'12px 32px',borderRadius:12,background:'var(--accent)',color:'#fff',border:'none',fontSize:15,fontWeight:700,cursor:'pointer'}}>Odlično!</button>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:2000}} onClick={onClose}>
+      <div style={{background:'var(--bg2)',border:'1px solid rgba(34,197,94,.3)',borderRadius:20,padding:'40px 28px',width:400,maxWidth:'92vw',textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:56,marginBottom:16}}>✅</div>
+        <h3 style={{fontSize:20,fontWeight:800,margin:'0 0 10px'}}>Potraga aktivirana</h3>
+        <p style={{fontSize:14,color:'var(--text3)',lineHeight:1.7,margin:'0 0 8px'}}>
+          AutoAI će vas obavestiti emailom kada pronađe nova vozila.
+        </p>
+        <p style={{fontSize:13,color:'var(--text3)',margin:'0 0 28px',opacity:.7}}>
+          Potrage možete pratiti u{' '}
+          <a href="/profile" style={{color:'var(--accent)',textDecoration:'none',fontWeight:600}}>Moje potrage →</a>
+        </p>
+        <button onClick={onClose} style={{padding:'13px 36px',borderRadius:12,background:'var(--accent)',color:'#fff',border:'none',fontSize:15,fontWeight:700,cursor:'pointer',boxShadow:'0 4px 20px rgba(255,107,0,.35)'}}>
+          Odlično!
+        </button>
       </div>
     </div>
   )
 
   return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:1000}} onClick={onClose}>
-      <div style={{background:'var(--bg2)',borderRadius:'20px 20px 0 0',padding:'24px 20px 40px',width:'100%',maxWidth:520,border:'1px solid var(--border)',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'flex-end',justifyContent:'center',zIndex:2000}} onClick={onClose}>
+      <div style={{background:'var(--bg2)',borderRadius:'20px 20px 0 0',padding:'24px 20px 40px',width:'100%',maxWidth:540,border:'1px solid var(--border)',maxHeight:'92vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20}}>
           <div>
-            <h3 style={{fontSize:18,fontWeight:800,margin:0}}>🔎 Šta tačno tražite?</h3>
-            <p style={{fontSize:12,color:'var(--text3)',margin:'4px 0 0'}}>AutoAI prati oglase i javlja čim pronađe odgovarajuće vozilo</p>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+              <h3 style={{fontSize:19,fontWeight:800,margin:0}}>🔎 AutoAI traži za vas</h3>
+              <span style={{fontSize:10,padding:'3px 8px',borderRadius:20,background:'rgba(255,107,0,.15)',color:'var(--accent)',fontWeight:800,letterSpacing:'.04em'}}>BETA</span>
+            </div>
+            <p style={{fontSize:12,color:'var(--text3)',margin:0}}>Opišite šta tražite — AI popunjava kriterijume</p>
           </div>
-          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:22,cursor:'pointer',lineHeight:1}}>✕</button>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:22,cursor:'pointer',lineHeight:1,flexShrink:0}}>✕</button>
         </div>
 
-        <div style={{display:'flex',flexDirection:'column',gap:12,marginTop:20}}>
+        {/* AI unos */}
+        <div style={{background:'linear-gradient(135deg,rgba(99,102,241,.1),rgba(99,102,241,.05))',border:'1px solid rgba(99,102,241,.3)',borderRadius:14,padding:16,marginBottom:16}}>
+          <div style={{fontSize:11,color:'#818CF8',fontWeight:700,letterSpacing:'.06em',marginBottom:8}}>✨ OPIŠI KAKAV AUTO TRAŽIŠ</div>
+          <textarea
+            value={aiText}
+            onChange={e=>setAiText(e.target.value)}
+            placeholder={'npr.\nTražim BMW Seriju 3, automatik,\ndo 18.000€, ispod 150.000 km,\nbez velikih rizika.'}
+            rows={3}
+            style={{width:'100%',boxSizing:'border-box' as any,background:'rgba(0,0,0,.2)',border:'1px solid rgba(99,102,241,.25)',borderRadius:10,padding:'10px 14px',color:'var(--text)',fontSize:13,outline:'none',resize:'none',lineHeight:1.6,fontFamily:'inherit'}}
+          />
+          <button onClick={parseWithAI} disabled={aiParsing||!aiText.trim()}
+            style={{width:'100%',marginTop:10,padding:'11px',borderRadius:10,
+              background:aiParsing||!aiText.trim()?'rgba(99,102,241,.1)':'rgba(99,102,241,.2)',
+              border:'1px solid rgba(99,102,241,.4)',color:aiParsing||!aiText.trim()?'rgba(129,140,248,.4)':'#818CF8',
+              fontSize:13,fontWeight:700,cursor:aiParsing||!aiText.trim()?'default':'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            {aiParsing ? <><span style={{display:'inline-block',animation:'pulse 1s infinite',width:6,height:6,borderRadius:'50%',background:'#818CF8'}}/>Analiziram...</> : '✨ Popuni automatski'}
+          </button>
+        </div>
+
+        {/* Obavezna polja */}
+        <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:16}}>
           <div>
             <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>NAZIV POTRAGE</div>
-            <input placeholder="npr. BMW 3 do 15.000€" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={IS2} />
+            <input placeholder="npr. BMW 3 do 18.000€" value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} style={IS2} />
           </div>
-
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
             <div>
-              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MARKA</div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MARKA <span style={{color:'#EF4444'}}>*</span></div>
               <input placeholder="npr. BMW" value={form.make} onChange={e=>setForm(p=>({...p,make:e.target.value}))} style={IS2} />
             </div>
             <div>
@@ -352,95 +424,148 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
               <input placeholder="npr. Serija 3" value={form.model} onChange={e=>setForm(p=>({...p,model:e.target.value}))} style={IS2} />
             </div>
           </div>
-
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <div>
-              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MAKS. BUDŽET (€)</div>
-              <input type="number" placeholder="npr. 15000" value={form.max_price} onChange={e=>setForm(p=>({...p,max_price:e.target.value}))} style={IS2} />
-            </div>
-            <div>
-              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MAKS. KM</div>
-              <input type="number" placeholder="npr. 150000" value={form.max_km} onChange={e=>setForm(p=>({...p,max_km:e.target.value}))} style={IS2} />
-            </div>
-          </div>
-
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <div>
-              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MIN. GODIŠTE</div>
-              <input type="number" placeholder="npr. 2015" value={form.min_year} onChange={e=>setForm(p=>({...p,min_year:e.target.value}))} style={IS2} />
-            </div>
-            <div>
-              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MIN. AI SCORE</div>
-              <input type="number" placeholder="npr. 60" min="0" max="100" value={form.min_ai_score} onChange={e=>setForm(p=>({...p,min_ai_score:e.target.value}))} style={IS2} />
-            </div>
-          </div>
-
           <div>
-            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>GORIVO</div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              {[['','Sve'],['diesel','Dizel'],['petrol','Benzin'],['electric','Električni'],['hybrid','Hibrid']].map(([v,l])=>(
-                <button key={v} onClick={()=>setForm(p=>({...p,fuel_type:v}))}
-                  style={{padding:'6px 12px',borderRadius:20,fontSize:13,cursor:'pointer',
-                    background:form.fuel_type===v?'rgba(255,107,0,.15)':'transparent',
-                    border:`1px solid ${form.fuel_type===v?'var(--accent)':'var(--border)'}`,
-                    color:form.fuel_type===v?'var(--accent)':'var(--text3)'}}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MENJAČ</div>
-            <div style={{display:'flex',gap:6}}>
-              {[['','Sve'],['automatic','Automatik'],['manual','Manuel']].map(([v,l])=>(
-                <button key={v} onClick={()=>setForm(p=>({...p,transmission:v}))}
-                  style={{padding:'6px 12px',borderRadius:20,fontSize:13,cursor:'pointer',
-                    background:form.transmission===v?'rgba(255,107,0,.15)':'transparent',
-                    border:`1px solid ${form.transmission===v?'var(--accent)':'var(--border)'}`,
-                    color:form.transmission===v?'var(--accent)':'var(--text3)'}}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>DRŽAVA</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4}}>
-              {COUNTRIES.map(({code,flag,label})=>{
-                const active = form.countries.includes(code)
-                return (
-                  <button key={code} onClick={()=>{
-                    const cur = form.countries ? form.countries.split(',').filter(Boolean) : []
-                    const next = active ? cur.filter(c=>c!==code) : [...cur,code]
-                    setForm(p=>({...p,countries:next.join(',')}))
-                  }} style={{padding:'5px 4px',borderRadius:8,fontSize:11,cursor:'pointer',
-                    background:active?'rgba(255,107,0,.15)':'transparent',
-                    border:`1px solid ${active?'var(--accent)':'var(--border)'}`,
-                    color:active?'var(--accent)':'var(--text3)'}}>
-                    {flag} {label}
-                  </button>
-                )
-              })}
-            </div>
+            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MAKS. BUDŽET (€) <span style={{color:'#EF4444'}}>*</span></div>
+            <input type="number" placeholder="npr. 18000" value={form.max_price} onChange={e=>setForm(p=>({...p,max_price:e.target.value}))} style={IS2} />
           </div>
         </div>
 
-        <button onClick={handleSubmit} disabled={saving}
-          style={{width:'100%',marginTop:20,padding:'15px',borderRadius:14,
-            background:saving?'var(--bg3)':'var(--accent)',color:saving?'var(--text3)':'#fff',
-            border:'none',fontSize:16,fontWeight:800,cursor:saving?'default':'pointer',
-            boxShadow:saving?'none':'0 4px 20px rgba(255,107,0,.35)'}}>
-          {saving ? '⏳ Aktiviram...' : '🔎 Počni da tražiš'}
+        {/* Opcioni kriterijumi */}
+        <button onClick={()=>setShowAdvanced(!showAdvanced)}
+          style={{width:'100%',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',
+            color:'var(--text3)',fontSize:13,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:showAdvanced?12:16}}>
+          <span>⚙️ Opcioni kriterijumi</span>
+          <span style={{fontSize:11,transition:'transform .2s',display:'inline-block',transform:showAdvanced?'rotate(180deg)':'none'}}>▼</span>
         </button>
-        <p style={{fontSize:11,color:'var(--text3)',textAlign:'center',marginTop:10,opacity:.7}}>
-          Dobijaš email obaveštenje čim se pojavi odgovarajući oglas
+
+        {showAdvanced && (
+          <div style={{display:'flex',flexDirection:'column',gap:12,marginBottom:16,padding:'14px',background:'var(--bg3)',borderRadius:12,border:'1px solid var(--border)'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div>
+                <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MAKS. KM</div>
+                <input type="number" placeholder="npr. 150000" value={form.max_km} onChange={e=>setForm(p=>({...p,max_km:e.target.value}))} style={IS2} />
+              </div>
+              <div>
+                <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MIN. GODIŠTE</div>
+                <input type="number" placeholder="npr. 2015" value={form.min_year} onChange={e=>setForm(p=>({...p,min_year:e.target.value}))} style={IS2} />
+              </div>
+            </div>
+
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>GORIVO</div>
+              <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                {[['','Sve'],['diesel','Dizel'],['petrol','Benzin'],['electric','Električni'],['hybrid','Hibrid']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setForm(p=>({...p,fuel_type:v}))}
+                    style={{padding:'5px 11px',borderRadius:20,fontSize:12,cursor:'pointer',
+                      background:form.fuel_type===v?'rgba(255,107,0,.15)':'transparent',
+                      border:`1px solid ${form.fuel_type===v?'var(--accent)':'var(--border)'}`,
+                      color:form.fuel_type===v?'var(--accent)':'var(--text3)'}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MENJAČ</div>
+              <div style={{display:'flex',gap:5}}>
+                {[['','Sve'],['automatic','Automatik'],['manual','Manuel']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setForm(p=>({...p,transmission:v}))}
+                    style={{padding:'5px 11px',borderRadius:20,fontSize:12,cursor:'pointer',
+                      background:form.transmission===v?'rgba(255,107,0,.15)':'transparent',
+                      border:`1px solid ${form.transmission===v?'var(--accent)':'var(--border)'}`,
+                      color:form.transmission===v?'var(--accent)':'var(--text3)'}}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Minimalni kvalitet */}
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>MINIMALNI KVALITET VOZILA</div>
+              <input type="number" placeholder="npr. 70" min="0" max="100" value={form.min_ai_score}
+                onChange={e=>setForm(p=>({...p,min_ai_score:e.target.value}))} style={IS2} />
+              <div style={{display:'flex',gap:12,marginTop:6}}>
+                {[['60','prihvatljivo'],['80','dobra kupovina'],['90','retka prilika']].map(([v,l])=>(
+                  <button key={v} onClick={()=>setForm(p=>({...p,min_ai_score:v}))}
+                    style={{fontSize:11,padding:'3px 8px',borderRadius:20,cursor:'pointer',
+                      background:form.min_ai_score===v?'rgba(255,107,0,.15)':'transparent',
+                      border:`1px solid ${form.min_ai_score===v?'var(--accent)':'var(--border)'}`,
+                      color:form.min_ai_score===v?'var(--accent)':'var(--text3)'}}>
+                    {v} = {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Države */}
+            <div>
+              <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.06em',marginBottom:6}}>DRŽAVE</div>
+              <button onClick={()=>setShowCountryPicker(!showCountryPicker)}
+                style={{width:'100%',padding:'9px 14px',borderRadius:10,background:'var(--bg2)',border:'1px solid var(--border)',
+                  color:'var(--text2)',fontSize:13,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span>
+                  {form.countries.length > 0
+                    ? form.countries.map((c:string) => COUNTRIES.find(x=>x.code===c)?.flag+' '+c).join(' · ')
+                    : 'Sve države'}
+                </span>
+                <span style={{fontSize:11,opacity:.6}}>▼</span>
+              </button>
+              {showCountryPicker && (
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:4,marginTop:6}}>
+                  {COUNTRIES.map(({code,flag,label})=>{
+                    const active = form.countries.includes(code)
+                    return (
+                      <button key={code} onClick={()=>{
+                        const next = active ? form.countries.filter((c:string)=>c!==code) : [...form.countries,code]
+                        setForm(p=>({...p,countries:next}))
+                      }} style={{padding:'5px 6px',borderRadius:8,fontSize:11,cursor:'pointer',
+                        background:active?'rgba(255,107,0,.15)':'transparent',
+                        border:`1px solid ${active?'var(--accent)':'var(--border)'}`,
+                        color:active?'var(--accent)':'var(--text3)'}}>
+                        {flag} {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Kako radi kartica */}
+        <div style={{background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.08)',borderRadius:12,padding:'12px 14px',marginBottom:16}}>
+          <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:8}}>ⓘ Kako radi?</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4,marginBottom:10}}>
+            {['✓ cenu','✓ kilometražu','✓ godište','✓ AI score','✓ mogućnost uvoza','✓ Euro normu'].map(t=>(
+              <div key={t} style={{fontSize:12,color:'var(--text3)'}}>{t}</div>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:'var(--text3)',opacity:.6,paddingTop:8,borderTop:'1px solid rgba(255,255,255,.06)'}}>
+            Stalno proveravamo nove oglase sa svih portala
+          </div>
+        </div>
+
+        {/* Submit */}
+        <button onClick={handleSubmit} disabled={saving||!form.make}
+          style={{width:'100%',padding:'15px',borderRadius:14,
+            background:saving||!form.make?'var(--bg3)':'var(--accent)',
+            color:saving||!form.make?'var(--text3)':'#fff',
+            border:'none',fontSize:16,fontWeight:800,
+            cursor:saving||!form.make?'default':'pointer',
+            boxShadow:saving||!form.make?'none':'0 4px 20px rgba(255,107,0,.35)'}}>
+          {saving ? '⏳ Kreiramo potragu...' : '🔎 AutoAI traži za mene'}
+        </button>
+        <p style={{fontSize:11,color:'var(--text3)',textAlign:'center',marginTop:10,lineHeight:1.6,opacity:.7}}>
+          AutoAI proverava nove oglase i šalje email kada pronađe odgovarajuće vozilo.<br/>
+          Rezultati se otvaraju unutar AutoAI naloga.
         </p>
       </div>
     </div>
   )
 }
+
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
@@ -705,30 +830,20 @@ export default function SearchPage() {
         </div>
 
         {/* Pronađi mi ovakav auto dugme */}
-        <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center',gap:8,marginBottom:4}}>
+        <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center',gap:8,marginBottom:12}}>
           {pronadiSuccess&&<span style={{fontSize:13,color:'#22C55E',fontWeight:600}}>✅ AutoAI traži vozilo za vas!</span>}
-          <div style={{position:'relative'}}>
+          <div style={{display:'flex',alignItems:'center',gap:4}}>
             <button onClick={()=>setShowPronadiModal(true)} className="pronadi-btn"
               style={{padding:'10px 18px',borderRadius:12,fontSize:13,fontWeight:700,
-                background:'linear-gradient(135deg,rgba(255,107,0,.18),rgba(255,107,0,.08))',
+                background:'linear-gradient(135deg,rgba(255,107,0,.15),rgba(255,107,0,.08))',
                 border:'1px solid rgba(255,107,0,.4)',color:'var(--accent)',cursor:'pointer',
                 display:'flex',alignItems:'center',gap:8}}>
               🔎 Pronađi mi ovakav auto
-              <span style={{display:'flex',alignItems:'center',justifyContent:'center',
-                width:16,height:16,borderRadius:'50%',background:'rgba(255,255,255,.06)',
-                fontSize:10,color:'rgba(255,255,255,.55)',fontWeight:700,flexShrink:0,
-                marginLeft:2,transition:'all .15s'}}
-                onMouseEnter={e=>(e.currentTarget.style.color='#fff')}
-                onMouseLeave={e=>(e.currentTarget.style.color='rgba(255,255,255,.55)')}>ⓘ</span>
-              <span style={{fontSize:10,padding:'2px 7px',borderRadius:20,
-                background:'rgba(255,107,0,.2)',color:'var(--accent)',fontWeight:800,
-                letterSpacing:'.04em',marginLeft:2}}>BETA</span>
             </button>
+            <InfoIcon id="pronadi" text={TOOLTIPS.pronadi} />
           </div>
         </div>
-        <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
-          <span style={{fontSize:11,color:'var(--text3)',opacity:.6}}>AutoAI automatski proverava nove oglase</span>
-        </div>
+
         {/* Mobile filter toggle */}
         <button className="mfb cb" onClick={()=>setSidebarOpen(!sidebarOpen)} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'11px 16px',borderRadius:10,marginBottom:16,width:'100%',background:activeCount>0?'rgba(255,107,0,.1)':'var(--bg2)',border:`1px solid ${activeCount>0?'var(--accent)':'var(--border)'}`,color:activeCount>0?'var(--accent)':'var(--text2)',fontSize:14,fontWeight:600,cursor:'pointer'}}>
           ⚙️ Filteri {activeCount>0&&`(${activeCount})`} {sidebarOpen?'▲':'▼'}
