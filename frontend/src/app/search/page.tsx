@@ -690,20 +690,30 @@ export default function SearchPage() {
         </div>
 
         {/* Pronađi mi ovakav auto dugme */}
-        <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center',gap:8,marginBottom:12}}>
+        <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center',gap:8,marginBottom:4}}>
           {pronadiSuccess&&<span style={{fontSize:13,color:'#22C55E',fontWeight:600}}>✅ AutoAI traži vozilo za vas!</span>}
-          <div style={{display:'flex',alignItems:'center',gap:4}}>
+          <div style={{position:'relative'}}>
             <button onClick={()=>setShowPronadiModal(true)} className="pronadi-btn"
               style={{padding:'10px 18px',borderRadius:12,fontSize:13,fontWeight:700,
-                background:'linear-gradient(135deg,rgba(255,107,0,.15),rgba(255,107,0,.08))',
+                background:'linear-gradient(135deg,rgba(255,107,0,.18),rgba(255,107,0,.08))',
                 border:'1px solid rgba(255,107,0,.4)',color:'var(--accent)',cursor:'pointer',
                 display:'flex',alignItems:'center',gap:8}}>
               🔎 Pronađi mi ovakav auto
+              <span style={{display:'flex',alignItems:'center',justifyContent:'center',
+                width:16,height:16,borderRadius:'50%',background:'rgba(255,255,255,.06)',
+                fontSize:10,color:'rgba(255,255,255,.55)',fontWeight:700,flexShrink:0,
+                marginLeft:2,transition:'all .15s'}}
+                onMouseEnter={e=>(e.currentTarget.style.color='#fff')}
+                onMouseLeave={e=>(e.currentTarget.style.color='rgba(255,255,255,.55)')}>ⓘ</span>
+              <span style={{fontSize:10,padding:'2px 7px',borderRadius:20,
+                background:'rgba(255,107,0,.2)',color:'var(--accent)',fontWeight:800,
+                letterSpacing:'.04em',marginLeft:2}}>BETA</span>
             </button>
-            <InfoIcon id="pronadi" text={TOOLTIPS.pronadi} />
           </div>
         </div>
-
+        <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
+          <span style={{fontSize:11,color:'var(--text3)',opacity:.6}}>AutoAI automatski proverava nove oglase</span>
+        </div>
         {/* Mobile filter toggle */}
         <button className="mfb cb" onClick={()=>setSidebarOpen(!sidebarOpen)} style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'11px 16px',borderRadius:10,marginBottom:16,width:'100%',background:activeCount>0?'rgba(255,107,0,.1)':'var(--bg2)',border:`1px solid ${activeCount>0?'var(--accent)':'var(--border)'}`,color:activeCount>0?'var(--accent)':'var(--text2)',fontSize:14,fontWeight:600,cursor:'pointer'}}>
           ⚙️ Filteri {activeCount>0&&`(${activeCount})`} {sidebarOpen?'▲':'▼'}
