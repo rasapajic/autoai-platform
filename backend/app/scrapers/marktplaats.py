@@ -17,16 +17,11 @@ def _hq_image(url: str) -> str:
     """Zameni bilo koji rule sa HQ verzijom na Marktplaats."""
     if not url:
         return url
-    # Format 1: ?rule=ecg_mp_eps$_2.jpg  → $_14.jpg
-    url = re.sub(r'ecg_mp_eps\$_\d+\.jpg', 'ecg_mp_eps$_14.jpg', url)
-    # Format 2: $_2.AUTO → $_14.AUTO
-    url = re.sub(r'\$_\d+\.AUTO', '$_14.AUTO', url)
-    # Format 3: /image.jpg?rule=...number... (query param variant)
-    url = re.sub(r'rule=\d+', 'rule=ecg_mp_eps$_14.jpg', url)
-    # Format 4: images.marktplaats.com API with size param
-    url = re.sub(r'[?&]s=\d+x\d+', '', url)  # remove size restrictions
+    url = re.sub(r'ecg_mp_eps\$_\d+\.jpg', 'ecg_mp_eps$_57.jpg', url)
+    url = re.sub(r'\$_\d+\.AUTO', '$_57.AUTO', url)
+    url = re.sub(r'rule=\d+', 'rule=ecg_mp_eps$_57.jpg', url)
+    url = re.sub(r'[?&]s=\d+x\d+', '', url)
     return url
-
 
 def _parse_price(val) -> float | None:
     if val is None:
