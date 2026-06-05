@@ -146,9 +146,19 @@ def _parse_ad(ad: dict) -> dict | None:
         year = None
         if year_str:
             try:
-                year = int(str(year_str)[:4])
+                # Format: "3/2023" ili "2023" ili "03.2023"
+                m = re.search(r'(\d{4})', str(year_str))
+                if m:
+                    year = int(m.group(1))
             except Exception:
                 pass
+        # Fallback: traži EZ/YEAR_MODEL atribut
+        if not year:
+            ez = g("EZ") or g("YEAR_MODEL") or g("REGISTRATION_DATE") or ""
+            if ez:
+                m = re.search(r'(\d{4})', str(ez))
+                if m:
+                    year = int(m.group(1))
 
         price = _parse_price(price_str)
 
