@@ -49,7 +49,6 @@ def _extract_listings_from_next_data(data: dict) -> list:
 
 
 def _parse_price(val) -> float | None:
-    """Parsira cenu — podržava nemački format (6.990 = 6990) i decimalni (6990.0)"""
     if val is None:
         return None
     try:
@@ -57,19 +56,16 @@ def _parse_price(val) -> float | None:
         s = re.sub(r"[€EUR\s/Monat]", "", s).strip()
         if not s:
             return None
-        # Nemački format: 6.990 ili 29.990 — tačka je separator hiljada
         if "," not in s and "." in s:
             parts = s.split(".")
             if len(parts[-1]) == 3:
-                s = s.replace(".", "")  # 6.990 → 6990
-            # 6990.0 → ostaje kao decimala
+                s = s.replace(".", "")
         else:
             s = s.replace(".", "").replace(",", ".")
         s = re.sub(r"[^\d.]", "", s)
         if not s:
             return None
         price = float(s)
-        # ✅ Filter: lizing mesečne rate su ispod 500€ — preskoči
         if price < 500:
             return None
         return price
@@ -121,7 +117,51 @@ def _get_attr(attributes, name):
     return None
 
 
-def _parse_ad(ad: dict) -> dict | None:
+async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list:
+    """Dohvati sve slike sa stranice oglasa."""
+    images = []
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status != 200:
+                return images
+            html = await resp.text()
+            next_data = _extract_next_data(html)
+            if not next_data:
+                return images
+
+            # Pokušaj naći sve slike u __NEXT_DATA__
+            props = next_data.get("props", {}).get("pageProps", {})
+            advert = props.get("advert", props.get("advertDetails", props.get("advertSummary", {})))
+
+            attrs = advert.get("attributes", {}).get("attribute", [])
+            all_imgs = _get_attr(attrs, "ALL_IMAGE_URLS")
+            if all_imgs:
+                paths = all_imgs.split(";")
+                images = [f"{IMG_BASE}{p.strip()}" for p in paths if p.strip()]
+
+            # Fallback: traži u advertImageList
+            if not images:
+                img_list = advert.get("advertImageList", {}).get("advertImage", [])
+                for img in img_list:
+                    ref = img.get("reference")
+                    if ref:
+                        images.append(f"{IMG_BASE}{ref}")
+
+            # Fallback: traži MMO putanje u HTML-u
+            if not images:
+                mmo_paths = re.findall(r'"reference"\s*:\s*"([^"]+\.jpg)"', html)
+                seen = set()
+                for p in mmo_paths:
+                    if p not in seen:
+                        seen.add(p)
+                        images.append(f"{IMG_BASE}{p}")
+
+    except Exception as e:
+        print(f"[Willhaben] Detail greška {url}: {e}")
+    return images
+
+
+def _parse_ad(ad: dict, detail_images: list = None) -> dict | None:
     try:
         attrs = ad.get("attributes", {}).get("attribute", [])
         def g(name):
@@ -132,7 +172,6 @@ def _parse_ad(ad: dict) -> dict | None:
         model        = g("CAR_MODEL/MODEL")
         variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
         year_str     = g("YEAR_MODEL") or g("YEAR")
-        # ✅ PRICE je cisti broj bez formatiranja (npr. 6990)
         price_str    = g("PRICE") or g("PRICE_FOR_DISPLAY")
         mileage_str  = g("MILEAGE")
         fuel         = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
@@ -148,38 +187,36 @@ def _parse_ad(ad: dict) -> dict | None:
         year = None
         if year_str:
             try:
-                # Format: "3/2023" ili "2023" ili "03.2023"
                 m = re.search(r'(\d{4})', str(year_str))
                 if m:
                     year = int(m.group(1))
             except Exception:
                 pass
-        # Fallback: traži EZ/YEAR_MODEL atribut
         if not year:
-            ez = g("EZ") or g("YEAR_MODEL") or g("REGISTRATION_DATE") or ""
+            ez = g("EZ") or g("REGISTRATION_DATE") or ""
             if ez:
                 m = re.search(r'(\d{4})', str(ez))
                 if m:
                     year = int(m.group(1))
 
         price = _parse_price(price_str)
-
-        # ✅ Preskoči lizing oglase bez kupovne cene
         if price is None:
             return None
 
-        # ✅ Slike — semicolon-separated relativne putanje
-        images = []
-        all_imgs = g("ALL_IMAGE_URLS")
-        if all_imgs:
-            paths = all_imgs.split(";")
-            images = [f"{IMG_BASE}{p.strip()}" for p in paths if p.strip()][:6]
-
-        if not images:
-            for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
-                ref = img.get("reference")
-                if ref:
-                    images.append(f"{IMG_BASE}{ref}")
+        # Slike: detail > search thumbnail
+        if detail_images:
+            images = detail_images
+        else:
+            images = []
+            all_imgs = g("ALL_IMAGE_URLS")
+            if all_imgs:
+                paths = all_imgs.split(";")
+                images = [f"{IMG_BASE}{p.strip()}" for p in paths if p.strip()]
+            if not images:
+                for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
+                    ref = img.get("reference")
+                    if ref:
+                        images.append(f"{IMG_BASE}{ref}")
 
         # URL
         if seo_url:
@@ -210,7 +247,7 @@ def _parse_ad(ad: dict) -> dict | None:
             "body_type":       body or None,
             "engine_power_kw": _parse_int(power),
             "color":           color.strip() or None,
-            "country":         country,
+            "country":         "AT",
             "city":            city.strip() or None,
             "description":     description.strip() or None,
             "images":          images,
@@ -221,16 +258,77 @@ def _parse_ad(ad: dict) -> dict | None:
         return None
 
 
+async def _scrape_page(session, url, params, category_name, all_listings, seen_ids):
+    """Scrape jedne stranice i dohvati detalje paralelno."""
+    try:
+        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+            if resp.status != 200:
+                return False
+            html = await resp.text()
+            next_data = _extract_next_data(html)
+            if not next_data:
+                return False
+            adverts = _extract_listings_from_next_data(next_data)
+            if not adverts:
+                return False
+
+            # Dohvati URL-ove oglasa
+            items_with_urls = []
+            for ad in adverts:
+                attrs = ad.get("attributes", {}).get("attribute", [])
+                seo_url = _get_attr(attrs, "SEO_URL") or ""
+                if seo_url.startswith("/iad"):
+                    detail_url = f"https://www.willhaben.at{seo_url}"
+                elif seo_url.startswith("/"):
+                    detail_url = f"https://www.willhaben.at/iad{seo_url}"
+                elif seo_url:
+                    detail_url = f"https://www.willhaben.at/iad/{seo_url}"
+                else:
+                    ad_id = str(ad.get("id", ""))
+                    detail_url = f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}"
+                items_with_urls.append((ad, detail_url))
+
+            # Dohvati slike paralelno (max 5)
+            semaphore = asyncio.Semaphore(5)
+            async def fetch_imgs(ad, detail_url):
+                async with semaphore:
+                    await asyncio.sleep(0.3)
+                    return await _fetch_detail_images(session, detail_url)
+
+            detail_images_list = await asyncio.gather(
+                *[fetch_imgs(ad, du) for ad, du in items_with_urls],
+                return_exceptions=True
+            )
+
+            before = len(all_listings)
+            for (ad, _), det_imgs in zip(items_with_urls, detail_images_list):
+                if isinstance(det_imgs, Exception):
+                    det_imgs = []
+                parsed = _parse_ad(ad, det_imgs if det_imgs else None)
+                if parsed and parsed["external_id"] not in seen_ids:
+                    seen_ids.add(parsed["external_id"])
+                    all_listings.append(parsed)
+
+            added = len(all_listings) - before
+            print(f"[Willhaben] {category_name}: +{added} | Ukupno: {len(all_listings)}")
+            return len(adverts) >= 10
+
+    except Exception as e:
+        print(f"[Willhaben] Greška {category_name}: {e}")
+        return False
+
+
 class WillhabenScraper:
     async def scrape_listings(self, filters: dict, max_pages: int = 5) -> list:
         all_listings = []
         seen_ids = set()
 
         async with aiohttp.ClientSession(headers=HEADERS) as session:
+
+            # ── Kategorije ──────────────────────────────────────────
             for category in CATEGORIES:
                 url = f"{BASE_URL}/{category}"
                 print(f"[Willhaben] Kategorija: {category}")
-
                 for page in range(1, max_pages + 1):
                     params = {}
                     if page > 1:
@@ -245,41 +343,32 @@ class WillhabenScraper:
                         params["YEAR_TO"] = filters["max_year"]
                     if filters.get("max_km"):
                         params["MILEAGE_TO"] = filters["max_km"]
-
-                    try:
-                        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                            print(f"[Willhaben] {category} str.{page} → {resp.status}")
-                            if resp.status != 200:
-                                break
-
-                            html = await resp.text()
-                            next_data = _extract_next_data(html)
-                            if not next_data:
-                                print(f"[Willhaben] Nema __NEXT_DATA__")
-                                break
-
-                            adverts = _extract_listings_from_next_data(next_data)
-                            if not adverts:
-                                break
-
-                            before = len(all_listings)
-                            for ad in adverts:
-                                parsed = _parse_ad(ad)
-                                if parsed and parsed["external_id"] not in seen_ids:
-                                    seen_ids.add(parsed["external_id"])
-                                    all_listings.append(parsed)
-
-                            added = len(all_listings) - before
-                            print(f"[Willhaben] {category} str.{page}: +{added} | Ukupno: {len(all_listings)}")
-
-                            if len(adverts) < 10:
-                                break
-
-                            await asyncio.sleep(1.5)
-
-                    except Exception as e:
-                        print(f"[Willhaben] Greška {category} str.{page}: {e}")
+                    has_more = await _scrape_page(session, url, params, f"{category} str.{page}", all_listings, seen_ids)
+                    if not has_more:
                         break
+                    await asyncio.sleep(1.5)
+
+            # ── CAR_TYPE stranice ───────────────────────────────────
+            for car_type in CAR_TYPES:
+                print(f"[Willhaben] CAR_TYPE: {car_type}")
+                for page in range(1, max_pages + 1):
+                    params = {"CAR_TYPE": car_type}
+                    if page > 1:
+                        params["page"] = page
+                    if filters.get("min_price"):
+                        params["PRICE_FROM"] = filters["min_price"]
+                    if filters.get("max_price"):
+                        params["PRICE_TO"] = filters["max_price"]
+                    if filters.get("min_year"):
+                        params["YEAR_FROM"] = filters["min_year"]
+                    if filters.get("max_year"):
+                        params["YEAR_TO"] = filters["max_year"]
+                    if filters.get("max_km"):
+                        params["MILEAGE_TO"] = filters["max_km"]
+                    has_more = await _scrape_page(session, BASE_URL_TYPES, params, f"CAR_TYPE={car_type} str.{page}", all_listings, seen_ids)
+                    if not has_more:
+                        break
+                    await asyncio.sleep(1.5)
 
         print(f"[Willhaben] Završeno — {len(all_listings)} oglasa")
         return all_listings
