@@ -161,7 +161,7 @@ export default function ContactModal({ listing, onClose }: Props) {
     if (!token) { window.location.href = '/login'; return }
     setSavingInbox(true)
     try {
-      const res = await fetch(`${API_BASE}/inbox/conversations/`, {
+      const res = await fetch(`/api/inbox`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
