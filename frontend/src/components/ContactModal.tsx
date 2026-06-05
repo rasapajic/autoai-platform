@@ -161,7 +161,7 @@ export default function ContactModal({ listing, onClose }: Props) {
     if (!token) { window.location.href = '/login'; return }
     setSavingInbox(true)
     try {
-      const res = await fetch(`${API_BASE}/inbox/conversations`, {
+      const res = await fetch(`${API_BASE}/inbox/conversations/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
@@ -177,8 +177,13 @@ export default function ContactModal({ listing, onClose }: Props) {
           vin_requested:   vinRequested,
         }),
       })
-      if (res.ok) setSavedToInbox(true)
-    } catch {}
+      if (res.ok) {
+        setSavedToInbox(true)
+      } else {
+        const err = await res.text()
+        console.error('Inbox error:', res.status, err)
+      }
+    } catch (e) { console.error('Inbox catch:', e) }
     setSavingInbox(false)
   }
 
