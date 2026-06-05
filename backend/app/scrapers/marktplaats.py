@@ -129,6 +129,31 @@ async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list
                 return images
             html = await resp.text()
 
+            # Trazi sve UUID-ove koji su u blizini "marktplaats" i "images"
+            seen_ids = set()
+            # Najpre nadji sve UUID-ove u HTML-u
+            all_uuids = re.findall(
+                r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',
+                html
+            )
+            # Filtriraj samo one koji su u kontekstu marktplaats slika
+            for uuid in all_uuids:
+                if uuid in seen_ids:
+                    continue
+                idx = html.find(uuid)
+                context = html[max(0, idx-100):idx+50]
+                if 'marktplaats' in context and ('image' in context or 'listing' in context):
+                    seen_ids.add(uuid)
+                    images.append(
+                        f"https://images.marktplaats.com/api/v1/hz-mp-pro-listing/images/{uuid}?rule=ecg_mp_eps$_57"
+                    )
+
+    except Exception as e:
+        print(f"[Marktplaats] Detail greška {url}: {e}")
+
+    return images
+            html = await resp.text()
+
             # Decode unicode escape karaktere
             # Izvuci sve jedinstvene image UUID-ove (direktno, bez decode)
             seen_ids = set()
