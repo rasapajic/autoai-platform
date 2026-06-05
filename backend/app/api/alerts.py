@@ -74,7 +74,7 @@ def delete_alert(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert nije pronađen")
 
-    alert.is_active = False
+    db.delete(alert)
     db.commit()
     return MessageResponse(message="Alert obrisan")
 
