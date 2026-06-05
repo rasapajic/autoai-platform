@@ -102,7 +102,7 @@ export default function InboxPage() {
     if (!pasteText.trim()) return
     setAnalyzing(true); setAnalysis(null); setAnalysisError('')
     try {
-      const res = await fetch(`${API_BASE}/inbox/analyze-reply`, {
+      const res = await fetch(`/api/inbox/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('autoai_token')}` },
