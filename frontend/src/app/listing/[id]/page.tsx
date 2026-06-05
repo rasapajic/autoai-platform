@@ -119,7 +119,7 @@ function SwipeableImage({images,activeImg,setActiveImg,alt,trust,onScoreClick,en
   const sc=trust?(trust.score>=70?'#22C55E':trust.score>=40?'#F97316':'#EF4444'):'#9CA3AF'
   const vb=enriched?{text:'✓ Podaci provereni',color:'#22C55E'}:{text:'⚠ Delimično potvrđeno',color:'#F97316'}
   return(
-    <div onTouchStart={e=>{tx.current=e.changedTouches[0].clientX}} onTouchEnd={e=>{const d=tx.current-e.changedTouches[0].clientX;if(Math.abs(d)>40){if(d>0)setActiveImg((i:number)=>Math.min(i+1,images.length-1));else setActiveImg((i:number)=>Math.max(i-1,0))}}} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+    <div onTouchStart={e=>{tx.current=e.changedTouches[0].clientX}} onTouchEnd={e=>{const d=tx.current-e.changedTouches[0].clientX;if(Math.abs(d)>40){if(d>0){setActiveImg((i:number)=>Math.min(i+1,images.length-1))}else{setActiveImg((i:number)=>Math.max(i-1,0))}}}} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{position:'relative',width:'calc(100% + 32px)',marginLeft:-16,marginRight:-16,background:'#0d0d0d',overflow:'hidden',touchAction:'pan-y',borderRadius:'0 0 22px 22px'}}>
       {images[activeImg]?<img src={fullImg(images[activeImg])} alt={alt} onClick={onImageClick} style={{display:'block',width:'100%',height:'min(58vh,620px)',objectFit:'cover',objectPosition:'center 40%',userSelect:'none',cursor:'zoom-in',transition:'transform .3s',transform:hov?'scale(1.02)':'scale(1)'}} onError={e=>{(e.target as HTMLImageElement).src=images[activeImg]}}/>:<div style={{width:'100%',height:220,display:'flex',alignItems:'center',justifyContent:'center',fontSize:60}}>🚗</div>}
       <div style={{position:'absolute',top:12,left:12,display:'flex',flexDirection:'column',gap:7}}>
