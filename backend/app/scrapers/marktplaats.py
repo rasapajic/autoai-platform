@@ -121,12 +121,25 @@ def _extract_price(item: dict) -> float | None:
 
 
 async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list:
-    """Dohvati sve slike sa stranice oglasa."""
     images = []
     try:
         async with session.get(url, headers=DETAIL_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as resp:
             if resp.status != 200:
                 return images
+            html = await resp.text()
+            seen_ids = set()
+            all_uuids = re.findall(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', html)
+            for uuid in all_uuids:
+                if uuid in seen_ids:
+                    continue
+                idx = html.find(uuid)
+                context = html[max(0, idx-150):idx+50]
+                if 'marktplaats.com' in context:
+                    seen_ids.add(uuid)
+                    images.append(f"https://images.marktplaats.com/api/v1/hz-mp-pro-listing/images/{uuid}?rule=ecg_mp_eps$_57")
+    except Exception as e:
+        print(f"[Marktplaats] Detail greška {url}: {e}")
+    return images
             html = await resp.text()
 
             # Trazi sve UUID-ove koji su u blizini "marktplaats" i "images"
