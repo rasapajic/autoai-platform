@@ -21,7 +21,7 @@ def get_alerts(
     """Svi aktivni alertovi korisnika."""
     return (
         db.query(Alert)
-        .filter(Alert.user_id == user.id, Alert.is_active == True)
+        .filter(Alert.user_id == user.id)
         .order_by(Alert.created_at.desc())
         .all()
     )
