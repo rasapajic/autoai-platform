@@ -98,18 +98,21 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
 
             # ── Slike iz LD+JSON (sve, ne samo prva) ──────────────
             for ld_match in re.finditer(
-                r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
-                html, re.DOTALL
-            ):
-                try:
-                    ld = json.loads(ld_match.group(1))
-                    if ld.get("image"):
-                        imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
-                        result["images"] += [_hq_image(i) for i in imgs if i]
-                    elif ld.get("contentUrl"):
-                        result["images"].append(_hq_image(ld["contentUrl"]))
-                except Exception:
-                    pass
+    r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+    html, re.DOTALL
+):
+    try:
+        ld = json.loads(ld_match.group(1))
+        # Samo slike iz glavnog oglasa (ItemPage ili Vehicle)
+        ld_type = ld.get("@type", "")
+        if ld_type in ("ItemPage", "Vehicle", "Product", "Offer") or not ld_type:
+            if ld.get("image"):
+                imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
+                result["images"] += [_hq_image(i) for i in imgs if i]
+            elif ld.get("contentUrl"):
+                result["images"].append(_hq_image(ld["contentUrl"]))
+    except Exception:
+        pass
 
             # ── Fallback slike iz gallery JSON ─────────────────────
             if not result["images"]:
