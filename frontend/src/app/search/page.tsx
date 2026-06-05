@@ -277,6 +277,21 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
   })
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
+
+  if (showLogin) return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}} onClick={onClose}>
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:20,padding:'36px 28px',width:380,maxWidth:'92vw',textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:48,marginBottom:16}}>🔐</div>
+        <h3 style={{fontSize:18,fontWeight:800,margin:'0 0 10px'}}>Potrebna je registracija</h3>
+        <p style={{fontSize:14,color:'var(--text3)',lineHeight:1.6,margin:'0 0 24px'}}>AutoAI čuva vaše potrage i javlja kada pronađe odgovarajuće vozilo.</p>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          <a href="/register" style={{display:'block',padding:'13px',borderRadius:12,background:'var(--accent)',color:'#fff',textDecoration:'none',fontSize:15,fontWeight:700}}>Registruj se</a>
+          <a href="/login" style={{display:'block',padding:'13px',borderRadius:12,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text2)',textDecoration:'none',fontSize:15,fontWeight:600}}>Prijavi se</a>
+        </div>
+      </div>
+    </div>
+  )
 
   const handleSubmit = async () => {
     const token = localStorage.getItem('autoai_token')
