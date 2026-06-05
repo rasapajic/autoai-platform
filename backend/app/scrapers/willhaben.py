@@ -3,9 +3,11 @@ import json
 import re
 import aiohttp
 
-CATEGORIES = ["limousine", "suv-gelaendewagen", "kombi-familiar", "kleinwagen", "coupe-sportwagen", "cabrio-roadster", "van-minibus-transporter"]
+CATEGORIES = ["limousine", "suv-gelaendewagen", "cabrio-roadster"]
+CAR_TYPES = ["4", "5", "6", "9", "10"]  # kombi, kleinwagen, coupe, van, pickup
 
 BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
+BASE_URL_TYPES = "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenboerse"
 IMG_BASE = "https://cache.willhaben.at/mmo/"
 
 HEADERS = {
