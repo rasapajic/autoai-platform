@@ -164,6 +164,10 @@ export default function SearchesPage() {
                         border:`1px solid ${alert.is_active?'rgba(99,102,241,.3)':'var(--border)'}`,
                         color:alert.is_active?'#818CF8':'var(--text3)',
                       }}>{alert.is_active?'Pauziraj':'Aktiviraj'}</button>
+                      <button onClick={() => setEditAlert(alert)} style={{
+                        padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer',
+                        background:'rgba(234,179,8,.08)', border:'1px solid rgba(234,179,8,.25)', color:'#EAB308',
+                      }}>Izmeni</button>
                       <button onClick={() => deleteAlert(alert.id)} style={{
                         padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer',
                         background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.25)', color:'#F87171',
