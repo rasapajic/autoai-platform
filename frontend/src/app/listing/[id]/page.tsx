@@ -139,7 +139,7 @@ function SwipeableImage({images,activeImg,setActiveImg,alt,trust,onScoreClick,en
       </div>
       {images.length>1&&<div style={{position:'absolute',top:10,right:10,background:'rgba(0,0,0,.72)',backdropFilter:'blur(6px)',borderRadius:20,padding:'5px 12px',border:'1px solid rgba(255,255,255,.15)'}}><span style={{fontSize:13,fontWeight:600,color:'#fff'}}>{activeImg+1} / {images.length}</span></div>}
       {images.length>1&&<div style={{position:'absolute',bottom:10,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6,alignItems:'center'}}>{images.slice(0,8).map((_:string,i:number)=><div key={i} onClick={()=>setActiveImg(i)} style={{width:activeImg===i?22:7,height:7,borderRadius:4,background:activeImg===i?'var(--accent)':'rgba(255,255,255,.35)',cursor:'pointer',transition:'all .25s'}}/>)}</div>}
-      {images.length>1&&activeImg>0&&<div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i-1)}} style={{position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:36,height:36,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#fff',fontSize:18}}>‹</div>}
+      {images.length>1&&activeImg>0&&<div onClick={e=>{e.stopPropagation();setActiveImg(activeImg-1)}}
       {images.length>1&&activeImg<images.length-1&&<div onClick={e=>{e.stopPropagation();setActiveImg((i:number)=>i+1)}} style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',background:'rgba(0,0,0,.5)',borderRadius:'50%',width:36,height:36,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#fff',fontSize:18}}>›</div>}
     </div>
   )
