@@ -25,6 +25,7 @@ def _hq_image(url: str) -> str:
         return url
     url = re.sub(r'ecg_mp_eps\$_\d+\.jpg', 'ecg_mp_eps$_57.jpg', url)
     url = re.sub(r'\$_\d+\.AUTO', '$_57.AUTO', url)
+    url = re.sub(r'rule=ecg_mp_eps\$_\d+', 'rule=ecg_mp_eps$_57', url)
     url = re.sub(r'rule=\d+', 'rule=ecg_mp_eps$_57.jpg', url)
     url = re.sub(r'[?&]s=\d+x\d+', '', url)
     return url
@@ -128,64 +129,21 @@ async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list
                 return images
             html = await resp.text()
 
-            # Metoda 1: JSON u window.__NUXT__ ili __INITIAL_STATE__
-            for pattern in [
-                r'"imageUrls"\s*:\s*(\[[^\]]+\])',
-                r'"pictures"\s*:\s*(\[[^\]]{20,}\])',
-                r'"images"\s*:\s*(\[[^\]]{20,}\])',
-            ]:
-                m = re.search(pattern, html)
-                if m:
-                    try:
-                        urls = json.loads(m.group(1))
-                        for u in urls:
-                            if isinstance(u, str) and u.startswith('http'):
-                                images.append(_hq_image(u))
-                            elif isinstance(u, dict):
-                                for key in ['largeUrl', 'mediumUrl', 'url', 'src']:
-                                    if u.get(key):
-                                        images.append(_hq_image(u[key]))
-                                        break
-                        if images:
-                            break
-                    except Exception:
-                        pass
+            # Decode unicode escape karaktere
+            html_decoded = html.replace('\\u002F', '/').replace('\u002F', '/')
 
-            # Metoda 2: LD+JSON
-            if not images:
-                for ld_match in re.finditer(
-                    r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
-                    html, re.DOTALL
-                ):
-                    try:
-                        ld = json.loads(ld_match.group(1))
-                        ld_type = ld.get("@type", "")
-                        if ld_type in ("Vehicle", "Product", "ItemPage", "Offer") or not ld_type:
-                            if ld.get("image"):
-                                imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
-                                images += [_hq_image(i) for i in imgs if isinstance(i, str) and i.startswith('http')]
-                            if images:
-                                break
-                    except Exception:
-                        pass
-
-            # Metoda 3: img tagovi sa marktplaats CDN
-            if not images:
-                for m in re.finditer(
-                    r'<img[^>]+(?:src|data-src)="(https://images\.marktplaats\.com[^"]+)"',
-                    html
-                ):
-                    images.append(_hq_image(m.group(1)))
-
-            # Deduplikacija
-            seen = set()
-            unique = []
-            for img in images:
-                key = re.sub(r'ecg_mp_eps\$_\d+', '', img)
-                if key not in seen:
-                    seen.add(key)
-                    unique.append(img)
-            images = unique
+            # Izvuci sve jedinstvene image UUID-ove
+            seen_ids = set()
+            for m in re.finditer(
+                r'images\.marktplaats\.com/api/v1/(?:hz-mp-pro-listing|listing-mp-p)/images/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})',
+                html_decoded
+            ):
+                img_id = m.group(1)
+                if img_id not in seen_ids:
+                    seen_ids.add(img_id)
+                    images.append(
+                        f"https://images.marktplaats.com/api/v1/hz-mp-pro-listing/images/{img_id}?rule=ecg_mp_eps$_57"
+                    )
 
     except Exception as e:
         print(f"[Marktplaats] Detail greška {url}: {e}")
@@ -321,7 +279,7 @@ class MarktplaatsScraper:
                         if not all_items:
                             break
 
-                        # Dohvati detalje paralelno (max 5 odjednom)
+                        # Dohvati slike paralelno (max 5 odjednom)
                         semaphore = asyncio.Semaphore(5)
 
                         async def fetch_images(item):
