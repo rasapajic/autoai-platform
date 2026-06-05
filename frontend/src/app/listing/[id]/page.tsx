@@ -410,7 +410,7 @@ export default function ListingPage({params}:{params:{id:string}}){
           </div>
 
           {/* DESKTOP SIDEBAR — 3 SEKCIJE */}
-          <div className="desktop-sidebar" style={{position:'sticky',top:80,display:'flex',flexDirection:'column',gap:0}}>
+          <div className="desktop-sidebar" style={{position:'sticky',top:80,display:'flex',flexDirection:'column',gap:0,maxHeight:'calc(100vh - 100px)',overflowY:'auto'}}>
 
             {/* SEKCIJA 1: KUPOVINA */}
             <SideSection title="💰 Kupovina">
