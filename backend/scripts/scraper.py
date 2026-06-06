@@ -288,6 +288,7 @@ def main():
     total += asyncio.run(run_autoscout24())
     total += asyncio.run(run_autoscout24_at())
     total += asyncio.run(run_mobile_de())
+    total += asyncio.run(run_willhaben())
     run_price_estimation()
     check_alerts()
     print(f"\n=== UKUPNO: {total} ===")
