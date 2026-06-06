@@ -83,6 +83,11 @@ class Listing(Base):
     scraped_at         = Column(DateTime(timezone=True), server_default=func.now())
 
     # AI
+    # Kontakt
+    contact_type       = Column(String(20), default="unknown")  # email | form | phone | unknown
+    contact_url        = Column(Text)
+
+    # AI
     price_estimated    = Column(DECIMAL(10, 2))
     price_delta_pct    = Column(DECIMAL(6, 2))
     price_rating       = Column(String(10))
