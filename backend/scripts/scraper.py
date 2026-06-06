@@ -27,15 +27,18 @@ def save_listings(listings):
             cur.execute("""
                 INSERT INTO listings
                     (id, external_id, source, make, model, year, price,
-                     mileage, fuel_type, body_type, url, images, is_active, country)
+                     mileage, fuel_type, body_type, url, images, is_active, country,
+                     contact_type, contact_url)
                 VALUES
-                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s)
+                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true,%s,%s,%s)
                 ON CONFLICT (external_id) DO UPDATE SET
-                    year      = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
-                    mileage   = COALESCE(EXCLUDED.mileage, listings.mileage),
-                    fuel_type = CASE WHEN listings.fuel_type IS NULL THEN EXCLUDED.fuel_type ELSE listings.fuel_type END,
-                    body_type = CASE WHEN listings.body_type IS NULL THEN EXCLUDED.body_type ELSE listings.body_type END,
-                    price     = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END
+                    year         = CASE WHEN listings.year IS NULL THEN EXCLUDED.year ELSE listings.year END,
+                    mileage      = COALESCE(EXCLUDED.mileage, listings.mileage),
+                    fuel_type    = CASE WHEN listings.fuel_type IS NULL THEN EXCLUDED.fuel_type ELSE listings.fuel_type END,
+                    body_type    = CASE WHEN listings.body_type IS NULL THEN EXCLUDED.body_type ELSE listings.body_type END,
+                    price        = CASE WHEN EXCLUDED.price IS NOT NULL THEN EXCLUDED.price ELSE listings.price END,
+                    contact_type = CASE WHEN EXCLUDED.contact_type != 'unknown' THEN EXCLUDED.contact_type ELSE listings.contact_type END,
+                    contact_url  = COALESCE(EXCLUDED.contact_url, listings.contact_url)
             """, (
                 str(uuid.uuid4()),
                 l.get("external_id"), l.get("source"),
@@ -43,6 +46,7 @@ def save_listings(listings):
                 l.get("price"), l.get("mileage"), l.get("fuel_type"),
                 l.get("body_type"),
                 l.get("url"), images, l.get("country"),
+                l.get("contact_type", "unknown"), l.get("contact_url"),
             ))
             conn.commit()
             saved += 1
