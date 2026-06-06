@@ -54,6 +54,7 @@ export default function ContactModal({ listing, onClose }: Props) {
   const [loading,       setLoading]       = useState(false)
   const [message,       setMessage]       = useState('')
   const [copied,        setCopied]        = useState(false)
+  const [formCopied,    setFormCopied]    = useState(false)
   const [error,         setError]         = useState('')
   const [userName,      setUserName]      = useState('')
   const [sellerEmail,   setSellerEmail]   = useState('')
@@ -83,6 +84,12 @@ export default function ContactModal({ listing, onClose }: Props) {
   const country  = detectCountry()
   const langInfo = COUNTRY_LANG[country] || COUNTRY_LANG.DE
   const vinMsg   = VIN_MESSAGES[langInfo.code] || VIN_MESSAGES.German
+
+  // Kontakt tip sa listinga (fallback: unknown)
+  const contactType: string = listing.contact_type || 'unknown'
+  const contactUrl: string | null = listing.contact_url || null
+  const isFormContact = contactType === 'form' || contactType === 'unknown'
+  const isEmailContact = contactType === 'email'
 
   const toggleQ = (q: string) =>
     setSelected(s => s.includes(q) ? s.filter(x => x !== q) : [...s, q])
@@ -155,6 +162,24 @@ export default function ContactModal({ listing, onClose }: Props) {
     setCopied(true); setTimeout(() => setCopied(false), 2200)
   }
 
+  // Smart flow za kontakt formu: kopiraj + otvori oglas
+  const copyAndOpenForm = async () => {
+    if (!message) return
+    try {
+      await navigator.clipboard.writeText(message)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = message; document.body.appendChild(ta)
+      ta.select(); document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setFormCopied(true)
+    setTimeout(() => {
+      const target = contactUrl || listing.url
+      if (target) window.open(target, '_blank')
+    }, 300)
+  }
+
   const saveToInbox = async () => {
     if (!message || savedToInbox) return
     const token = localStorage.getItem('autoai_token')
@@ -187,6 +212,19 @@ export default function ContactModal({ listing, onClose }: Props) {
     setSavingInbox(false)
   }
 
+  // Badge za način kontakta
+  const ContactBadge = () => (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+      background: isEmailContact ? 'rgba(34,197,94,.1)' : 'rgba(251,191,36,.1)',
+      border: `1px solid ${isEmailContact ? 'rgba(34,197,94,.35)' : 'rgba(251,191,36,.35)'}`,
+      color: isEmailContact ? '#22C55E' : '#FBBF24',
+    }}>
+      {isEmailContact ? '🟢 Direktan email' : '🟡 Kontakt forma portala'}
+    </div>
+  )
+
   return (
     <div
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
@@ -198,11 +236,14 @@ export default function ContactModal({ listing, onClose }: Props) {
         <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
           <div>
             <h2 style={{ fontSize:18, fontWeight:700, margin:'0 0 5px', fontFamily:'Syne,sans-serif' }}>🤖 Kontaktiraj prodavca</h2>
-            <p style={{ fontSize:13, color:'var(--text3)', margin:0 }}>
-              AI generiše profesionalnu poruku na{' '}
-              <strong style={{ color:'var(--accent)' }}>{langInfo.name}</strong>
-              {userName && <span style={{ color:'var(--text3)' }}> · <strong style={{ color:'var(--text2)' }}>{userName}</strong></span>}
-            </p>
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <p style={{ fontSize:13, color:'var(--text3)', margin:0 }}>
+                AI generiše poruku na{' '}
+                <strong style={{ color:'var(--accent)' }}>{langInfo.name}</strong>
+                {userName && <span style={{ color:'var(--text3)' }}> · <strong style={{ color:'var(--text2)' }}>{userName}</strong></span>}
+              </p>
+              <ContactBadge />
+            </div>
           </div>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:22, cursor:'pointer', padding:'0 4px', lineHeight:1 }}>✕</button>
         </div>
@@ -220,6 +261,18 @@ export default function ContactModal({ listing, onClose }: Props) {
                   onBlur={e => { const v = e.target.value.trim(); if (v) { setUserName(v); localStorage.setItem('autoai_name', v) } }}
                   style={{ width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 12px', color:'var(--text)', fontSize:13, outline:'none' }}
                 />
+              </div>
+            </div>
+          )}
+
+          {/* Info banner za kontakt formu */}
+          {isFormContact && (
+            <div style={{ background:'rgba(251,191,36,.06)', border:'1px solid rgba(251,191,36,.25)', borderRadius:12, padding:'12px 16px', marginBottom:18, display:'flex', gap:10, alignItems:'flex-start' }}>
+              <span style={{ fontSize:18, flexShrink:0 }}>📋</span>
+              <div style={{ fontSize:12, color:'var(--text3)', lineHeight:1.6 }}>
+                <strong style={{ color:'#FBBF24' }}>Kontakt forma portala</strong> — email prodavca nije javno prikazan.
+                AutoAI će generisati poruku, kopirati je u clipboard i otvoriti oglas.
+                Na oglasu klikni <strong style={{ color:'var(--text2)' }}>„Händler kontaktieren"</strong> i zalepi poruku.
               </div>
             </div>
           )}
@@ -313,69 +366,96 @@ export default function ContactModal({ listing, onClose }: Props) {
                 {message}
               </div>
 
-              {/* ── EMAIL PRODAVCA ─────────────────────────── */}
-              <div style={{ background:'rgba(99,102,241,.06)', border:'1px solid rgba(99,102,241,.25)', borderRadius:14, padding:'14px 16px', marginBottom:14 }}>
-                <p style={{ fontSize:11, color:'#818CF8', fontWeight:700, letterSpacing:'.07em', margin:'0 0 8px' }}>📧 EMAIL PRODAVCA (opcionalno)</p>
-                <input
-                  type="email"
-                  value={sellerEmail}
-                  onChange={e => { setSellerEmail(e.target.value); setEmailError('') }}
-                  placeholder="npr. verkauf@autohaus.de"
-                  style={{ width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)', border:`1px solid ${emailError ? '#EF4444' : 'var(--border)'}`, borderRadius:9, padding:'10px 14px', color:'var(--text)', fontSize:13, outline:'none', marginBottom:emailError?4:10 }}
-                />
-                {emailError && <p style={{ color:'#EF4444', fontSize:12, margin:'0 0 8px' }}>{emailError}</p>}
-
-                {/* Dugmad za slanje */}
-                <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={openMailto} style={{
-                    flex:1, padding:'11px', borderRadius:10,
-                    background: sellerEmail && isValidEmail(sellerEmail) ? 'rgba(99,102,241,.2)' : 'var(--bg3)',
-                    border: `1px solid ${sellerEmail && isValidEmail(sellerEmail) ? 'rgba(99,102,241,.5)' : 'var(--border)'}`,
-                    color: sellerEmail && isValidEmail(sellerEmail) ? '#818CF8' : 'var(--text3)',
-                    fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .2s',
-                  }}>
-                    {sellerEmail && isValidEmail(sellerEmail) ? '📧 Otvori u Gmail-u' : '📧 Pošalji email'}
-                  </button>
-                  {!sellerEmail && (
-                    <button onClick={async () => {
-                      try { await navigator.clipboard.writeText(message) } catch {
-                        const ta = document.createElement('textarea')
-                        ta.value = message; document.body.appendChild(ta)
-                        ta.select(); document.execCommand('copy')
-                        document.body.removeChild(ta)
-                      }
-                      setTimeout(() => window.open(listing.url, '_blank'), 150)
-                    }} style={{
-                      flex:1, padding:'11px', borderRadius:10, textAlign:'center',
-                      background:'rgba(255,107,0,.1)', border:'1px solid rgba(255,107,0,.3)',
-                      color:'var(--accent)', fontSize:13, fontWeight:700, cursor:'pointer',
-                      display:'flex', alignItems:'center', justifyContent:'center',
+              {/* ── AKCIJE ZA SLANJE ─────────────────────────── */}
+              {isEmailContact ? (
+                /* EMAIL FLOW */
+                <div style={{ background:'rgba(34,197,94,.06)', border:'1px solid rgba(34,197,94,.25)', borderRadius:14, padding:'14px 16px', marginBottom:14 }}>
+                  <p style={{ fontSize:11, color:'#22C55E', fontWeight:700, letterSpacing:'.07em', margin:'0 0 8px' }}>📧 EMAIL PRODAVCA (opcionalno)</p>
+                  <input
+                    type="email"
+                    value={sellerEmail}
+                    onChange={e => { setSellerEmail(e.target.value); setEmailError('') }}
+                    placeholder="npr. verkauf@autohaus.de"
+                    style={{ width:'100%', boxSizing:'border-box' as any, background:'var(--bg3)', border:`1px solid ${emailError ? '#EF4444' : 'var(--border)'}`, borderRadius:9, padding:'10px 14px', color:'var(--text)', fontSize:13, outline:'none', marginBottom:emailError?4:10 }}
+                  />
+                  {emailError && <p style={{ color:'#EF4444', fontSize:12, margin:'0 0 8px' }}>{emailError}</p>}
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={openMailto} style={{
+                      flex:1, padding:'11px', borderRadius:10,
+                      background: sellerEmail && isValidEmail(sellerEmail) ? 'rgba(34,197,94,.2)' : 'var(--bg3)',
+                      border: `1px solid ${sellerEmail && isValidEmail(sellerEmail) ? 'rgba(34,197,94,.5)' : 'var(--border)'}`,
+                      color: sellerEmail && isValidEmail(sellerEmail) ? '#22C55E' : 'var(--text3)',
+                      fontSize:13, fontWeight:700, cursor:'pointer', transition:'all .2s',
                     }}>
-                      📋 Kopiraj i otvori oglas
+                      {sellerEmail && isValidEmail(sellerEmail) ? '📧 Otvori u Gmail-u' : '📧 Pošalji email'}
                     </button>
+                    <button onClick={copy} style={{
+                      flex:1, padding:'11px', borderRadius:10,
+                      background: copied ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
+                      border: `1px solid ${copied ? '#22C55E' : 'var(--border)'}`,
+                      color: copied ? '#22C55E' : 'var(--text2)',
+                      fontSize:13, fontWeight:700, cursor:'pointer',
+                    }}>{copied ? '✓ Kopirano!' : '📋 Kopiraj'}</button>
+                  </div>
+                </div>
+              ) : (
+                /* FORMA FLOW */
+                <div style={{ background:'rgba(251,191,36,.06)', border:'1px solid rgba(251,191,36,.3)', borderRadius:14, padding:'14px 16px', marginBottom:14 }}>
+                  <p style={{ fontSize:11, color:'#FBBF24', fontWeight:700, letterSpacing:'.07em', margin:'0 0 10px' }}>📋 POŠALJI PREKO KONTAKT FORME</p>
+
+                  {/* Koraci */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
+                    {[
+                      { n:1, text:'Klikni dugme ispod — poruka se kopira', done: formCopied },
+                      { n:2, text:'Oglas se otvara u novom tabu', done: formCopied },
+                      { n:3, text:'Na oglasu klikni „Händler kontaktieren" i zalepi (Ctrl+V)', done: false },
+                    ].map(step => (
+                      <div key={step.n} style={{ display:'flex', alignItems:'center', gap:10, fontSize:12, color: step.done ? '#22C55E' : 'var(--text2)' }}>
+                        <span style={{
+                          width:22, height:22, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+                          fontSize:11, fontWeight:700, flexShrink:0,
+                          background: step.done ? 'rgba(34,197,94,.2)' : 'rgba(251,191,36,.15)',
+                          border: `1px solid ${step.done ? 'rgba(34,197,94,.4)' : 'rgba(251,191,36,.3)'}`,
+                          color: step.done ? '#22C55E' : '#FBBF24',
+                        }}>{step.done ? '✓' : step.n}</span>
+                        {step.text}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button onClick={copyAndOpenForm} style={{
+                    width:'100%', padding:'13px', borderRadius:10, border:'none', cursor:'pointer',
+                    background: formCopied ? 'rgba(34,197,94,.15)' : 'linear-gradient(135deg,rgba(251,191,36,.25),rgba(251,191,36,.15))',
+                    color: formCopied ? '#22C55E' : '#FBBF24',
+                    fontSize:14, fontWeight:700, transition:'all .2s',
+                    border: `1px solid ${formCopied ? 'rgba(34,197,94,.4)' : 'rgba(251,191,36,.4)'}` as any,
+                  }}>
+                    {formCopied ? '✅ Poruka kopirana — oglas otvoren' : '📋 Kopiraj poruku i otvori oglas'}
+                  </button>
+
+                  {formCopied && (
+                    <p style={{ fontSize:11, color:'#FBBF24', margin:'8px 0 0', textAlign:'center', lineHeight:1.5 }}>
+                      Na oglasu klikni „Händler kontaktieren" i zalepi poruku (Ctrl+V)
+                    </p>
                   )}
                 </div>
-                {!sellerEmail && (
-                  <p style={{ fontSize:11, color:'var(--text3)', margin:'8px 0 0', lineHeight:1.5, opacity:.8 }}>
-                    💡 Klikni "Kopiraj i otvori oglas" — poruka se kopira u clipboard, a oglas otvori. Na oglasu klikni "Send Email" i zalijepi (Ctrl+V).
-                  </p>
-                )}
-              </div>
+              )}
               {/* ───────────────────────────────────────────── */}
 
-              {/* Ostale akcije */}
+              {/* WhatsApp + Sačuvaj u inbox */}
               <div style={{ display:'flex', gap:8, marginBottom:10 }}>
-                <button onClick={copy} style={{
-                  flex:1, padding:'10px', borderRadius:10,
-                  background: copied ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
-                  border: `1px solid ${copied ? '#22C55E' : 'var(--border)'}`,
-                  color: copied ? '#22C55E' : 'var(--text2)',
-                  fontSize:13, fontWeight:600, cursor:'pointer',
-                }}>{copied ? '✓ Kopirano!' : '📋 Kopiraj'}</button>
-
                 <button onClick={openWhatsApp} style={{ flex:1, padding:'10px', borderRadius:10, background:'rgba(37,211,102,.1)', border:'1px solid rgba(37,211,102,.35)', color:'#25D366', fontSize:13, fontWeight:600, cursor:'pointer' }}>
                   💬 WhatsApp
                 </button>
+                {isEmailContact && (
+                  <button onClick={copy} style={{
+                    flex:1, padding:'10px', borderRadius:10,
+                    background: copied ? 'rgba(34,197,94,.12)' : 'var(--bg3)',
+                    border: `1px solid ${copied ? '#22C55E' : 'var(--border)'}`,
+                    color: copied ? '#22C55E' : 'var(--text2)',
+                    fontSize:13, fontWeight:600, cursor:'pointer',
+                  }}>{copied ? '✓ Kopirano!' : '📋 Kopiraj'}</button>
+                )}
               </div>
 
               <button onClick={saveToInbox} disabled={savingInbox || savedToInbox} style={{
