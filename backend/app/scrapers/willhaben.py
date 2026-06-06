@@ -181,7 +181,7 @@ async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> tupl
     return images, contact_type, contact_url
 
 
-def _parse_ad(ad: dict, detail_images: list = None) -> dict | None:
+def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown", contact_url: str = None) -> dict | None:
     try:
         attrs = ad.get("attributes", {}).get("attribute", [])
         def g(name):
