@@ -158,9 +158,27 @@ async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> tupl
                         seen.add(p)
                         images.append(f"{IMG_BASE}{p}")
 
+            # Detekcija kontakt tipa
+            if re.search(r'mailto:', html):
+                contact_type = "email"
+                m = re.search(r'mailto:([^\s"\'<>]+)', html)
+                if m:
+                    contact_url = m.group(0)
+            elif re.search(r'(H[aä]ndler\s+kontaktieren|Kontakt aufnehmen|open-contact|/contact)', html, re.IGNORECASE):
+                contact_type = "form"
+                m = re.search(r'href=["\']([^"\']*(?:open-contact|/contact|send-message)[^"\']*)["\']', html, re.IGNORECASE)
+                if m:
+                    raw = m.group(1)
+                    contact_url = f"https://www.willhaben.at{raw}" if raw.startswith("/") else raw
+            elif re.search(r'tel:', html):
+                contact_type = "phone"
+                m = re.search(r'tel:([^\s"\'<>]+)', html)
+                if m:
+                    contact_url = m.group(0)
+
     except Exception as e:
         print(f"[Willhaben] Detail greška {url}: {e}")
-    return images
+    return images, contact_type, contact_url
 
 
 def _parse_ad(ad: dict, detail_images: list = None) -> dict | None:
