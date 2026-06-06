@@ -317,16 +317,18 @@ async def _scrape_page(session, url, params, category_name, all_listings, seen_i
                     await asyncio.sleep(0.3)
                     return await _fetch_detail_images(session, detail_url)
 
-            detail_images_list = await asyncio.gather(
+            detail_results = await asyncio.gather(
                 *[fetch_imgs(ad, du) for ad, du in items_with_urls],
                 return_exceptions=True
             )
 
             before = len(all_listings)
-            for (ad, _), det_imgs in zip(items_with_urls, detail_images_list):
-                if isinstance(det_imgs, Exception):
-                    det_imgs = []
-                parsed = _parse_ad(ad, det_imgs if det_imgs else None)
+            for (ad, _), result in zip(items_with_urls, detail_results):
+                if isinstance(result, Exception) or not isinstance(result, tuple):
+                    det_imgs, c_type, c_url = [], "unknown", None
+                else:
+                    det_imgs, c_type, c_url = result
+                parsed = _parse_ad(ad, det_imgs if det_imgs else None, c_type, c_url)
                 if parsed and parsed["external_id"] not in seen_ids:
                     seen_ids.add(parsed["external_id"])
                     all_listings.append(parsed)
