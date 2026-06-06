@@ -117,9 +117,11 @@ def _get_attr(attributes, name):
     return None
 
 
-async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list:
-    """Dohvati sve slike sa stranice oglasa."""
+async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> tuple[list, str, str | None]:
+    """Dohvati sve slike i kontakt tip sa stranice oglasa."""
     images = []
+    contact_type = "unknown"
+    contact_url = None
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
             if resp.status != 200:
