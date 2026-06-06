@@ -272,6 +272,8 @@ def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown
             "description":     description.strip() or None,
             "images":          images,
             "url":             url,
+            "contact_type":    contact_type,
+            "contact_url":     contact_url,
         }
     except Exception as e:
         print(f"[Willhaben] Parse greška: {e}")
