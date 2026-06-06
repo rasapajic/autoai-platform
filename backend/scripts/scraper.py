@@ -165,7 +165,18 @@ async def run_autoscout24_at():
         print(f"  AS24 AT greska: {e}")
         return 0
 
-async def run_mobile_de():
+async def run_willhaben():
+    print("\n=== WILLHABEN ===")
+    try:
+        from app.scrapers.willhaben import WillhabenScraper
+        scraper = WillhabenScraper()
+        listings = await scraper.scrape_listings({}, max_pages=3)
+        saved = save_listings(listings)
+        print(f"  Willhaben: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  Willhaben greska: {e}")
+        return 0
     print("\n=== MOBILE.DE ===")
     try:
         from app.scrapers.mobile_de import MobileDeScraper
