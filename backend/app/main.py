@@ -16,6 +16,17 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     print("✅ Baza podataka inicijalizovana")
 
+    # Migracije — dodaj kolone ako ne postoje
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("""
+            ALTER TABLE listings
+                ADD COLUMN IF NOT EXISTS contact_type VARCHAR(20) DEFAULT 'unknown',
+                ADD COLUMN IF NOT EXISTS contact_url TEXT
+        """))
+        conn.commit()
+    print("✅ Migracija contact_type/contact_url primenjena")
+
     try:
         worker = subprocess.Popen([
             sys.executable, "-m", "celery",
