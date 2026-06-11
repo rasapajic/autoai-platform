@@ -58,74 +58,8 @@ def save_listings(listings):
     return saved
 
 def run_price_estimation():
-    print("\n=== PRICE ESTIMATION ===")
-    conn = get_conn()
-    cur  = conn.cursor()
-    try:
-        cur.execute("""
-            UPDATE listings l
-            SET
-                price_estimated = sub.median_price,
-                price_delta_pct = ROUND(
-                    ((l.price - sub.median_price) / sub.median_price * 100)::numeric, 1
-                )
-            FROM (
-                SELECT
-                    l1.id,
-                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY l2.price::numeric) AS median_price
-                FROM listings l1
-                JOIN listings l2 ON
-                    l1.make = l2.make AND
-                    l1.model = l2.model AND
-                    l2.price IS NOT NULL AND
-                    l2.price::numeric BETWEEN 500 AND 500000 AND
-                    (l1.year IS NULL OR l2.year IS NULL OR ABS(l2.year - l1.year) <= 2) AND
-                    (
-                        l1.mileage IS NULL OR l2.mileage IS NULL OR
-                        (
-                            CASE
-                                WHEN l1.mileage < 50000  THEN l2.mileage < 50000
-                                WHEN l1.mileage < 150000 THEN l2.mileage BETWEEN 50000 AND 150000
-                                ELSE l2.mileage >= 150000
-                            END
-                        )
-                    )
-                WHERE l1.price IS NOT NULL
-                GROUP BY l1.id
-                HAVING COUNT(l2.id) >= 2
-            ) sub
-            WHERE l.id = sub.id
-              AND sub.median_price > 0
-        """)
-        updated = cur.rowcount
-        conn.commit()
-        print(f"  Price estimation: {updated} oglasa azurirano")
-
-        cur.execute("""
-            UPDATE listings
-            SET price_rating = CASE
-                WHEN price_delta_pct < -10 THEN 'great'
-                WHEN price_delta_pct < -3  THEN 'good'
-                WHEN price_delta_pct <= 5  THEN 'fair'
-                WHEN price_delta_pct <= 15 THEN 'high'
-                WHEN price_delta_pct > 15  THEN 'overpriced'
-                ELSE NULL
-            END
-            WHERE price_estimated IS NOT NULL
-        """)
-        rated = cur.rowcount
-        conn.commit()
-        print(f"  Price rating: {rated} oglasa azurirano")
-        return updated
-    except Exception as e:
-        conn.rollback()
-        print(f"  Price estimation greska: {e}")
-        import traceback
-        print(traceback.format_exc())
-        return 0
-    finally:
-        cur.close()
-        conn.close()
+    from app.core.valuation import run_price_estimation as _run
+    _run(DATABASE_URL)
 
 async def run_autoscout24():
     print("\n=== AUTOSCOUT24 DE ===")
@@ -165,6 +99,19 @@ async def run_autoscout24_at():
         print(f"  AS24 AT greska: {e}")
         return 0
 
+async def run_mobile_de():
+    print("\n=== MOBILE.DE ===")
+    try:
+        from app.scrapers.mobile_de import MobileDeScraper
+        scraper  = MobileDeScraper()
+        listings = await scraper.scrape_listings({}, max_pages=2)
+        saved    = save_listings(listings)
+        print(f"  Mobile.de: {saved}")
+        return saved
+    except Exception as e:
+        print(f"  Mobile.de greska: {e}")
+        return 0
+
 async def run_willhaben():
     print("\n=== WILLHABEN ===")
     try:
@@ -176,17 +123,6 @@ async def run_willhaben():
         return saved
     except Exception as e:
         print(f"  Willhaben greska: {e}")
-        return 0
-    print("\n=== MOBILE.DE ===")
-    try:
-        from app.scrapers.mobile_de import MobileDeScraper
-        scraper  = MobileDeScraper()
-        listings = await scraper.scrape_listings({}, max_pages=2)
-        saved    = save_listings(listings)
-        print(f"  Mobile.de: {saved}")
-        return saved
-    except Exception as e:
-        print(f"  Mobile.de greska: {e}")
         return 0
 
 def check_alerts():
