@@ -36,6 +36,8 @@ class ListingCard(ListingBase):
     price_estimated:  Optional[float] = None
     price_delta_pct:  Optional[float] = None
     price_rating:     Optional[str] = None
+    contact_type:     Optional[str] = "unknown"
+    contact_url:      Optional[str] = None
     first_seen_at:    Optional[datetime] = None
 
     @field_validator('images', mode='before')
