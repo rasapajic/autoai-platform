@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Kopiraj ceo backend folder
-COPY . /app/
-
 # Instaliraj dependencies
 RUN pip install --no-cache-dir psycopg2-binary aiohttp anthropic
 
-CMD ["python", "/app/scripts/scraper.py"]
+# scraper.py će biti na /app/scripts/scraper.py
+# app/ modul mora biti dostupan
+# Ovo se rešava kroz sys.path u scraper.py
+
+CMD ["python", "scraper.py"]
