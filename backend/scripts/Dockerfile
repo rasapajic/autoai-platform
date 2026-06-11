@@ -6,6 +6,6 @@ COPY . /app/
 
 RUN pip install --no-cache-dir psycopg2-binary aiohttp anthropic
 
-RUN find /app -type f -name "*.py" | head -20
+RUN ls -la /app/
 
 CMD ["python", "/app/scraper.py"]
