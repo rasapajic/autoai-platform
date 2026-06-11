@@ -6,7 +6,15 @@ import asyncio
 import logging
 import sys
 sys.path.insert(0, '/app')
-from app.core.email import send_alert_email
+def send_alert_email(*args, **kwargs):
+    try:
+        import sys
+        sys.path.insert(0, '/app')
+        from app.core.email import send_alert_email as _send
+        return _send(*args, **kwargs)
+    except Exception as e:
+        print(f"  Email nije poslat: {e}")
+        return False
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
