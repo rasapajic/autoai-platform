@@ -8,7 +8,17 @@ from app.core.config import settings
 from app.models import Listing
 
 logger = logging.getLogger(__name__)
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+_anthropic_client = None
+
+
+def get_anthropic_client():
+    global _anthropic_client
+    if not settings.ANTHROPIC_API_KEY:
+        return None
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _anthropic_client
 
 
 @dataclass
@@ -106,6 +116,10 @@ def check_listing_fraud(listing: Listing) -> FraudScore:
 def _ai_fraud_check(listing: Listing) -> list[str]:
     """AI proverava opis oglasa na znakove prevare."""
     try:
+        client = get_anthropic_client()
+        if client is None:
+            return []
+
         prompt = f"""Analiziraj ovaj oglas polovnog automobila i pronađi znakove prevare.
 
 Vozilo: {listing.make} {listing.model} {listing.year}, {listing.price} EUR

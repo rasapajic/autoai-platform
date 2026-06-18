@@ -1,5 +1,26 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
+export function formatApiError(err: any): string {
+  const detail = err?.detail ?? err?.message ?? err
+
+  if (typeof detail === 'string') return detail
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map(item => {
+        if (typeof item === 'string') return item
+        if (item && typeof item.msg === 'string') return item.msg
+        if (item && typeof item.message === 'string') return item.message
+        return null
+      })
+      .filter(Boolean)
+
+    if (messages.length) return messages.join(' ')
+  }
+
+  return 'Došlo je do greške. Pokušaj ponovo.'
+}
+
 async function api(path: string, opts?: RequestInit) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
   const res = await fetch(`${BASE}${path}`, {
@@ -9,7 +30,15 @@ async function api(path: string, opts?: RequestInit) {
     },
     ...opts,
   })
-  if (!res.ok) throw await res.json()
+  if (!res.ok) {
+    let body: any = null
+    try {
+      body = await res.json()
+    } catch {
+      body = { detail: res.statusText }
+    }
+    throw new Error(formatApiError(body))
+  }
   return res.json()
 }
 
@@ -60,3 +89,4 @@ export const getAlerts = () => api('/alerts/')
 export const createAlert = (data: any) =>
   api('/alerts/', { method: 'POST', body: JSON.stringify(data) })
 export const deleteAlert = (id: string) => api(`/alerts/${id}`, { method: 'DELETE' })
+export const toggleAlert = (id: string) => api(`/alerts/${id}/toggle`, { method: 'PATCH' })

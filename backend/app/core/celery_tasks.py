@@ -29,32 +29,40 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-# ─── Automatski raspored scrapinga ────────────────────────────
+# ─── Automatski raspored taskova ──────────────────────────────
 celery_app.conf.beat_schedule = {
-    # AutoScout24 — svakih 6 sati
-    "scrape-autoscout24": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=0, hour="*/6"),
-        "args": ("autoscout24", {}),
-    },
-    # Polovniautomobili — svakih 4 sata
-    "scrape-polovni": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=30, hour="*/4"),
-        "args": ("polovni", {}),
-    },
-    # Mobile.de — svakih 6 sati
-    "scrape-mobile-de": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=0, hour="1,7,13,19"),
-        "args": ("mobile_de", {}),
-    },
     # Cleanup starih oglasa — svaki dan u ponoć
     "cleanup-old-listings": {
         "task": "app.core.celery_tasks.cleanup_old_listings",
         "schedule": crontab(minute=0, hour=0),
     },
+    "send-saved-search-notifications": {
+        "task": "app.core.celery_tasks.send_saved_search_notifications",
+        "schedule": crontab(minute=0, hour=8),
+    },
 }
+
+if settings.ENABLE_SCHEDULED_SCRAPING:
+    celery_app.conf.beat_schedule.update({
+        # AutoScout24 — svakih 6 sati
+        "scrape-autoscout24": {
+            "task": "app.core.celery_tasks.scrape_portal",
+            "schedule": crontab(minute=0, hour="*/6"),
+            "args": ("autoscout24", {}),
+        },
+        # Polovniautomobili — svakih 4 sata
+        "scrape-polovni": {
+            "task": "app.core.celery_tasks.scrape_portal",
+            "schedule": crontab(minute=30, hour="*/4"),
+            "args": ("polovni", {}),
+        },
+        # Mobile.de — svakih 6 sati
+        "scrape-mobile-de": {
+            "task": "app.core.celery_tasks.scrape_portal",
+            "schedule": crontab(minute=0, hour="1,7,13,19"),
+            "args": ("mobile_de", {}),
+        },
+    })
 
 
 # ─── Scraping task ────────────────────────────────────────────
@@ -244,5 +252,19 @@ def cleanup_old_listings():
         db.commit()
         logger.info(f"🧹 Deaktivirao {count} starih oglasa")
         return {"deactivated": count}
+    finally:
+        db.close()
+
+
+@celery_app.task
+def send_saved_search_notifications():
+    """Salje jedan email summary po korisniku za nove oglase iz sacuvanih potraga."""
+    from app.services.alert_notifications import send_saved_search_notifications as send_notifications
+
+    db = SessionLocal()
+    try:
+        result = send_notifications(db)
+        logger.info(f"Email notifikacije sacuvanih potraga: {result}")
+        return result
     finally:
         db.close()

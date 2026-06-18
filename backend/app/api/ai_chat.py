@@ -14,10 +14,19 @@ from app.ai.fraud_detector import check_listing_fraud, get_risk_badge
 from app.models import Listing
 
 router = APIRouter()
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+_anthropic_client = None
 
 _estimator = None
 _semantic  = None
+
+def get_anthropic_client():
+    global _anthropic_client
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY nije podesen")
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _anthropic_client
 
 def get_estimator():
     global _estimator
@@ -47,7 +56,7 @@ class QueryRequest(BaseModel):
 def parse_query(req: QueryRequest):
     if not req.query.strip():
         raise HTTPException(400, "Upit ne moze biti prazan")
-    message = client.messages.create(
+    message = get_anthropic_client().messages.create(
         model="claude-opus-4-6",
         max_tokens=300,
         system=PARSE_SYSTEM,

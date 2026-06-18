@@ -1,14 +1,11 @@
-import anthropic
 import logging
 import numpy as np
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.core.config import settings
 from app.models import Listing
 
 logger = logging.getLogger(__name__)
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
 class SemanticSearch:

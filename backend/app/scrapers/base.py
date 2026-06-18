@@ -67,7 +67,11 @@ class BaseScraper(ABC):
         await asyncio.sleep(random.uniform(1.5, 3.5))
 
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            try:
+                page.autoai_status = response.status if response else None
+            except Exception:
+                pass
 
             if wait_for:
                 await page.wait_for_selector(wait_for, timeout=10000)

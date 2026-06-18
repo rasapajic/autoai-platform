@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { searchListings, parseQuery } from '@/lib/api'
+import { createAlert, searchListings, parseQuery } from '@/lib/api'
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni', hybrid: 'Hibrid', lpg: 'Plin',
@@ -26,6 +26,8 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(true)
   const [aiQuery, setAiQuery] = useState(searchParams.get('q') || '')
   const [aiLoading, setAiLoading] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '',
@@ -52,7 +54,10 @@ export default function SearchPage() {
     finally { setLoading(false) }
   }, [filters])
 
-  useEffect(() => { doSearch() }, [])
+  useEffect(() => {
+    setIsLoggedIn(Boolean(localStorage.getItem('token')))
+    doSearch()
+  }, [])
 
   const setFilter = (key: string, val: any) => {
     const next = { ...filters, [key]: val, page: 1 }
@@ -70,6 +75,40 @@ export default function SearchPage() {
       setFilters(next)
       doSearch(next)
     } finally { setAiLoading(false) }
+  }
+
+  const saveSearch = async () => {
+    setSaveMessage('')
+    if (!localStorage.getItem('token')) {
+      const params = new URLSearchParams(
+        Object.entries(filters)
+          .filter(([, value]) => value !== '')
+          .map(([key, value]) => [key, String(value)])
+      )
+      if (aiQuery.trim()) params.set('q', aiQuery.trim())
+      const next = `/search${params.toString() ? `?${params}` : ''}`
+      router.push(`/login?next=${encodeURIComponent(next)}`)
+      return
+    }
+
+    const activeFilters = Object.fromEntries(
+      Object.entries(filters).filter(([key, value]) =>
+        !['page', 'sort_by'].includes(key) && value !== ''
+      )
+    )
+    const savedFilters = {
+      ...activeFilters,
+      ...(aiQuery.trim() ? { query_text: aiQuery.trim() } : {}),
+    }
+    const name = window.prompt('Naziv potrage', aiQuery || buildSearchName(savedFilters))
+    if (!name) return
+
+    try {
+      await createAlert({ name, filters: savedFilters, frequency: 'daily' })
+      setSaveMessage('Potraga je sačuvana u sekciji Moja potraga.')
+    } catch (err: any) {
+      setSaveMessage(err?.message || 'Potraga nije sačuvana.')
+    }
   }
 
   return (
@@ -105,6 +144,19 @@ export default function SearchPage() {
             borderRadius: 'var(--radius)', padding: 20, position: 'sticky', top: 80,
           }}>
             <h3 style={{ fontSize: 14, marginBottom: 16, color: 'var(--text2)', letterSpacing: '0.05em' }}>FILTERI</h3>
+
+            <button onClick={saveSearch} style={{
+              width: '100%', padding: '10px', borderRadius: 8, marginBottom: 14,
+              background: isLoggedIn ? 'var(--accent)' : 'transparent',
+              border: isLoggedIn ? 'none' : '1px solid var(--accent)',
+              color: isLoggedIn ? '#fff' : 'var(--accent)',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>{isLoggedIn ? 'Sačuvaj ovu pretragu' : 'Prijavi se da sačuvaš potragu'}</button>
+            {saveMessage && (
+              <div style={{ color: 'var(--text3)', fontSize: 12, margin: '-6px 0 14px' }}>
+                {saveMessage}
+              </div>
+            )}
 
             <FilterSection label="Cena (EUR)">
               <div style={{ display: 'flex', gap: 6 }}>
@@ -307,4 +359,11 @@ function FilterChip({ label, active, onClick, color }: { label: string, active: 
 const inputStyle: React.CSSProperties = {
   flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)',
   borderRadius: 8, padding: '8px 10px', color: 'var(--text)', fontSize: 13, outline: 'none',
+}
+
+function buildSearchName(filters: Record<string, any>) {
+  const makeModel = [filters.make, filters.model].filter(Boolean).join(' ')
+  if (makeModel) return makeModel
+  if (filters.query_text) return filters.query_text
+  return 'Moja potraga'
 }

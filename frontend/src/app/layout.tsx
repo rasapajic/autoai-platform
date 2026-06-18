@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import AuthNav from './AuthNav'
 
 export const metadata: Metadata = {
   title: 'AutoAI — Polovni automobili u Evropi',
@@ -47,14 +48,13 @@ function Navbar() {
             { href: '/search', label: 'Pretraga' },
             { href: '/import-calculator', label: 'Uvoz kalkulator' },
           ].map(link => (
-            <a key={link.href} href={link.href} style={{
+            <a key={link.href} href={link.href} className="nav-link" style={{
               padding: '6px 14px', borderRadius: 8, fontSize: 14,
               color: 'var(--text2)', transition: 'all .15s',
             }}
-            onMouseEnter={e => { (e.target as HTMLElement).style.color = 'var(--text)'; (e.target as HTMLElement).style.background = 'var(--bg3)' }}
-            onMouseLeave={e => { (e.target as HTMLElement).style.color = 'var(--text2)'; (e.target as HTMLElement).style.background = 'transparent' }}
             >{link.label}</a>
           ))}
+          <AuthNav />
           <a href="/search" style={{
             marginLeft: 8, padding: '7px 16px', borderRadius: 8,
             background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 500,

@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+
+    # URLs
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    # Scraping
+    ENABLE_SCHEDULED_SCRAPING: bool = False
 
     class Config:
         env_file = ".env"
