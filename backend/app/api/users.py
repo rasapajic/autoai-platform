@@ -81,6 +81,7 @@ def get_favorites(
             "images":       (l.images or [])[:1],
             "price_rating": l.price_rating,
             "url":          l.url,
+            "special_vehicle": l.special_vehicle,
         }
         for l in favorites
     ]

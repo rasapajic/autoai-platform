@@ -7,6 +7,7 @@ from urllib.parse import quote, urljoin
 
 from app.core.config import settings
 from app.scrapers.base import BaseScraper
+from app.services.location_parser import parse_city
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ class AutoScout24Scraper(BaseScraper):
     ) -> list[dict]:
         listings: list[dict] = []
         safe_limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
+        search_country = self._country_iso(filters.get("country")) if filters.get("country") else None
 
         async with self:
             for page_num in range(1, max_pages + 1):
@@ -94,6 +96,7 @@ class AutoScout24Scraper(BaseScraper):
                     if len(listings) >= safe_limit:
                         break
 
+                    raw["search_country"] = search_country
                     parsed = self._parse_listing(raw)
                     if parsed:
                         listings.append(self.normalize(parsed))
@@ -117,15 +120,56 @@ class AutoScout24Scraper(BaseScraper):
         mapping = {
             "DE": "D",
             "GERMANY": "D",
+            "DEUTSCHLAND": "D",
             "AT": "A",
             "AUSTRIA": "A",
+            "ÖSTERREICH": "A",
+            "OSTERREICH": "A",
             "NL": "NL",
+            "NETHERLANDS": "NL",
+            "NEDERLAND": "NL",
             "BE": "B",
+            "BELGIUM": "B",
+            "BELGIQUE": "B",
+            "BELGIE": "B",
             "IT": "I",
+            "ITALY": "I",
+            "ITALIA": "I",
             "FR": "F",
-            "ES": "E",
+            "FRANCE": "F",
         }
         return mapping.get(str(value).strip().upper(), str(value).strip().upper())
+
+    def _country_iso(self, value: str | None) -> str | None:
+        if not value:
+            return None
+        mapping = {
+            "D": "DE",
+            "DE": "DE",
+            "GERMANY": "DE",
+            "DEUTSCHLAND": "DE",
+            "A": "AT",
+            "AT": "AT",
+            "AUSTRIA": "AT",
+            "ÖSTERREICH": "AT",
+            "OSTERREICH": "AT",
+            "B": "BE",
+            "BE": "BE",
+            "BELGIUM": "BE",
+            "BELGIQUE": "BE",
+            "BELGIE": "BE",
+            "NL": "NL",
+            "NETHERLANDS": "NL",
+            "NEDERLAND": "NL",
+            "F": "FR",
+            "FR": "FR",
+            "FRANCE": "FR",
+            "I": "IT",
+            "IT": "IT",
+            "ITALY": "IT",
+            "ITALIA": "IT",
+        }
+        return mapping.get(str(value).strip().upper())
 
     async def scrape_detail(self, url: str) -> dict:
         async with self:
@@ -393,6 +437,7 @@ class AutoScout24Scraper(BaseScraper):
                 body_type = detail
 
         country, city = self._parse_location(raw.get("location_raw", ""))
+        country = country or raw.get("search_country")
 
         return {
             "external_id": external_id,
@@ -536,11 +581,22 @@ class AutoScout24Scraper(BaseScraper):
             "austria": "AT",
             "österreich": "AT",
             "osterreich": "AT",
-            "serbia": "RS",
-            "srbija": "RS",
+            "belgium": "BE",
+            "belgique": "BE",
+            "belgie": "BE",
+            "belgien": "BE",
+            "netherlands": "NL",
+            "nederland": "NL",
+            "france": "FR",
+            "frankreich": "FR",
+            "italy": "IT",
+            "italia": "IT",
+            "italien": "IT",
         }
         country = next((code for label, code in country_map.items() if label in lowered), None)
-        city = parts[0] if parts else None
+        city = parse_city(location, country)
+        if not city and parts:
+            city = parse_city(parts[0], country)
         return country, city
 
     def _parse_power_kw(self, power_str: str | None) -> int | None:

@@ -8,14 +8,16 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+SOURCE = "mobile_de"
+
 
 def main() -> int:
     args = parse_args()
     from app.core.db import SessionLocal
     from app.models import ScraperRun
-    from app.scrapers.autoscout24 import AutoScout24Scraper
+    from app.scrapers.mobile_de import MobileDeScraper
 
-    limit = max(1, min(args.limit, 50))
+    limit = max(1, min(args.limit, 20))
     filters = {
         key: value
         for key, value in {
@@ -29,16 +31,16 @@ def main() -> int:
         if value not in (None, "")
     }
 
-    scraper = AutoScout24Scraper()
+    scraper = MobileDeScraper()
     listings = asyncio.run(scraper.scrape_listings(filters, max_pages=args.max_pages, limit=limit))
 
     db = SessionLocal()
-    run = ScraperRun(portal="autoscout24", status="running")
+    run = ScraperRun(portal=SOURCE, status="running")
     db.add(run)
     db.commit()
 
     try:
-        result = upsert_autoscout24_listings(db, listings)
+        result = upsert_mobilede_listings(db, listings)
         run.listings_found = len(listings)
         run.listings_new = result["created"]
         run.listings_updated = result["updated"]
@@ -47,7 +49,7 @@ def main() -> int:
         db.commit()
 
         logger.info(
-            "AutoScout24 scrape done: created=%s updated=%s skipped=%s fetched=%s",
+            "Mobile.de scrape done: created=%s updated=%s skipped=%s fetched=%s",
             result["created"],
             result["updated"],
             result["skipped"],
@@ -62,31 +64,26 @@ def main() -> int:
         run.finished_at = datetime.utcnow()
         db.add(run)
         db.commit()
-        logger.exception("AutoScout24 scrape failed")
+        logger.exception("Mobile.de scrape failed")
         return 1
     finally:
         db.close()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Manual small-batch AutoScout24 scraper")
-    parser.add_argument("--limit", type=int, default=20, help="Number of listings to fetch, capped at 50")
+    parser = argparse.ArgumentParser(description="Manual small-batch Mobile.de scraper")
+    parser.add_argument("--limit", type=int, default=20, help="Number of listings to fetch, capped at 20")
     parser.add_argument("--max-pages", type=int, default=2, help="Maximum search result pages to visit")
     parser.add_argument("--make", default="", help="Optional make filter")
     parser.add_argument("--model", default="", help="Optional model filter")
-    parser.add_argument(
-        "--country",
-        default="",
-        choices=["", "DE", "AT", "BE", "NL", "FR", "IT"],
-        help="Optional AutoScout24 country code: DE, AT, BE, NL, FR or IT",
-    )
+    parser.add_argument("--country", default="", help="Accepted for CLI symmetry; Mobile.de MVP searches Germany")
     parser.add_argument("--max-price", type=int, default=None)
     parser.add_argument("--min-year", type=int, default=None)
     parser.add_argument("--fuel-type", default="", choices=["", "petrol", "diesel", "electric", "hybrid", "lpg", "cng"])
     return parser.parse_args()
 
 
-def upsert_autoscout24_listings(db, listings: list[dict[str, Any]]) -> dict[str, int]:
+def upsert_mobilede_listings(db, listings: list[dict[str, Any]]) -> dict[str, int]:
     from app.models import Listing, PriceHistory
 
     now = datetime.utcnow()
@@ -97,14 +94,14 @@ def upsert_autoscout24_listings(db, listings: list[dict[str, Any]]) -> dict[str,
         url = data.get("url")
         source = data.get("source")
 
-        if source != "autoscout24" or not external_id or not url:
+        if source != SOURCE or not external_id or not url:
             skipped += 1
             continue
 
         price = _decimal_or_none(data.get("price"))
         existing = (
             db.query(Listing)
-            .filter(Listing.source == "autoscout24", Listing.external_id == external_id)
+            .filter(Listing.source == SOURCE, Listing.external_id == external_id)
             .first()
         )
 
@@ -132,7 +129,7 @@ def _listing_create_payload(data: dict[str, Any], now: datetime, price: Decimal 
     payload = _listing_update_payload(data, now, price)
     payload.update({
         "external_id": data["external_id"],
-        "source": "autoscout24",
+        "source": SOURCE,
         "first_seen_at": now,
     })
     return payload
@@ -163,8 +160,6 @@ def _listing_update_payload(data: dict[str, Any], now: datetime, price: Decimal 
         "service_history",
     }
     payload = {key: data.get(key) for key in allowed if data.get(key) is not None}
-    if "country" in payload:
-        payload["country"] = _normalize_country(payload["country"])
     payload.update({
         "is_active": True,
         "last_seen_at": now,
@@ -182,39 +177,6 @@ def _decimal_or_none(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
-
-
-def _normalize_country(value: Any) -> str | None:
-    if value in (None, ""):
-        return None
-
-    normalized = str(value).strip().upper().replace("\u00d6", "O")
-    mapping = {
-        "D": "DE",
-        "DE": "DE",
-        "GERMANY": "DE",
-        "DEUTSCHLAND": "DE",
-        "A": "AT",
-        "AT": "AT",
-        "AUSTRIA": "AT",
-        "OSTERREICH": "AT",
-        "B": "BE",
-        "BE": "BE",
-        "BELGIUM": "BE",
-        "BELGIQUE": "BE",
-        "BELGIE": "BE",
-        "NL": "NL",
-        "NETHERLANDS": "NL",
-        "NEDERLAND": "NL",
-        "F": "FR",
-        "FR": "FR",
-        "FRANCE": "FR",
-        "I": "IT",
-        "IT": "IT",
-        "ITALY": "IT",
-        "ITALIA": "IT",
-    }
-    return mapping.get(normalized, normalized)
 
 
 if __name__ == "__main__":

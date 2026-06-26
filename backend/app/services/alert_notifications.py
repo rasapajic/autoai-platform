@@ -56,6 +56,13 @@ def send_saved_search_notifications(db: Session) -> dict[str, int]:
             invalid_emails_skipped += 1
             logger.info("Email notifikacija preskocena zbog invalidne adrese za user_id=%s", user.id)
             continue
+        if not settings.app_base_url:
+            emails_skipped += 1
+            logger.warning(
+                "Email notifikacija preskocena za user_id=%s jer NEXT_PUBLIC_APP_URL/FRONTEND_URL nije podesen",
+                user.id,
+            )
+            continue
 
         subject = "AutoAI - novi oglasi za tvoje potrage"
         body = build_summary_email(user, sections)
@@ -165,7 +172,7 @@ def build_summary_email(user: User, sections: list[tuple[Alert, list[Listing]]])
                 f"- {listing.year or ''} {listing.make or ''} {listing.model or ''} "
                 f"({listing.country or '-'}, {listing.mileage or '-'} km) - {price}"
             )
-            lines.append(f"  {settings.FRONTEND_URL}/listing/{listing.id}")
+            lines.append(f"  {settings.app_url(f'/listing/{listing.id}')}")
 
         lines.append("")
 

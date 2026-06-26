@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -38,8 +38,36 @@ class ListingCard(ListingBase):
     price_delta_pct:  Optional[float] = None
     price_rating:     Optional[str] = None
     first_seen_at:    Optional[datetime] = None
+    special_vehicle:  bool = False
+
+    @model_validator(mode="after")
+    def clear_special_vehicle_valuation(self):
+        if self.special_vehicle:
+            self.price_estimated = None
+            self.price_delta_pct = None
+            self.price_rating = None
+        return self
 
     model_config = {"from_attributes": True}
+
+
+class PurchaseRating(BaseModel):
+    rating: str
+    label: str
+    asking_price: Optional[float] = None
+    estimated_market_value: Optional[float] = None
+    potential_saving: Optional[float] = None
+    comparable_count: int = 0
+    median_price: Optional[float] = None
+    p25_price: Optional[float] = None
+    p75_price: Optional[float] = None
+    confidence_percent: int = 0
+    market_low: Optional[float] = None
+    market_high: Optional[float] = None
+    comparable_year_range: dict = {}
+    comparable_mileage_range: dict = {}
+    debug: dict = {}
+    explanations: list[str] = []
 
 
 class ListingDetail(ListingCard):
@@ -54,6 +82,7 @@ class ListingDetail(ListingCard):
     owners_count:     Optional[int] = None
     last_seen_at:     Optional[datetime] = None
     price_negotiable: Optional[bool] = None
+    purchase_rating:  Optional[PurchaseRating] = None
 
     model_config = {"from_attributes": True}
 
@@ -104,6 +133,7 @@ class SearchResponse(BaseModel):
     pages:    int
     results:  list[ListingCard]
     filters_applied: dict = {}
+    price_rating_counts: dict[str, int] = {}
 
 
 # ─────────────────────────────────────────────────────────────

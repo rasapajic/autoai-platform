@@ -2,6 +2,7 @@ from celery import Celery
 from celery.schedules import crontab
 from datetime import datetime
 import logging
+import json
 
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -39,6 +40,10 @@ celery_app.conf.beat_schedule = {
     "send-saved-search-notifications": {
         "task": "app.core.celery_tasks.send_saved_search_notifications",
         "schedule": crontab(minute=0, hour=8),
+    },
+    "nightly-marketplace-expansion": {
+        "task": "app.core.celery_tasks.nightly_marketplace_expansion",
+        "schedule": crontab(minute=0, hour=2),
     },
 }
 
@@ -196,6 +201,12 @@ def estimate_prices(portal: str = None):
 
         count = 0
         for listing in listings:
+            if listing.special_vehicle:
+                listing.price_estimated = None
+                listing.price_delta_pct = None
+                listing.price_rating = None
+                continue
+
             try:
                 result = estimator.predict({
                     "make":         listing.make or "",
@@ -266,5 +277,83 @@ def send_saved_search_notifications():
         result = send_notifications(db)
         logger.info(f"Email notifikacije sacuvanih potraga: {result}")
         return result
+    finally:
+        db.close()
+
+
+@celery_app.task
+def nightly_marketplace_expansion():
+    """Runs safe weighted EU marketplace expansion once per night."""
+    from app.scripts.expand_marketplace_data import run_expansion
+
+    db = SessionLocal()
+    started_at = datetime.utcnow()
+    try:
+        active = (
+            db.query(ScraperRun)
+            .filter(ScraperRun.portal == "marketplace_expansion", ScraperRun.status == "running")
+            .first()
+        )
+        if active:
+            logger.info("Marketplace expansion skipped: previous run is still active")
+            return {"skipped": True, "reason": "previous run still active", "active_run_id": str(active.id)}
+
+        run = ScraperRun(portal="marketplace_expansion", status="running", started_at=started_at)
+        db.add(run)
+        db.commit()
+
+        logger.info("Marketplace expansion started at %s", started_at.isoformat())
+        report = run_expansion(strategy="weighted-eu")
+        finished_at = datetime.utcnow()
+
+        created = report.get("autoscout24", {}).get("created", 0) + report.get("willhaben", {}).get("created", 0)
+        updated = report.get("autoscout24", {}).get("updated", 0) + report.get("willhaben", {}).get("updated", 0)
+        skipped = report.get("autoscout24", {}).get("skipped", 0) + report.get("willhaben", {}).get("skipped", 0)
+        fetched = report.get("autoscout24", {}).get("fetched", 0) + report.get("willhaben", {}).get("fetched", 0)
+
+        run.listings_found = fetched
+        run.listings_new = created
+        run.listings_updated = updated
+        run.status = "success" if not report.get("errors") else "partial"
+        run.finished_at = finished_at
+        run.error_message = json.dumps({
+            "skipped": skipped,
+            "active_listings_delta": report.get("active_listings_delta", 0),
+            "errors": report.get("errors", []),
+        })[:5000]
+        db.commit()
+
+        logger.info(
+            "Marketplace expansion finished at %s created=%s updated=%s skipped=%s active_listings_delta=%s",
+            finished_at.isoformat(),
+            created,
+            updated,
+            skipped,
+            report.get("active_listings_delta", 0),
+        )
+        return {
+            "started_at": started_at.isoformat(),
+            "finished_at": finished_at.isoformat(),
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "active_listings_delta": report.get("active_listings_delta", 0),
+            "status": run.status,
+        }
+    except Exception as exc:
+        finished_at = datetime.utcnow()
+        run = (
+            db.query(ScraperRun)
+            .filter(ScraperRun.portal == "marketplace_expansion", ScraperRun.status == "running")
+            .order_by(ScraperRun.started_at.desc())
+            .first()
+        )
+        if run:
+            run.status = "failed"
+            run.error_message = str(exc)
+            run.finished_at = finished_at
+            db.commit()
+        logger.exception("Marketplace expansion failed")
+        return {"status": "failed", "error": str(exc), "finished_at": finished_at.isoformat()}
     finally:
         db.close()

@@ -12,6 +12,7 @@ from app.core.db import get_db
 from app.ai.import_calculator import ImportCalcRequest, calculate_import_cost, ai_import_advisor
 from app.ai.fraud_detector import check_listing_fraud, get_risk_badge
 from app.models import Listing
+from app.services.special_vehicle import is_special_vehicle_text
 
 router = APIRouter()
 
@@ -95,9 +96,18 @@ class EstimateRequest(BaseModel):
     make: str; model: str; year: int; mileage: int
     fuel_type: Optional[str] = None; transmission: Optional[str] = None
     country: Optional[str] = "DE"; engine_cc: Optional[int] = None
+    variant: Optional[str] = None; description: Optional[str] = None
 
 @router.post("/estimate-price")
 def estimate_price(req: EstimateRequest):
+    text = " ".join(str(value) for value in req.model_dump().values() if value)
+    if is_special_vehicle_text(text):
+        return {
+            "estimated_price": None,
+            "confidence": "excluded",
+            "reason": "Specijalna vozila su iskljucena iz procene trzista.",
+        }
+
     estimator = get_estimator()
     if not estimator.is_trained:
         raise HTTPException(503, "Model jos nije istreniran")

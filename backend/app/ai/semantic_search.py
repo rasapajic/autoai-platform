@@ -2,8 +2,10 @@ import logging
 import numpy as np
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from types import SimpleNamespace
 
 from app.models import Listing
+from app.services.special_vehicle import is_special_vehicle
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +117,7 @@ class SemanticSearch:
             SELECT
                 id, make, model, year, price, mileage,
                 fuel_type, country, images, price_rating,
-                price_delta_pct, url,
+                price_delta_pct, url, variant, description, features,
                 1 - (embedding <=> :embedding::vector) AS similarity
             FROM listings
             WHERE {where_sql}
@@ -126,24 +128,33 @@ class SemanticSearch:
         result = db.execute(sql, params)
         rows = result.fetchall()
 
-        return [
-            {
-                "id":             str(r.id),
-                "make":           r.make,
-                "model":          r.model,
-                "year":           r.year,
-                "price":          float(r.price) if r.price else None,
-                "mileage":        r.mileage,
-                "fuel_type":      r.fuel_type,
-                "country":        r.country,
-                "images":         (r.images or [])[:1],
-                "price_rating":   r.price_rating,
-                "price_delta_pct": float(r.price_delta_pct) if r.price_delta_pct else None,
-                "url":            r.url,
-                "similarity":     round(float(r.similarity), 3),
-            }
-            for r in rows
-        ]
+        results = []
+        for r in rows:
+            special_vehicle = is_special_vehicle(SimpleNamespace(
+                make=r.make,
+                model=r.model,
+                variant=r.variant,
+                description=r.description,
+                features=r.features,
+                url=r.url,
+            ))
+            results.append({
+                "id":              str(r.id),
+                "make":            r.make,
+                "model":           r.model,
+                "year":            r.year,
+                "price":           float(r.price) if r.price else None,
+                "mileage":         r.mileage,
+                "fuel_type":       r.fuel_type,
+                "country":         r.country,
+                "images":          (r.images or [])[:1],
+                "price_rating":    None if special_vehicle else r.price_rating,
+                "price_delta_pct": None if special_vehicle or not r.price_delta_pct else float(r.price_delta_pct),
+                "url":             r.url,
+                "similarity":      round(float(r.similarity), 3),
+                "special_vehicle": special_vehicle,
+            })
+        return results
 
     def index_listing(self, listing: Listing, db: Session) -> bool:
         """Dodaj/ažuriraj embedding za jedan oglas."""

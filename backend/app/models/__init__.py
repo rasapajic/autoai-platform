@@ -7,6 +7,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from app.core.db import Base
+from app.services.special_vehicle import is_special_vehicle
 import uuid
 
 
@@ -91,6 +92,10 @@ class Listing(Base):
     # Relacije
     price_history = relationship("PriceHistory", back_populates="listing")
     dealer        = relationship("Dealer", back_populates="listings")
+
+    @property
+    def special_vehicle(self):
+        return is_special_vehicle(self)
 
 
 class PriceHistory(Base):

@@ -38,7 +38,7 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,10 +55,11 @@ async def health():
     }
 
 
-from app.api import search, listings, users, alerts, ai_chat
+from app.api import search, listings, users, alerts, ai_chat, stats
 
 app.include_router(search.router,   prefix="/api/v1/search",   tags=["🔍 Pretraga"])
 app.include_router(listings.router, prefix="/api/v1/listings", tags=["🚗 Oglasi"])
 app.include_router(users.router,    prefix="/api/v1/users",    tags=["👤 Korisnici"])
 app.include_router(alerts.router,   prefix="/api/v1/alerts",   tags=["🔔 Alertovi"])
 app.include_router(ai_chat.router,  prefix="/api/v1/ai",       tags=["🤖 AI"])
+app.include_router(stats.router,    prefix="/api/v1/stats",    tags=["Statistika"])
