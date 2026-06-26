@@ -18,7 +18,7 @@ def get_alerts(
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
-    """Svi aktivni alertovi korisnika."""
+    """Svi alertovi korisnika."""
     return (
         db.query(Alert)
         .filter(Alert.user_id == user.id)

@@ -1,6 +1,6 @@
 'use client'
 import React, { useEffect, useState, useRef } from 'react'
-import { getListing, getPriceHistory, getSimilar, fraudCheck } from '@/lib/api'
+import { getListing, getPriceHistory, getSimilar, fraudCheck, getProfile } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
 import VinChecker from '@/components/VinChecker'
 import ModelChecklist from '@/components/ModelChecklist'
@@ -8,7 +8,7 @@ import ModelChecklist from '@/components/ModelChecklist'
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 const ELIGIBILITY_COLORS: Record<string, string> = { eligible:'#22C55E', needs_check:'#F97316', not_recommended:'#EF4444', oldtimer:'#A855F7' }
 const AI_SCAN_MESSAGES = ['🧠 AI proverava detalje oglasa...','🧠 Provera Euro norme...','🧠 Analiza kilometraže...','🧠 Izračunavanje troška uvoza...']
-const SOURCE_LABELS: Record<string, string> = { autoscout24:'AutoScout24', willhaben:'Willhaben', marktplaats:'Marktplaats', '2dehands':'2dehands', kleinanzeigen:'Kleinanzeigen', mobile_de:'Mobile.de' }
+const SOURCE_LABELS: Record<string, string> = { autoscout24:'Verifikovan izvor', willhaben:'Verifikovan izvor', marktplaats:'Verifikovan izvor', '2dehands':'Verifikovan izvor', kleinanzeigen:'Verifikovan izvor', mobile_de:'Verifikovan izvor' }
 
 function countryBadge(c: string) {
   const f: Record<string,string> = {DE:'🇩🇪',AT:'🇦🇹',NL:'🇳🇱',BE:'🇧🇪',FR:'🇫🇷',IT:'🇮🇹',CH:'🇨🇭',ES:'🇪🇸',PL:'🇵🇱',DK:'🇩🇰',SE:'🇸🇪'}
@@ -164,6 +164,7 @@ export default function ListingPage({params}:{params:{id:string}}){
   const [vinResult,setVinResult]=useState<any>(null)
   const [loading,setLoading]=useState(true)
   const [showContact,setShowContact]=useState(false)
+  const [showPremiumModal,setShowPremiumModal]=useState(false)
   const [showBd,setShowBd]=useState(false)
   const [enriching,setEnriching]=useState(false)
   const [enriched,setEnriched]=useState(false)
@@ -172,15 +173,20 @@ export default function ListingPage({params}:{params:{id:string}}){
   const [showScoreSheet,setShowScoreSheet]=useState(false)
   const [showBdSheet,setShowBdSheet]=useState(false)
   const [showGallery,setShowGallery]=useState(false)
+  const [user,setUser]=useState<any>(null)
   const scanInterval=useRef<any>(null)
 
   useEffect(()=>{const p=sessionStorage.getItem('autoai_search_url');if(p)setBackUrl(p)},[])
   useEffect(()=>{
-    Promise.allSettled([getListing(params.id),getSimilar(params.id),fraudCheck(params.id)])
-      .then(([l,s,f])=>{
+    const profile = typeof window !== 'undefined' && localStorage.getItem('token')
+      ? getProfile()
+      : Promise.resolve(null)
+    Promise.allSettled([getListing(params.id),getSimilar(params.id),fraudCheck(params.id),profile])
+      .then(([l,s,f,p])=>{
         if(l.status==='fulfilled'){const d=l.value;setListing(d);if(d?.url&&(!d.year||!d.mileage))autoEnrich(d.url)}
         if(s.status==='fulfilled')setSimilar(s.value)
         if(f.status==='fulfilled')setFraud(f.value)
+        if(p.status==='fulfilled')setUser(p.value)
       }).finally(()=>setLoading(false))
   },[params.id])
 
@@ -209,7 +215,9 @@ export default function ListingPage({params}:{params:{id:string}}){
   const deltaGood=listing.price_delta_pct&&Number(listing.price_delta_pct)<0
   const trust=calcTrustScore(listing,vinResult)
   const firstYear=price?calcFirstYear(price,listing.year):null
-  const portalName=SOURCE_LABELS[listing.source]||listing.source||'Portal'
+  const portalName=SOURCE_LABELS[listing.source]||'Verifikovan izvor'
+  const isPremium=Boolean(user?.is_premium)
+  const openSellerContact=()=>{ if(isPremium){setShowContact(true)}else{setShowPremiumModal(true)} }
   const kw=listing.engine_power_kw?Number(listing.engine_power_kw):null
   const ks=kw?kWtoKS(kw):null
   const fuelLabel=(f:string)=>({diesel:'Dizel',petrol:'Benzin',gasoline:'Benzin',benzin:'Benzin',electric:'Električni',elektrisch:'Električni',hybrid:'Hibrid',lpg:'Plin',cng:'CNG'} as any)[f?.toLowerCase()]||f
@@ -230,13 +238,14 @@ export default function ListingPage({params}:{params:{id:string}}){
   ].filter(s=>s.value)
 
   const handleSave=async()=>{
-    const t=localStorage.getItem('autoai_token');if(!t){window.location.href='/login';return}
+    const t=localStorage.getItem('token');if(!t){window.location.href='/login';return}
     try{const r=await fetch(`${API_BASE}/users/me/favorites`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},body:JSON.stringify({listing_id:listing.id})});if(r.ok)setFavorited(true)}catch{}
   }
 
   return(
     <div style={{paddingBottom:0}}>
-      {showContact&&<ContactModal listing={listing} onClose={()=>setShowContact(false)}/>}
+      {showContact&&isPremium&&<ContactModal listing={listing} onClose={()=>setShowContact(false)}/>}
+      {showPremiumModal&&<PremiumContactModal onClose={()=>setShowPremiumModal(false)}/>}
       {showGallery&&images.length>0&&<FullscreenGallery images={images} startIndex={activeImg} onClose={()=>setShowGallery(false)}/>}
 
       <BottomSheet open={showScoreSheet} onClose={()=>setShowScoreSheet(false)} title={`AI Score: ${trust.score}/100`}>
@@ -330,7 +339,7 @@ export default function ListingPage({params}:{params:{id:string}}){
             </div>
 
             <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:10,padding:'0 16px 20px'}}>
-              <button onClick={()=>setShowContact(true)} style={{height:64,background:'var(--accent)',border:'none',color:'#fff',borderRadius:16,fontSize:15,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 4px 20px rgba(255,107,0,.35)'}}>🤖 Kontaktiraj</button>
+              <button onClick={openSellerContact} style={{height:64,background:'var(--accent)',border:'none',color:'#fff',borderRadius:16,fontSize:15,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,boxShadow:'0 4px 20px rgba(255,107,0,.35)'}}>🤖 Kontaktiraj</button>
               <button onClick={handleSave} style={{height:52,background:favorited?'rgba(255,107,0,.12)':'var(--bg2)',border:`2px solid ${favorited?'var(--accent)':'var(--border)'}`,color:favorited?'var(--accent)':'var(--text2)',borderRadius:14,fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
                 <span style={{fontSize:17}}>{favorited?'❤️':'🤍'}</span><span style={{fontSize:10}}>{favorited?'Sačuvano':'Sačuvaj'}</span>
               </button>
@@ -339,10 +348,10 @@ export default function ListingPage({params}:{params:{id:string}}){
               </button>
             </div>
 
-            {listing.url&&<div style={{padding:'0 16px 16px'}}><a href={listing.url} target="_blank" rel="noopener" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,width:'100%',padding:'13px',borderRadius:12,background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:13,fontWeight:600,textDecoration:'none'}}>🔗 Pogledaj na {portalName} →</a></div>}
+            {isPremium&&listing.url&&<div style={{padding:'0 16px 16px'}}><a href={listing.url} target="_blank" rel="noopener noreferrer" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,width:'100%',padding:'13px',borderRadius:12,background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:13,fontWeight:600,textDecoration:'none'}}>🔗 Pogledaj originalni oglas →</a></div>}
 
             <div style={{paddingLeft:16,paddingRight:16}}>
-              <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust} specs={specs} similar={similar} price={price} deltaGood={deltaGood} onContact={()=>setShowContact(true)} onShowScore={()=>setShowScoreSheet(true)} onShowBd={()=>setShowBdSheet(true)} enriching={enriching} enriched={enriched} scanMsg={scanMsg} onEnrich={()=>autoEnrich(listing.url)} fraud={fraud} onVinResult={setVinResult} vinResult={vinResult} kw={kw} ks={ks} portalName={portalName} saved={favorited} onSave={handleSave} firstYear={firstYear} fuelLabel={fuelLabel} images={images} onGallery={()=>setShowGallery(true)}/>
+              <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust} specs={specs} similar={similar} price={price} deltaGood={deltaGood} onContact={openSellerContact} onShowScore={()=>setShowScoreSheet(true)} onShowBd={()=>setShowBdSheet(true)} enriching={enriching} enriched={enriched} scanMsg={scanMsg} onEnrich={()=>autoEnrich(listing.url)} fraud={fraud} onVinResult={setVinResult} vinResult={vinResult} kw={kw} ks={ks} portalName={portalName} saved={favorited} onSave={handleSave} firstYear={firstYear} fuelLabel={fuelLabel} images={images} onGallery={()=>setShowGallery(true)}/>
             </div>
           </div>
 
@@ -400,7 +409,7 @@ export default function ListingPage({params}:{params:{id:string}}){
 
             <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:16,marginBottom:12}}>
               <div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:8}}>VIN PROVERA VOZILA</div>
-              <p style={{fontSize:12,color:'var(--text3)',margin:'0 0 12px',lineHeight:1.5}}>Zatraži VIN od prodavca koristeći{' '}<button onClick={()=>setShowContact(true)} style={{background:'none',border:'none',color:'var(--accent)',cursor:'pointer',fontSize:12,fontWeight:600,padding:0,textDecoration:'underline'}}>Kontaktiraj prodavca</button>{' '}— AI automatski dodaje pitanje na jeziku prodavca.</p>
+              <p style={{fontSize:12,color:'var(--text3)',margin:'0 0 12px',lineHeight:1.5}}>Zatraži VIN od prodavca koristeći{' '}<button onClick={openSellerContact} style={{background:'none',border:'none',color:'var(--accent)',cursor:'pointer',fontSize:12,fontWeight:600,padding:0,textDecoration:'underline'}}>Kontaktiraj prodavca</button>{' '}— AI automatski dodaje pitanje na jeziku prodavca.</p>
               <VinChecker listing={listing} onVinResult={setVinResult}/>
             </div>
 
@@ -422,8 +431,8 @@ export default function ListingPage({params}:{params:{id:string}}){
                 <div style={{fontWeight:700,fontSize:14}}>{fmt(listing.price_estimated)} €</div>
                 <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',marginTop:2}}>{deltaGood?'✅ Ispod':'⚠️ Iznad'} proseka za {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%</div>
               </div>}
-              <a href={listing.url} target="_blank" rel="noopener" className="sdbtn" style={{display:'block',width:'100%',padding:'11px',textAlign:'center',background:'var(--accent)',color:'#fff',borderRadius:10,fontWeight:700,fontSize:14,marginBottom:8,textDecoration:'none'}}>🔗 Pogledaj na {portalName} →</a>
-              <button onClick={()=>setShowContact(true)} className="sdbtn" style={{width:'100%',padding:'10px',background:'rgba(99,102,241,.1)',border:'1px solid rgba(99,102,241,.35)',color:'#818CF8',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>
+              {isPremium&&listing.url&&<a href={listing.url} target="_blank" rel="noopener noreferrer" className="sdbtn" style={{display:'block',width:'100%',padding:'11px',textAlign:'center',background:'var(--accent)',color:'#fff',borderRadius:10,fontWeight:700,fontSize:14,marginBottom:8,textDecoration:'none'}}>🔗 Pogledaj originalni oglas →</a>}
+              <button onClick={openSellerContact} className="sdbtn" style={{width:'100%',padding:'10px',background:'rgba(99,102,241,.1)',border:'1px solid rgba(99,102,241,.35)',color:'#818CF8',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>
                 🤖 Kontaktiraj prodavca
                 <div style={{fontSize:11,fontWeight:400,color:'rgba(129,140,248,.7)',marginTop:2}}>AI generiše poruku na jeziku prodavca</div>
               </button>
@@ -571,6 +580,26 @@ function MobileTabs({listing,elig,eligColor,bd,trust,specs,similar,price,deltaGo
             <VinChecker listing={listing} compact onVinResult={onVinResult}/>
           </div>
         </div>}
+      </div>
+    </div>
+  )
+}
+
+function PremiumContactModal({onClose}:{onClose:()=>void}){
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',alignItems:'center',justifyContent:'center',padding:20,background:'rgba(0,0,0,.72)',backdropFilter:'blur(6px)'}}>
+      <div style={{width:'min(420px,100%)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:16,padding:24,boxShadow:'0 18px 60px rgba(0,0,0,.55)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:16,alignItems:'flex-start',marginBottom:14}}>
+          <h2 style={{fontSize:20,margin:0,lineHeight:1.25}}>Kontakt prodavca je Premium funkcija.</h2>
+          <button onClick={onClose} aria-label="Zatvori" style={{background:'transparent',border:'none',color:'var(--text3)',fontSize:22,cursor:'pointer',lineHeight:1}}>×</button>
+        </div>
+        <p style={{color:'var(--text2)',fontSize:14,lineHeight:1.7,margin:'0 0 18px'}}>
+          AutoAI ti prikazuje analizu oglasa, cenu i procenu uvoza.
+          Za originalni oglas i kontakt prodavca potrebna je pretplata.
+        </p>
+        <a href="/account" style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'100%',padding:'12px 16px',borderRadius:10,background:'var(--accent)',color:'#fff',fontWeight:800,textDecoration:'none'}}>
+          Aktiviraj Premium
+        </a>
       </div>
     </div>
   )

@@ -16,7 +16,7 @@ HEADERS = {
 KNOWN_MAKES = [
     "Volkswagen", "VW", "BMW", "Mercedes-Benz", "Mercedes", "Audi", "Toyota",
     "Ford", "Opel", "Skoda", "Renault", "Peugeot", "Hyundai", "Kia", "Volvo",
-    "Seat", "Mazda", "Honda", "Nissan", "Fiat", "Citroën", "Citroen", "Porsche",
+    "Seat", "Mazda", "Honda", "Nissan", "Fiat", "CitroÃ«n", "Citroen", "Porsche",
     "Land Rover", "Jeep", "Dacia", "Suzuki", "Mitsubishi", "Subaru", "Tesla",
     "Alfa Romeo", "Lexus", "Mini", "Smart", "Jaguar", "Bentley", "Lancia",
     "Cupra", "Polestar", "MG", "BYD", "Xpeng",
@@ -46,8 +46,8 @@ def _parse_price(val) -> float | None:
         return None
     try:
         s = str(val).strip()
-        s = re.sub(r'\b(VB|VHB|EUR|€)\b', '', s, flags=re.IGNORECASE)
-        s = re.sub(r"[€\s]", "", s)
+        s = re.sub(r'\b(VB|VHB|EUR|â‚¬)\b', '', s, flags=re.IGNORECASE)
+        s = re.sub(r"[â‚¬\s]", "", s)
         if "," in s:
             parts = s.split(",")
             s = parts[0].replace(".", "") + "." + parts[1]
@@ -96,25 +96,26 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
                 return result
             html = await resp.text()
 
-            # ── Slike iz LD+JSON (sve, ne samo prva) ──────────────
+            # â”€â”€ Slike iz LD+JSON (sve, ne samo prva) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             for ld_match in re.finditer(
-    r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
-    html, re.DOTALL
-):
-    try:
-        ld = json.loads(ld_match.group(1))
-        # Samo slike iz glavnog oglasa (ItemPage ili Vehicle)
-        ld_type = ld.get("@type", "")
-        if ld_type in ("ItemPage", "Vehicle", "Product", "Offer") or not ld_type:
-            if ld.get("image"):
-                imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
-                result["images"] += [_hq_image(i) for i in imgs if i]
-            elif ld.get("contentUrl"):
-                result["images"].append(_hq_image(ld["contentUrl"]))
-    except Exception:
-        pass
+                r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+                html,
+                re.DOTALL,
+            ):
+                try:
+                    ld = json.loads(ld_match.group(1))
+                    # Samo slike iz glavnog oglasa (ItemPage ili Vehicle)
+                    ld_type = ld.get("@type", "")
+                    if ld_type in ("ItemPage", "Vehicle", "Product", "Offer") or not ld_type:
+                        if ld.get("image"):
+                            imgs = ld["image"] if isinstance(ld["image"], list) else [ld["image"]]
+                            result["images"] += [_hq_image(i) for i in imgs if i]
+                        elif ld.get("contentUrl"):
+                            result["images"].append(_hq_image(ld["contentUrl"]))
+                except Exception:
+                    pass
 
-            # ── Fallback slike iz gallery JSON ─────────────────────
+            # â”€â”€ Fallback slike iz gallery JSON â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if not result["images"]:
                 gallery_m = re.search(r'"imageUrls"\s*:\s*(\[[^\]]+\])', html)
                 if gallery_m:
@@ -124,12 +125,12 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
                     except Exception:
                         pass
 
-            # ── Fallback slike iz img tagova ───────────────────────
+            # â”€â”€ Fallback slike iz img tagova â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if not result["images"]:
                 for m in re.finditer(r'<img[^>]+(?:src|data-src)="(https://img\.kleinanzeigen\.de[^"]+)"', html):
                     result["images"].append(_hq_image(m.group(1)))
 
-            # ── Deduplikacija slika ────────────────────────────────
+            # â”€â”€ Deduplikacija slika â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             seen = set()
             unique = []
             for img in result["images"]:
@@ -139,11 +140,11 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
                     unique.append(img)
             result["images"] = unique
 
-            # ── Grad ──────────────────────────────────────────────
+            # â”€â”€ Grad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             # Kleinanzeigen prikazuje grad u vise mjesta
             for city_pat in [
-    r'\d{5}\s+\w[\w\s]+-\s*([\w\s]+)',
-    r'<span[^>]+itemprop="addressLocality"[^>]*>([^<]+)</span>',
+                r'\d{5}\s+\w[\w\s]+-\s*([\w\s]+)',
+                r'<span[^>]+itemprop="addressLocality"[^>]*>([^<]+)</span>',
                 r'class="[^"]*breadcrump-link[^"]*"[^>]*>([^<]{4,50})</a>',
                 r'"addressLocality"\s*:\s*"([^"]+)"',
                 r'class="addetail-user--city"[^>]*>([^<]+)<',
@@ -156,7 +157,7 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
                         result["city"] = city
                         break
 
-            # ── Gorivo ────────────────────────────────────────────
+            # â”€â”€ Gorivo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             fuel_map = {
                 'benzin': 'petrol', 'super': 'petrol', 'gasoline': 'petrol', 'petrol': 'petrol',
                 'diesel': 'diesel', 'dizel': 'diesel',
@@ -165,14 +166,14 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
                 'autogas': 'lpg', 'lpg': 'lpg', 'gas': 'lpg',
                 'erdgas': 'cng', 'cng': 'cng',
             }
-            # Traži u structured data ili attribute sekciji
+            # TraÅ¾i u structured data ili attribute sekciji
             attr_section = re.search(
                 r'Kraftstoffart.*?<[^>]+>([^<]{3,30})<',
                 html, re.IGNORECASE | re.DOTALL
             )
             fuel_text = attr_section.group(1).lower().strip() if attr_section else ''
             if not fuel_text:
-                # Fallback: traži keyword u tekstu stranice
+                # Fallback: traÅ¾i keyword u tekstu stranice
                 page_lower = html.lower()
                 for kw, ftype in sorted(fuel_map.items(), key=lambda x: -len(x[0])):
                     if f'>{kw}<' in page_lower or f'"kraftstoff">{kw}' in page_lower:
@@ -183,29 +184,29 @@ async def _fetch_detail(session: aiohttp.ClientSession, url: str) -> dict:
                     result["fuel_type"] = ftype
                     break
 
-            # ── Kilometraža ────────────────────────────────────────
+            # â”€â”€ KilometraÅ¾a â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             km_m = re.search(r'Kilometerstand.*?(\d[\d.]+)\s*km', html, re.IGNORECASE | re.DOTALL)
             if km_m:
                 result["mileage"] = _parse_int(km_m.group(1).replace(".", ""))
 
-            # ── Godište ────────────────────────────────────────────
+            # â”€â”€ GodiÅ¡te â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             year_m = re.search(
-    r'(?:Erstzulassung|Baujahr|EZ)[^\d]*(?:\w+\s+)?(\d{4})',
-    html, re.IGNORECASE
-)
-if not year_m:
-    year_m = re.search(r'Erstzulassung.*?(\w+)\s+(\d{4})', html, re.IGNORECASE)
-    if year_m:
-        class FakeMatch:
-            def group(self, n): return year_m.group(2)
-        year_m = FakeMatch()
+                r'(?:Erstzulassung|Baujahr|EZ)[^\d]*(?:\w+\s+)?(\d{4})',
+                html,
+                re.IGNORECASE,
+            )
+            if not year_m:
+                alt_year_m = re.search(r'Erstzulassung.*?(\w+)\s+(\d{4})', html, re.IGNORECASE)
+                if alt_year_m:
+                    year_m = alt_year_m
+
             if year_m:
-                y = int(year_m.group(1))
+                group_index = 2 if len(year_m.groups()) >= 2 else 1
+                y = int(year_m.group(group_index))
                 if 1970 <= y <= 2026:
                     result["year"] = y
-
     except Exception as e:
-        print(f"[Kleinanzeigen] Detail greška {url}: {e}")
+        print(f"[Kleinanzeigen] Detail greÅ¡ka {url}: {e}")
 
     return result
 
@@ -267,7 +268,7 @@ def _parse_listings_from_html(html: str) -> list:
         if m:
             price = _parse_price(_clean_text(re.sub(r'<[^>]+>', '', m.group(1)), 50))
         if not price:
-            for p_str in re.findall(r'([\d.,]+)\s*€', content):
+            for p_str in re.findall(r'([\d.,]+)\s*â‚¬', content):
                 p = _parse_price(p_str)
                 if p:
                     price = p
@@ -286,16 +287,15 @@ def _parse_listings_from_html(html: str) -> list:
             if m:
                 raw = _clean_text(re.sub(r'<[^>]+>', ' ', m.group(1)), 100)
                 raw = re.sub(r'\b(Heute|Gestern|\d{2}\.\d{2}\.\d{4}|\d+\.\d+\.)\b.*', '', raw).strip()
-# Izvuci samo ime grada iz formata "94333 Bayern - Geiselhöring"
-city_extract = re.search(r'\d{5}\s+[\w\s]+-\s*([\w\s]+)', raw)
-if city_extract:
-    raw = city_extract.group(1).strip()
+                city_extract = re.search(r'\d{5}\s+[\w\s]+-\s*([\w\s]+)', raw)
+                if city_extract:
+                    raw = city_extract.group(1).strip()
                 if raw:
                     city = raw
                     break
 
-       year_m = re.search(r'\b(19[789]\d|200\d|201[0-9]|202[0-4])\b', title + " " + description)
-        km_m   = re.search(r'([\d.]+)\s*km', title + " " + description, re.IGNORECASE)
+        year_m = re.search(r'\b(19[789]\d|200\d|201[0-9]|202[0-4])\b', title + ' ' + description)
+        km_m   = re.search(r'([\d.]+)\s*km', title + ' ' + description, re.IGNORECASE)
 
         listings.append({
             "id":      ad_id,
@@ -364,7 +364,7 @@ def _parse_listing(item: dict, detail: dict | None = None) -> dict | None:
             "url":          item.get("url") or f"https://www.kleinanzeigen.de/s-anzeige/{item_id}",
         }
     except Exception as e:
-        print(f"[Kleinanzeigen] Parse greška: {e}")
+        print(f"[Kleinanzeigen] Parse greÅ¡ka: {e}")
         return None
 
 
@@ -387,7 +387,7 @@ class KleinanzeigenScraper:
                         if not items:
                             break
 
-                        # ── Detalji paralelno, max 5 odjednom ──────
+                        # â”€â”€ Detalji paralelno, max 5 odjednom â”€â”€â”€â”€â”€â”€
                         semaphore = asyncio.Semaphore(5)
 
                         async def fetch_with_sem(item):
@@ -418,8 +418,8 @@ class KleinanzeigenScraper:
                         await asyncio.sleep(2.5)
 
                 except Exception as e:
-                    print(f"[Kleinanzeigen] Greška: {e}")
+                    print(f"[Kleinanzeigen] GreÅ¡ka: {e}")
                     break
 
-        print(f"[Kleinanzeigen] Završeno — {len(all_listings)} oglasa")
+        print(f"[Kleinanzeigen] ZavrÅ¡eno â€” {len(all_listings)} oglasa")
         return all_listings

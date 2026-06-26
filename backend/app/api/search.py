@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 
 from app.core.db import get_db
 from app.models import Listing
@@ -8,161 +8,60 @@ from app.api.schemas import SearchFilters, SearchResponse, ListingCard
 
 router = APIRouter()
 
-FUEL_MAP = {
-    "dizel":      ["diesel", "dizel"],
-    "diesel":     ["diesel", "dizel"],
-    "benzin":     ["petrol", "benzin", "gasoline"],
-    "petrol":     ["petrol", "benzin", "gasoline"],
-    "električni": ["electric", "elektro", "električni"],
-    "electric":   ["electric", "elektro", "električni"],
-    "hibrid":     ["hybrid", "hibrid"],
-    "hybrid":     ["hybrid", "hibrid"],
-    "plin":       ["lpg", "autogas", "plin"],
-    "lpg":        ["lpg", "autogas", "plin"],
-    "cng":        ["cng", "erdgas"],
+PRICE_RATINGS = ["great", "good", "fair", "high", "overpriced"]
+
+SOURCE_ALIASES = {
+    "autoscout24": "autoscout24",
+    "autoscout": "autoscout24",
+    "willhaben": "willhaben",
+    "mobile_de": "mobile_de",
+    "mobile.de": "mobile_de",
+    "mobilede": "mobile_de",
+    "demo_seed": "demo_seed",
+    "demo": "demo_seed",
 }
 
-BODY_KEYWORDS = {
-    "cabrio":    ["Cabrio", "Cabriolet", "Convertible", "Roadster", "Kabriolet", "Spider", "Spyder", "Targa"],
-    "suv":       ["SUV", "Geländewagen", "Crossover", "Allroad", "Offroad", "4x4"],
-    "kombi":     ["Kombi", "Estate", "Touring", "Avant", "Variant", "SW", "Break", "Sportourer"],
-    "hatchback": ["Hatchback", "Schrägheck"],
-    "coupe":     ["Coupe", "Coupé", "Fastback"],
-    "sedan":     ["Limousine", "Berlina", "Saloon"],
-    "van":       ["Van", "Minivan", "MPV", "Kleinbus", "Multivan", "Sharan", "Galaxy"],
-    "pickup":    ["Pickup", "Pick-up", "Amarok", "Ranger", "Navara", "Hilux"],
-}
 
-# ✅ Kanonska forma marke → lista svih varijanti u bazi
-MAKE_VARIANTS: dict[str, list[str]] = {
-    "Volkswagen":    ["Volkswagen", "VOLKSWAGEN", "volkswagen", "VW", "vw"],
-    "BMW":           ["BMW", "Bmw", "bmw"],
-    "Mercedes-Benz": ["Mercedes-Benz", "Mercedes", "mercedes-benz", "MERCEDES", "Mercedes Benz"],
-    "Citroën":       ["Citroën", "Citroen", "CITROEN", "citroen", "citroën"],
-    "Škoda":         ["Škoda", "Skoda", "SKODA", "skoda", "škoda"],
-    "Alfa Romeo":    ["Alfa Romeo", "Alfa", "alfa romeo", "ALFA ROMEO"],
-    "Fiat":          ["Fiat", "FIAT", "fiat"],
-    "Ford":          ["Ford", "FORD", "ford"],
-    "Opel":          ["Opel", "OPEL", "opel"],
-    "Mini":          ["Mini", "MINI", "mini"],
-    "Kia":           ["Kia", "KIA", "kia"],
-    "Cupra":         ["Cupra", "CUPRA", "cupra"],
-    "Audi":          ["Audi", "AUDI", "audi"],
-    "Renault":       ["Renault", "RENAULT", "renault"],
-    "Peugeot":       ["Peugeot", "PEUGEOT", "peugeot"],
-    "SEAT":          ["SEAT", "Seat", "seat"],
-    "Volvo":         ["Volvo", "VOLVO", "volvo"],
-    "Toyota":        ["Toyota", "TOYOTA", "toyota"],
-    "Hyundai":       ["Hyundai", "HYUNDAI", "hyundai"],
-    "Nissan":        ["Nissan", "NISSAN", "nissan"],
-    "Mazda":         ["Mazda", "MAZDA", "mazda"],
-    "Honda":         ["Honda", "HONDA", "honda"],
-    "Porsche":       ["Porsche", "PORSCHE", "porsche"],
-    "Jeep":          ["Jeep", "JEEP", "jeep"],
-    "Tesla":         ["Tesla", "TESLA", "tesla"],
-    "Dacia":         ["Dacia", "DACIA", "dacia"],
-    "Smart":         ["Smart", "SMART", "smart"],
-    "Saab":          ["Saab", "SAAB", "saab"],
-    "Subaru":        ["Subaru", "SUBARU", "subaru"],
-    "Mitsubishi":    ["Mitsubishi", "MITSUBISHI", "mitsubishi"],
-    "Suzuki":        ["Suzuki", "SUZUKI", "suzuki"],
-    "Land Rover":    ["Land Rover", "LAND ROVER", "land rover", "LandRover"],
-    "Jaguar":        ["Jaguar", "JAGUAR", "jaguar"],
-    "Lexus":         ["Lexus", "LEXUS", "lexus"],
-    "Ferrari":       ["Ferrari", "FERRARI", "ferrari"],
-    "Lamborghini":   ["Lamborghini", "LAMBORGHINI", "lamborghini"],
-    "Maserati":      ["Maserati", "MASERATI", "maserati"],
-    "Bentley":       ["Bentley", "BENTLEY", "bentley"],
-    "Rolls-Royce":   ["Rolls-Royce", "Rolls Royce", "ROLLS-ROYCE", "rolls-royce"],
-    "Dodge":         ["Dodge", "DODGE", "dodge"],
-    "Chevrolet":     ["Chevrolet", "CHEVROLET", "chevrolet"],
-    "Cadillac":      ["Cadillac", "CADILLAC", "cadillac"],
-}
-
-# ✅ Reverse mapa: varijanta → kanonska forma
-_VARIANT_TO_CANONICAL: dict[str, str] = {}
-for canonical, variants in MAKE_VARIANTS.items():
-    for v in variants:
-        _VARIANT_TO_CANONICAL[v.lower()] = canonical
-
-def get_canonical_make(make: str) -> str:
-    """Vrati kanonsku formu marke."""
-    return _VARIANT_TO_CANONICAL.get(make.lower(), make)
-
-def get_make_search_variants(make: str) -> list[str]:
-    """Vrati sve varijante za pretragu po marki."""
-    canonical = get_canonical_make(make)
-    variants = MAKE_VARIANTS.get(canonical)
-    if variants:
-        return variants
-    # Ako nema u mapi, koristi originalni naziv (case-insensitive)
-    return [make]
+def normalize_source(source: str | None) -> str | None:
+    if not source:
+        return None
+    return SOURCE_ALIASES.get(source.strip().lower())
 
 
-@router.get("/", response_model=SearchResponse)
-def search(filters: SearchFilters = Depends(), countries: str = '', db: Session = Depends(get_db)):
-    q = db.query(Listing).filter(
-        Listing.is_active == True,
-        Listing.price != None,
-        Listing.price > 0,
-    )
-
-    # ✅ Pretraži sve varijante marke
+def apply_search_filters(q, filters: SearchFilters, include_price_rating: bool = True):
     if filters.make:
-        variants = get_make_search_variants(filters.make)
-        q = q.filter(or_(*[Listing.make.ilike(v) for v in variants]))
-
+        q = q.filter(Listing.make.ilike(f"%{filters.make}%"))
     if filters.model:
         q = q.filter(Listing.model.ilike(f"%{filters.model}%"))
-
     if filters.min_price is not None:
         q = q.filter(Listing.price >= filters.min_price)
-
     if filters.max_price is not None:
         q = q.filter(Listing.price <= filters.max_price)
-
     if filters.min_year is not None:
         q = q.filter(Listing.year >= filters.min_year)
-
     if filters.max_year is not None:
         q = q.filter(Listing.year <= filters.max_year)
-
     if filters.min_km is not None:
         q = q.filter(Listing.mileage >= filters.min_km)
-
     if filters.max_km is not None:
         q = q.filter(Listing.mileage <= filters.max_km)
-
     if filters.fuel_type:
-        fuel_variants = FUEL_MAP.get(filters.fuel_type.lower(), [filters.fuel_type.lower()])
-        q = q.filter(or_(*[Listing.fuel_type.ilike(v) for v in fuel_variants]))
-
+        q = q.filter(Listing.fuel_type == filters.fuel_type)
     if filters.transmission:
         q = q.filter(Listing.transmission == filters.transmission)
-
     if filters.body_type:
-        keywords = BODY_KEYWORDS.get(filters.body_type.lower(), [])
-        body_conditions = [Listing.body_type == filters.body_type]
-        for kw in keywords:
-            body_conditions.append(Listing.make.ilike(f"%{kw}%"))
-            body_conditions.append(Listing.model.ilike(f"%{kw}%"))
-        q = q.filter(or_(*body_conditions))
-
+        q = q.filter(Listing.body_type == filters.body_type)
     if filters.country:
         q = q.filter(Listing.country.ilike(f"%{filters.country}%"))
-
-    # ✅ Multi-select countries filter
-    _countries = countries or getattr(filters, 'countries', '')
-    if _countries:
-        country_list = [c.strip() for c in _countries.split(',') if c.strip()]
-        if country_list:
-            q = q.filter(or_(*[Listing.country.ilike(f"%{c}%") for c in country_list]))
-
-    if filters.price_rating:
+    if include_price_rating and filters.price_rating:
         q = q.filter(Listing.price_rating == filters.price_rating)
 
+    normalized_source = normalize_source(filters.source)
     if filters.source:
-        q = q.filter(Listing.source == filters.source)
+        if normalized_source:
+            q = q.filter(func.lower(Listing.source) == normalized_source)
+        else:
+            q = q.filter(Listing.source == "__unknown_source__")
 
     if filters.query:
         term = f"%{filters.query}%"
@@ -171,27 +70,72 @@ def search(filters: SearchFilters = Depends(), countries: str = '', db: Session 
             Listing.model.ilike(term),
             Listing.description.ilike(term),
         ))
+    return q
 
+
+def get_price_rating_counts(db: Session, filters: SearchFilters) -> dict[str, int]:
+    q = apply_search_filters(
+        db.query(Listing.price_rating, func.count(Listing.id)).filter(Listing.is_active == True),
+        filters,
+        include_price_rating=False,
+    )
+    rows = (
+        q.filter(Listing.price_rating.in_(PRICE_RATINGS))
+        .group_by(Listing.price_rating)
+        .all()
+    )
+    counts = {rating: 0 for rating in PRICE_RATINGS}
+    counts.update({rating: count for rating, count in rows})
+    return counts
+
+
+@router.get("/", response_model=SearchResponse)
+def search(filters: SearchFilters = Depends(), db: Session = Depends(get_db)):
+    q = apply_search_filters(
+        db.query(Listing).filter(Listing.is_active == True),
+        filters,
+        include_price_rating=True,
+    )
+    normalized_source = normalize_source(filters.source)
+    price_rating_counts = get_price_rating_counts(db, filters)
+
+    source_priority = case(
+        (Listing.source == "autoscout24", 0),
+        (Listing.source == "willhaben", 1),
+        (Listing.source == "mobile_de", 2),
+        (Listing.source == "demo_seed", 9),
+        else_=5,
+    )
+    default_sort = (source_priority, Listing.scraped_at.desc())
     sort_options = {
-        "date":       Listing.scraped_at.desc(),
-        "price_asc":  Listing.price.asc(),
+        "date": default_sort,
+        "price_asc": Listing.price.asc(),
         "price_desc": Listing.price.desc(),
-        "best_deal":  Listing.price_delta_pct.asc(),
-        "year_desc":  Listing.year.desc(),
-        "km_asc":     Listing.mileage.asc(),
+        "best_deal": Listing.price_delta_pct.asc(),
+        "year_desc": Listing.year.desc(),
+        "km_asc": Listing.mileage.asc(),
     }
-    q = q.order_by(sort_options.get(filters.sort_by, Listing.scraped_at.desc()))
+    sort_order = sort_options.get(filters.sort_by, default_sort)
+    if isinstance(sort_order, tuple):
+        q = q.order_by(*sort_order)
+    else:
+        q = q.order_by(sort_order)
 
-    total   = q.count()
+    total = q.count()
     results = q.offset((filters.page - 1) * filters.limit).limit(filters.limit).all()
-    pages   = (total + filters.limit - 1) // filters.limit
+    pages = (total + filters.limit - 1) // filters.limit
+
+    filters_applied = filters.model_dump(exclude_none=True)
+    if normalized_source:
+        filters_applied["source"] = normalized_source
 
     return SearchResponse(
         total=total,
         page=filters.page,
         pages=pages,
         results=[ListingCard.model_validate(r) for r in results],
-        filters_applied=filters.model_dump(exclude_none=True),
+        filters_applied=filters_applied,
+        price_rating_counts=price_rating_counts,
     )
 
 
@@ -224,62 +168,39 @@ def search_stats(db: Session = Depends(get_db)):
     ).scalar()
 
     return {
-        "total_listings":  total,
+        "total_listings": total,
         "active_listings": total,
-        "portals":         portals,
-        "top_makes":       top_makes,
-        "avg_price_eur":   round(float(avg_price), 2) if avg_price else None,
+        "portals": portals,
+        "top_makes": top_makes,
+        "avg_price_eur": round(float(avg_price), 2) if avg_price else None,
     }
 
 
 @router.get("/makes")
-def get_makes(db: Session = Depends(get_db), min_count: int = 3):
-    """Vraća listu marki — normalizovane i grupisane (bez duplikata), samo oglasi sa cenom."""
-    raw = (
+def get_makes(db: Session = Depends(get_db)):
+    makes = (
         db.query(Listing.make, func.count(Listing.id).label("count"))
-        .filter(
-            Listing.is_active == True,
-            Listing.make != None,
-            Listing.price != None,
-            Listing.price > 0,
-        )
+        .filter(Listing.is_active == True, Listing.make != None)
         .group_by(Listing.make)
-        .having(func.count(Listing.id) >= min_count)
         .order_by(func.count(Listing.id).desc())
-        .limit(200)
+        .limit(100)
         .all()
     )
-
-    # ✅ Grupiši po kanonskoj formi
-    grouped: dict[str, int] = {}
-    for make, count in raw:
-        if not make or not make.strip():
-            continue
-        canonical = get_canonical_make(make)
-        grouped[canonical] = grouped.get(canonical, 0) + count
-
-    # Sortiraj abecedno
-    sorted_makes = sorted(grouped.items(), key=lambda x: x[0].lower())
-    return [{"make": m, "count": c} for m, c in sorted_makes]
+    return [{"make": m, "count": c} for m, c in makes]
 
 
 @router.get("/models")
 def get_models(make: str, db: Session = Depends(get_db)):
-    """Vraća modele za marku — pretražuje sve varijante naziva marke."""
-    variants = get_make_search_variants(make)
-
     models = (
         db.query(Listing.model, func.count(Listing.id).label("count"))
         .filter(
             Listing.is_active == True,
-            or_(*[Listing.make.ilike(v) for v in variants]),
+            Listing.make.ilike(f"%{make}%"),
             Listing.model != None,
-            Listing.price != None,
-            Listing.price > 0,
         )
         .group_by(Listing.model)
         .order_by(func.count(Listing.id).desc())
-        .limit(100)
+        .limit(50)
         .all()
     )
     return [{"model": m, "count": c} for m, c in models]

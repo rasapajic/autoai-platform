@@ -1,6 +1,5 @@
 'use client'
-export const dynamic = 'force-dynamic'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { importCost } from '@/lib/api'
 
@@ -8,6 +7,14 @@ const COUNTRIES = ['DE','AT','FR','IT','NL','BE','PL','CZ','SK','HU','HR','SI','
 const FUEL_TYPES = ['diesel','petrol','electric','hybrid','lpg']
 
 export default function ImportCalculatorPage() {
+  return (
+    <Suspense fallback={null}>
+      <ImportCalculatorContent />
+    </Suspense>
+  )
+}
+
+function ImportCalculatorContent() {
   const sp = useSearchParams()
   const [form, setForm] = useState({
     price_eur:    sp.get('price') || '',

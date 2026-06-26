@@ -53,6 +53,7 @@ input, select, textarea { font-family: inherit; }
 
 /* Utilities */
 .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+.nav-link:hover { color: var(--text) !important; background: var(--bg3); }
 
 /* Price badges */
 .badge-great    { background: #16A34A20; color: #22C55E; border: 1px solid #22C55E40; }
@@ -72,3 +73,95 @@ input, select, textarea { font-family: inherit; }
 }
 .fade-up { animation: fadeUp .4s ease both; }
 .skeleton { animation: pulse 1.5s ease infinite; background: var(--bg3); border-radius: var(--radius-sm); }
+
+/* Listing detail */
+.listing-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 28px;
+  align-items: start;
+}
+.listing-sidebar {
+  position: sticky;
+  top: 80px;
+}
+.listing-mobile-summary {
+  display: none;
+}
+.listing-gallery-wrap {
+  margin-bottom: 24px;
+}
+.listing-gallery-main {
+  height: 380px;
+  background: var(--bg3);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 8px;
+  position: relative;
+  touch-action: pan-y;
+}
+.listing-gallery-thumbs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.listing-gallery-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+}
+.listing-gallery-prev { left: 12px; }
+.listing-gallery-next { right: 12px; }
+.listing-specs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .listing-detail-page {
+    padding-top: 16px !important;
+  }
+  .listing-breadcrumb {
+    display: none;
+  }
+  .listing-detail-grid {
+    display: block;
+  }
+  .listing-sidebar {
+    position: static;
+    top: auto;
+    margin-top: 20px;
+  }
+  .listing-mobile-summary {
+    display: block;
+  }
+  .listing-desktop-summary {
+    display: none;
+  }
+  .listing-gallery-wrap {
+    margin-bottom: 12px;
+  }
+  .listing-gallery-main {
+    height: min(48vh, 340px);
+    min-height: 260px;
+    border-radius: 10px;
+  }
+  .listing-gallery-thumbs {
+    display: none;
+  }
+  .listing-gallery-arrow {
+    display: none;
+  }
+  .listing-specs-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

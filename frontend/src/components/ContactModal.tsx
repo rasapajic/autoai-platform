@@ -424,7 +424,7 @@ export default function ContactModal({ listing, onClose }: Props) {
                   </div>
 
                   <button onClick={copyAndOpenForm} style={{
-                    width:'100%', padding:'13px', borderRadius:10, border:'none', cursor:'pointer',
+                    width:'100%', padding:'13px', borderRadius:10, cursor:'pointer',
                     background: formCopied ? 'rgba(34,197,94,.15)' : 'linear-gradient(135deg,rgba(251,191,36,.25),rgba(251,191,36,.15))',
                     color: formCopied ? '#22C55E' : '#FBBF24',
                     fontSize:14, fontWeight:700, transition:'all .2s',

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { searchListings, parseQuery } from '@/lib/api'
 
@@ -116,6 +116,14 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
 }
 
 export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPageContent />
+    </Suspense>
+  )
+}
+
+function SearchPageContent() {
   const searchParams  = useSearchParams()
   const [results,     setResults]     = useState<any>(null)
   const [loading,     setLoading]     = useState(true)

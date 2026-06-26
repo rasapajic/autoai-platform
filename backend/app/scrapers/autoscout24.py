@@ -1,461 +1,611 @@
 import asyncio
 import logging
-import random
 import re
-from urllib.parse import urlencode
-from playwright.async_api import async_playwright
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import quote, urljoin
+
+from app.core.config import settings
+from app.scrapers.base import BaseScraper
+from app.services.location_parser import parse_city
 
 logger = logging.getLogger(__name__)
 
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-]
-
-FUEL_MAP = {
-    "diesel": "diesel", "dizel": "diesel",
-    "petrol": "petrol", "benzin": "petrol", "gasoline": "petrol",
-    "electric": "electric", "elektro": "electric", "elektrisch": "electric",
-    "hybrid": "hybrid", "plug-in": "hybrid",
-    "lpg": "lpg", "autogas": "lpg",
-    "cng": "cng", "erdgas": "cng",
-}
-
-TRANSMISSION_MAP = {
-    "automatic": "automatic", "automat": "automatic", "automatik": "automatic",
-    "dsg": "automatic", "cvt": "automatic", "tiptronic": "automatic",
-    "manual": "manual", "manuell": "manual", "schaltgetriebe": "manual",
-}
-
-BODY_MAP = {
-    "limousine": "sedan", "sedan": "sedan",
-    "suv": "suv", "geländewagen": "suv", "crossover": "suv",
-    "kombi": "kombi", "estate": "kombi", "touring": "kombi",
-    "hatchback": "hatchback", "schrägheck": "hatchback",
-    "coupe": "coupe", "coupé": "coupe",
-    "cabrio": "cabrio", "kabriolet": "cabrio", "roadster": "cabrio",
-    "van": "van", "minivan": "van", "kleinbus": "van",
-    "pickup": "pickup",
-}
-
-KNOWN_MAKES = [
-    "Alfa Romeo","Aston Martin","Audi","BMW","Bentley","Bugatti",
-    "Citroën","Citroen","Dacia","Ferrari","Fiat","Ford",
-    "Honda","Hyundai","Jaguar","Jeep","Kia","Lamborghini",
-    "Land Rover","Lexus","Maserati","Mazda","Mercedes-Benz",
-    "Mini","Mitsubishi","Nissan","Opel","Peugeot","Porsche",
-    "Renault","Rolls-Royce","Seat","Skoda","Smart","Subaru",
-    "Suzuki","Tesla","Toyota","Volkswagen","Volvo",
-]
-
-COUNTRY_ROTATION = ["D", "A", "F", "B", "NL", "I", "E", "CH", "PL", "CZ", "H"]
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 50
+MAX_RETRIES = 2
 
 
-class AutoScout24Scraper:
+class AutoScout24Scraper(BaseScraper):
+    """Small-batch AutoScout24 adapter for manual MVP imports."""
+
     SOURCE_NAME = "autoscout24"
-    BASE_URL    = "https://www.autoscout24.com"
+    BASE_URL = "https://www.autoscout24.com"
 
-    def __init__(self):
-        self._playwright = None
-        self.browser = None
-        self.context = None
+    def _build_url(self, filters: dict, page: int = 1) -> str:
+        path = "/lst"
+        if filters.get("make"):
+            path += f"/{self._slug(filters['make'])}"
+            if filters.get("model"):
+                path += f"/{self._slug(filters['model'])}"
 
-    async def __aenter__(self):
-        self._playwright = await async_playwright().start()
-        self.browser = await self._playwright.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage"]
-        )
-        self.context = await self.browser.new_context(
-            user_agent=random.choice(USER_AGENTS),
-            viewport={"width": 1920, "height": 1080},
-            locale="de-DE",
-            timezone_id="Europe/Berlin",
-            extra_http_headers={
-                "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            }
-        )
-        await self.context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-            window.chrome = { runtime: {} };
-        """)
-        return self
-
-    async def __aexit__(self, *args):
-        if self.browser:
-            await self.browser.close()
-        if self._playwright:
-            await self._playwright.stop()
-
-    async def get_page(self, url: str, wait_for: str = None):
-        page = await self.context.new_page()
-        await asyncio.sleep(random.uniform(1.5, 3.5))
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            if wait_for:
-                await page.wait_for_selector(wait_for, timeout=10000)
-        except Exception as e:
-            logger.warning(f"Greška pri otvaranju {url}: {e}")
-            await page.close()
-            return None
-        return page
-
-    def _build_url(self, filters: dict, page: int = 1, country: str = None) -> str:
         params = {
-            "atype":    "C",
-            "page":     page,
-            "sort":     "age",
-            "desc":     0,
-            "fregfrom": 2008,
-            "pricefrom": 2000,
-            "ustate":   "N,U",
+            "atype": "C",
+            "page": page,
+            "sort": "age",
+            "desc": "0",
         }
-        if country:
-            params["cy"] = country
-        elif filters.get("country"):
-            params["cy"] = filters["country"].upper()
 
-        mapping = {
-            "make":      "mmvmk0",
-            "model":     "mmvmd0",
-            "min_price": "pricefrom",
-            "max_price": "priceto",
-            "min_year":  "fregfrom",
-            "max_year":  "fregto",
-            "max_km":    "kmto",
-        }
-        fuel_map = {
-            "petrol": "B", "diesel": "D", "electric": "E",
-            "hybrid": "M", "lpg": "L", "cng": "C",
-        }
-        for key, param in mapping.items():
-            if filters.get(key):
-                params[param] = filters[key]
-        if filters.get("fuel_type"):
-            code = fuel_map.get(filters["fuel_type"])
-            if code:
-                params["fuel"] = code
-
-        return f"{self.BASE_URL}/lst?{urlencode(params)}"
-
-    async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list:
-        all_listings = []
-        seen_ids = set()
-        filter_fuel = filters.get("fuel_type")
-
-        countries = []
+        if filters.get("min_price"):
+            params["pricefrom"] = filters["min_price"]
+        if filters.get("max_price"):
+            params["priceto"] = filters["max_price"]
+        if filters.get("min_year"):
+            params["fregfrom"] = filters["min_year"]
+        if filters.get("max_year"):
+            params["fregto"] = filters["max_year"]
+        if filters.get("max_km"):
+            params["kmto"] = filters["max_km"]
         if filters.get("country"):
-            countries = [filters["country"].upper()]
-        else:
-            countries = COUNTRY_ROTATION
+            params["cy"] = self._country_code(filters["country"])
+        if filters.get("fuel_type"):
+            fuel_map = {
+                "petrol": "B",
+                "diesel": "D",
+                "electric": "E",
+                "hybrid": "M",
+                "lpg": "L",
+                "cng": "C",
+            }
+            params["fuel"] = fuel_map.get(filters["fuel_type"], "")
+
+        query = "&".join(f"{k}={v}" for k, v in params.items() if v not in ("", None))
+        return f"{self.BASE_URL}{path}?{query}"
+
+    async def scrape_listings(
+        self,
+        filters: dict,
+        max_pages: int = 2,
+        limit: int = DEFAULT_LIMIT,
+    ) -> list[dict]:
+        listings: list[dict] = []
+        safe_limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
+        search_country = self._country_iso(filters.get("country")) if filters.get("country") else None
 
         async with self:
-            for country in countries:
-                country_count = 0
-                pages_per_country = max(1, max_pages // len(countries))
+            for page_num in range(1, max_pages + 1):
+                if len(listings) >= safe_limit:
+                    break
 
-                for page_num in range(1, pages_per_country + 1):
-                    url = self._build_url(filters, page=page_num, country=country)
-                    logger.info(f"[AutoScout24] {country} str.{page_num}: {url}")
+                url = self._build_url(filters, page=page_num)
+                logger.info("[AutoScout24] Fetch page %s: %s", page_num, url)
+                page = await self._get_page_with_retry(url)
+                if not page:
+                    break
 
-                    page = None
-                    for attempt in range(3):
-                        try:
-                            page = await self.get_page(url, wait_for=None)
-                            if page:
-                                break
-                        except Exception as e:
-                            logger.warning(f"[AutoScout24] Pokušaj {attempt+1}: {e}")
-                            await asyncio.sleep(2 ** attempt)
+                await self._dismiss_consent_if_present(page)
+                await self._log_page_debug(page, page_num)
+                raw_items = await self._extract_search_items(page)
+                await page.close()
 
-                    if not page:
-                        continue
+                if not raw_items:
+                    logger.info("[AutoScout24] No listings found on page %s", page_num)
+                    break
 
-                    for selector in [
-                        'article[data-guid]',
-                        '[data-testid="regular-list-item"]',
-                        '[data-testid="result-list-item"]',
-                        'article.cldt-summary-full-item',
-                    ]:
-                        try:
-                            await page.wait_for_selector(selector, timeout=8000)
-                            break
-                        except Exception:
-                            continue
-
-                    await asyncio.sleep(2)
-
-                    try:
-                        raw_items = await page.evaluate(self._listing_js())
-                    except Exception as e:
-                        logger.error(f"[AutoScout24] JS greška: {e}")
-                        await page.close()
-                        continue
-
-                    if not raw_items:
-                        await page.close()
+                for raw in raw_items:
+                    if len(listings) >= safe_limit:
                         break
 
-                    page_saved = 0
-                    for raw in raw_items:
-                        try:
-                            parsed = self._parse_listing(raw, filter_fuel=filter_fuel)
-                            if not parsed or parsed["external_id"] in seen_ids:
-                                continue
-                            seen_ids.add(parsed["external_id"])
-                            all_listings.append(parsed)
-                            page_saved += 1
-                            country_count += 1
-                        except Exception as e:
-                            logger.warning(f"[AutoScout24] Parse greška: {e}")
+                    raw["search_country"] = search_country
+                    parsed = self._parse_listing(raw)
+                    if parsed:
+                        listings.append(self.normalize(parsed))
 
-                    logger.info(f"[AutoScout24] {country} str.{page_num}: +{page_saved} | Ukupno: {len(all_listings)}")
-                    await page.close()
-                    await asyncio.sleep(2)
+                logger.info("[AutoScout24] Collected %s/%s listings", len(listings), safe_limit)
+                await asyncio.sleep(2)
 
-                logger.info(f"[AutoScout24] {country}: {country_count} oglasa")
+        return listings
 
-        return all_listings
+    def _slug(self, value: str) -> str:
+        slug = str(value).strip().lower()
+        aliases = {
+            "mercedes benz": "mercedes-benz",
+            "vw": "volkswagen",
+        }
+        slug = aliases.get(slug, slug)
+        slug = re.sub(r"[^a-z0-9]+", "-", slug)
+        return quote(slug.strip("-"))
+
+    def _country_code(self, value: str) -> str:
+        mapping = {
+            "DE": "D",
+            "GERMANY": "D",
+            "DEUTSCHLAND": "D",
+            "AT": "A",
+            "AUSTRIA": "A",
+            "ÖSTERREICH": "A",
+            "OSTERREICH": "A",
+            "NL": "NL",
+            "NETHERLANDS": "NL",
+            "NEDERLAND": "NL",
+            "BE": "B",
+            "BELGIUM": "B",
+            "BELGIQUE": "B",
+            "BELGIE": "B",
+            "IT": "I",
+            "ITALY": "I",
+            "ITALIA": "I",
+            "FR": "F",
+            "FRANCE": "F",
+        }
+        return mapping.get(str(value).strip().upper(), str(value).strip().upper())
+
+    def _country_iso(self, value: str | None) -> str | None:
+        if not value:
+            return None
+        mapping = {
+            "D": "DE",
+            "DE": "DE",
+            "GERMANY": "DE",
+            "DEUTSCHLAND": "DE",
+            "A": "AT",
+            "AT": "AT",
+            "AUSTRIA": "AT",
+            "ÖSTERREICH": "AT",
+            "OSTERREICH": "AT",
+            "B": "BE",
+            "BE": "BE",
+            "BELGIUM": "BE",
+            "BELGIQUE": "BE",
+            "BELGIE": "BE",
+            "NL": "NL",
+            "NETHERLANDS": "NL",
+            "NEDERLAND": "NL",
+            "F": "FR",
+            "FR": "FR",
+            "FRANCE": "FR",
+            "I": "IT",
+            "IT": "IT",
+            "ITALY": "IT",
+            "ITALIA": "IT",
+        }
+        return mapping.get(str(value).strip().upper())
 
     async def scrape_detail(self, url: str) -> dict:
-        return {}
+        async with self:
+            page = await self._get_page_with_retry(url)
+            if not page:
+                return {}
 
-    def _listing_js(self) -> str:
-        return r"""
-        () => {
-            const getCleanPrice = (el) => {
-                if (!el) return '';
-                const clone = el.cloneNode(true);
-                clone.querySelectorAll('sup,sub,[class*="footnote"],[class*="superscript"]').forEach(e=>e.remove());
-                let text = clone.textContent.trim();
-                text = text.replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]/g,'');
-                text = text.replace(/\s+\d\s*$/,'').trim();
-                return text;
-            };
-            const containers = [
-                ...document.querySelectorAll('article.cldt-summary-full-item'),
-                ...document.querySelectorAll('article[data-guid]'),
-                ...document.querySelectorAll('[data-testid="regular-list-item"]'),
-                ...document.querySelectorAll('[data-testid="result-list-item"]'),
-            ];
-            const seen = new Set();
-            const items = containers.filter(el => {
-                const id = el.getAttribute('data-guid') || el.id;
-                if (!id || seen.has(id)) return false;
-                seen.add(id); return true;
-            });
-            return items.map((item, idx) => {
-                const id = item.getAttribute('data-guid') || item.getAttribute('id') || '';
-                const titleEl = item.querySelector('h2,h3,[class*="title"]');
-                const title = titleEl?.textContent?.trim() || '';
-                const offerLink = item.querySelector('a[href*="/offers/"]');
-                const url = offerLink?.href || (id ? 'https://www.autoscout24.com/offers/'+id : '');
-                const priceEl = item.querySelector('.cldt-price,[data-type="price_block"] .cldt-price,[class*="price"]');
-                const price_raw = getCleanPrice(priceEl);
-                const fullText = item.textContent || '';
-                const innerText = item.innerText || '';
-                let year_text = '';
-                const regMatch1 = fullText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/)
-                               || innerText.match(/\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b/);
-                if (regMatch1) year_text = regMatch1[2];
-                if (!year_text) {
-                    const m = fullText.match(/\b(20[0-2]\d|19[5-9]\d)\b/);
-                    if (m) year_text = m[1];
+            data = await page.evaluate("""
+                () => {
+                    const clean = (value) => value?.replace(/\\s+/g, ' ')?.trim() || '';
+                    const text = (selector) => clean(document.querySelector(selector)?.textContent);
+                    const features = Array.from(document.querySelectorAll('li, [data-testid*="equipment"]'))
+                        .map(el => clean(el.textContent))
+                        .filter(Boolean)
+                        .slice(0, 50);
+                    const images = Array.from(document.querySelectorAll('img'))
+                        .map(img => img.currentSrc || img.src)
+                        .filter(src => src && !src.includes('logo'))
+                        .slice(0, 20);
+
+                    return {
+                        description: text('[data-testid="description"], .cldt-stage-description'),
+                        features,
+                        images,
+                    };
                 }
-                let km_text = '';
-                const kmMatches = [...fullText.matchAll(/([\d.,]+)\s*km/gi)];
-                for (const m of kmMatches) {
-                    const raw = m[1];
-                    if ((raw.match(/\./g)||[]).length > 1) continue;
-                    const val = parseInt(raw.replace(/\./g,'').replace(/,/g,''));
-                    if (val >= 1 && val <= 999999) { km_text = raw+' km'; break; }
-                }
-                // ✅ FIX: Diesel i Benzin se provjeravaju PRIJE Electric
-                // Koristimo word-boundary regex da izbjegnemo "Electric windows" itd.
-                const fuelPairs = [
-                    [/\bDiesel\b/i,   'diesel'],
-                    [/\bBenzin\b/i,   'petrol'],
-                    [/\bGasoline\b/i, 'petrol'],
-                    [/\bPetrol\b/i,   'petrol'],
-                    [/\bElektro\b/i,  'electric'],
-                    [/\bElektric\b/i, 'electric'],
-                    [/\bBEV\b/,       'electric'],
-                    [/\bHybrid\b/i,   'hybrid'],
-                    [/\bPlug-in\b/i,  'hybrid'],
-                    [/\bLPG\b/i,      'lpg'],
-                    [/\bCNG\b/i,      'cng'],
-                ];
-                let fuel_text = '';
-                for (const [rx,norm] of fuelPairs) {
-                    if (rx.test(fullText)) { fuel_text=norm; break; }
-                }
-                const transKws = ['Automatik','Automatic','Schaltgetriebe','Manual','DSG'];
-                let trans_text = '';
-                for (const kw of transKws) { if (fullText.includes(kw)) { trans_text=kw; break; } }
-                const powerMatch = fullText.match(/(\d+)\s*kW/);
-                const power_text = powerMatch ? powerMatch[1]+' kW' : '';
-                const bodyKws = ['Limousine','SUV','Kombi','Hatchback','Coupe','Coupé','Cabrio','Van','Pickup'];
-                let body_text = '';
-                for (const kw of bodyKws) { if (fullText.includes(kw)) { body_text=kw; break; } }
-                const details = [year_text,km_text,fuel_text,trans_text,power_text,body_text].filter(Boolean);
-                const images = Array.from(item.querySelectorAll('img'))
-                    .map(img=>img.src||img.getAttribute('data-src'))
-                    .filter(s=>s&&s.startsWith('http')&&!s.includes('logo'));
-                const locEl = item.querySelector('.cldt-summary-seller-contact-country,[class*="country"],[class*="location"]');
-                return { id, title, url, price_raw, details, images: images.slice(0,10), location_raw: locEl?.textContent?.trim()||'' };
-            });
-        }
-        """
+            """)
 
-    def _parse_listing(self, raw: dict, filter_fuel=None) -> dict | None:
-        ext_id = raw.get("id", "").strip()
-        url = raw.get("url", "").strip()
-        if "?" in url:
-            url = url.split("?")[0]
-        if not ext_id or not url:
-            return None
+            await page.close()
+            return data
 
-        title = raw.get("title", "").strip()
-        make, model = self._parse_title(title)
-        details = raw.get("details", [])
-        price_raw = raw.get("price_raw", "")
-        price_eur = self._parse_price_eur(price_raw)
+    async def _get_page_with_retry(self, url: str):
+        for attempt in range(1, MAX_RETRIES + 1):
+            page = await self.get_page(url)
+            if page:
+                return page
+            if attempt < MAX_RETRIES:
+                delay = 2 * attempt
+                logger.warning("[AutoScout24] Retry %s/%s in %ss", attempt, MAX_RETRIES, delay)
+                await asyncio.sleep(delay)
+        return None
 
-        if price_eur and price_eur < 2000:
-            return None
-
-        mileage_raw = year = fuel_type = transmission = power_str = body_type = None
-
-        for d in details:
-            if not d:
+    async def _dismiss_consent_if_present(self, page) -> bool:
+        selectors = [
+            "#onetrust-accept-btn-handler",
+            "button:has-text('Accept all')",
+            "button:has-text('Accept All')",
+            "button:has-text('Alle akzeptieren')",
+            "button:has-text('I agree')",
+        ]
+        for selector in selectors:
+            try:
+                button = page.locator(selector).first
+                if await button.count():
+                    await button.click(timeout=3000)
+                    logger.info("[AutoScout24] Cookie/consent wall appeared: yes, accepted via %s", selector)
+                    await page.wait_for_timeout(1000)
+                    return True
+            except Exception:
                 continue
-            dl = d.lower()
-            if dl in ("diesel", "petrol", "electric", "hybrid", "lpg", "cng"):
-                fuel_type = fuel_type or d
-            elif "km" in dl and any(c.isdigit() for c in d):
-                mileage_raw = mileage_raw or d
-            elif self._extract_year(d):
-                year = year or self._extract_year(d)
-            elif any(k in dl for k in TRANSMISSION_MAP):
-                transmission = transmission or self._normalize_transmission(d)
-            elif re.search(r'\d+\s*(kw|ps|hp)', dl):
-                power_str = power_str or d
-            elif any(k in dl for k in BODY_MAP):
-                body_type = body_type or self._normalize_body(d)
 
-        if year and year < 2005:
+        appeared = await self._consent_wall_present(page)
+        logger.info("[AutoScout24] Cookie/consent wall appeared: %s", "yes" if appeared else "no")
+        return appeared
+
+    async def _consent_wall_present(self, page) -> bool:
+        return await page.evaluate("""
+            () => Boolean(
+                document.querySelector('#onetrust-banner-sdk') ||
+                document.querySelector('[id*="sp_message"]') ||
+                document.body?.innerText?.toLowerCase().includes('privacy settings') ||
+                document.body?.innerText?.toLowerCase().includes('cookie')
+            )
+        """)
+
+    async def _log_page_debug(self, page, page_num: int) -> None:
+        title = await page.title()
+        status = getattr(page, "autoai_status", None)
+        final_url = page.url
+        counts = await page.evaluate("""
+            () => {
+                const selectors = [
+                    'article.cldt-summary-full-item',
+                    'article[data-testid="list-item"]',
+                    'div[data-testid="list-item"]',
+                    '[data-testid="list-item"]',
+                    '[data-testid*="vehicle-card"]',
+                    '[class*="VehicleCard"]',
+                    'article',
+                    'a[href*="/offers/"]',
+                    'a[href*="/angebote/"]'
+                ];
+                return Object.fromEntries(selectors.map(selector => [selector, document.querySelectorAll(selector).length]));
+            }
+        """)
+        logger.info("[AutoScout24] HTTP status: %s", status)
+        logger.info("[AutoScout24] Final URL: %s", final_url)
+        logger.info("[AutoScout24] Page title: %s", title)
+        logger.info("[AutoScout24] Candidate selector counts: %s", counts)
+
+        if settings.DEBUG:
+            await self._write_debug_snapshot(page, page_num)
+
+    async def _write_debug_snapshot(self, page, page_num: int) -> None:
+        try:
+            debug_dir = Path("/app/debug/autoscout24")
+            if not debug_dir.exists():
+                debug_dir = Path.cwd() / "debug" / "autoscout24"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            path = debug_dir / f"autoscout24_page_{page_num}_{stamp}.html"
+            path.write_text(await page.content(), encoding="utf-8")
+            logger.info("[AutoScout24] Debug HTML snapshot: %s", path)
+        except Exception as exc:
+            logger.warning("[AutoScout24] Debug HTML snapshot failed: %s", exc)
+
+    async def _extract_search_items(self, page) -> list[dict]:
+        return await page.evaluate("""
+            () => {
+                const clean = (value) => value?.replace(/\\s+/g, ' ')?.trim() || '';
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    return style && style.display !== 'none' && style.visibility !== 'hidden' && el.getClientRects().length > 0;
+                };
+                const pickText = (root, selectors) => {
+                    for (const selector of selectors) {
+                        const el = root.querySelector(selector);
+                        if (!isVisible(el)) continue;
+                        const value = clean(el?.textContent);
+                        if (value) return value;
+                    }
+                    return '';
+                };
+                const pickMileage = (root) => {
+                    const selectors = [
+                        '[data-testid*="mileage"]',
+                        '[data-testid*="Mileage"]',
+                        '[class*="mileage"]',
+                        '[class*="Mileage"]',
+                        '.cldt-summary-attributes-item'
+                    ];
+                    const candidates = [];
+                    for (const selector of selectors) {
+                        for (const el of Array.from(root.querySelectorAll(selector))) {
+                            if (!isVisible(el)) continue;
+                            const value = clean(el.textContent);
+                            if (/\\b\\d[\\d\\s.,]{0,12}\\s*km\\b/i.test(value)) {
+                                candidates.push(value);
+                            }
+                        }
+                    }
+                    return candidates[0] || '';
+                };
+                const pickPrice = (root) => {
+                    const selectors = [
+                        '[data-testid="regular-price"]',
+                        '[data-testid="price-label"]',
+                        '[data-type="price_block"] .cldt-price',
+                        '[class*="Price"]'
+                    ];
+                    for (const selector of selectors) {
+                        for (const el of Array.from(root.querySelectorAll(selector))) {
+                            if (!isVisible(el)) continue;
+                            const clone = el.cloneNode(true);
+                            clone.querySelectorAll('sup, [aria-hidden="true"]').forEach(node => node.remove());
+                            const directText = Array.from(el.childNodes)
+                                .filter(node => node.nodeType === Node.TEXT_NODE)
+                                .map(node => node.textContent)
+                                .join('');
+                            const value = clean(directText || clone.textContent || el.getAttribute('aria-label') || el.getAttribute('title'));
+                            if (!value || !/[€]|eur/i.test(value)) continue;
+                            if (/month|monat|mtl|leasing|finanzierung|rate/i.test(value)) continue;
+                            return value;
+                        }
+                    }
+                    return '';
+                };
+
+                const cardSelectors = [
+                    'article.cldt-summary-full-item',
+                    'article[data-testid="list-item"]',
+                    'div[data-testid="list-item"]',
+                    '[data-testid="list-item"]',
+                    '[data-testid*="list-item"]',
+                    '[data-testid*="vehicle-card"]',
+                    '[class*="ListItem"]',
+                    '[class*="VehicleCard"]',
+                    'article'
+                ];
+
+                let cards = [];
+                for (const selector of cardSelectors) {
+                    cards = Array.from(document.querySelectorAll(selector))
+                        .filter(card => card.querySelector('a[href*="/offers/"], a[href*="/angebote/"]'));
+                    if (cards.length) break;
+                }
+
+                if (!cards.length) {
+                    cards = Array.from(document.querySelectorAll('a[href*="/offers/"], a[href*="/angebote/"]'))
+                        .map(link => link.closest('article, [data-testid], [class*="Card"], [class*="Item"], div'))
+                        .filter(Boolean);
+                    cards = Array.from(new Set(cards));
+                }
+
+                return cards.map(card => {
+                    const link = card.querySelector('a[href*="/offers/"], a[href*="/angebote/"]');
+                    const details = Array.from(card.querySelectorAll(
+                        '.cldt-summary-attributes-item, [data-testid="VehicleDetails"] span, li, [class*="VehicleDetail"]'
+                    ))
+                        .filter(isVisible)
+                        .map(el => clean(el.textContent))
+                        .filter(Boolean);
+
+                    const images = Array.from(card.querySelectorAll('img'))
+                        .map(img => img.currentSrc || img.src)
+                        .filter(src => src && !src.includes('logo'))
+                        .slice(0, 10);
+
+                    return {
+                        external_id: card.getAttribute('data-guid') || card.getAttribute('data-id') || card.id || '',
+                        title: pickText(card, ['h2', '[data-testid="title"]', '[data-testid="list-item-title"]']) || clean(link?.getAttribute('aria-label')),
+                        url: link?.href || '',
+                        price_raw: pickPrice(card),
+                        mileage_raw: pickMileage(card),
+                        details,
+                        images,
+                        location_raw: pickText(card, [
+                            '.cldt-summary-seller-contact-country',
+                            '[data-testid="sellerinfo"]',
+                            '[class*="SellerInfo"]'
+                        ]),
+                    };
+                });
+            }
+        """)
+
+    def _parse_listing(self, raw: dict) -> dict | None:
+        url = urljoin(self.BASE_URL, raw.get("url") or "")
+        external_id = self._external_id(raw, url)
+        if not external_id or not url:
             return None
 
-        # ✅ FIX: Ne koristiti filter kao fallback — može biti pogrešno za gorivo
-        # if not fuel_type and filter_fuel: fuel_type = filter_fuel
+        title = raw.get("title", "")
+        make, model = self._parse_title(title)
+        raw_price = raw.get("price_raw")
+        price = self._parse_price_eur(raw_price)
+        raw_mileage = raw.get("mileage_raw") or self._find_mileage_text(raw.get("details", []))
+        mileage = self._parse_mileage(raw_mileage)
+        year = fuel = transmission = power = body_type = None
+        logger.info("[AutoScout24] Price raw=%r parsed=%s", raw_price, price)
+        logger.info("[AutoScout24] Mileage raw=%r parsed=%s", raw_mileage, mileage)
+
+        for detail in raw.get("details", []):
+            lowered = detail.lower()
+            if re.search(r"\\b(19|20)\\d{2}\\b", detail):
+                year = re.search(r"\\b(19|20)\\d{2}\\b", detail).group(0)
+            elif any(word in lowered for word in ["diesel", "petrol", "benzin", "electric", "hybrid", "lpg", "cng"]):
+                fuel = detail
+            elif any(word in lowered for word in ["automatic", "manual", "automat", "schaltgetriebe"]):
+                transmission = detail
+            elif "kw" in lowered or "ps" in lowered or "hp" in lowered:
+                power = detail
+            elif any(word in lowered for word in ["suv", "limousine", "estate", "kombi", "coupe", "cabrio", "van"]):
+                body_type = detail
 
         country, city = self._parse_location(raw.get("location_raw", ""))
+        country = country or raw.get("search_country")
 
         return {
-            "external_id":     f"as24_{ext_id}",
-            "source":          self.SOURCE_NAME,
-            "title":           title,
-            "make":            make,
-            "model":           model,
-            "year":            year,
-            "price":           price_eur,
-            "currency":        "EUR",
-            "mileage":         self._parse_mileage_km(mileage_raw),
-            "fuel_type":       fuel_type,
-            "transmission":    transmission,
-            "engine_power_kw": self._parse_power_kw(power_str),
-            "body_type":       body_type,
-            "country":         country,
-            "city":            city,
-            "images":          raw.get("images", []),
-            "url":             url,
+            "external_id": external_id,
+            "make": make,
+            "model": model,
+            "variant": title or None,
+            "year": year,
+            "price": price,
+            "mileage": mileage,
+            "fuel_type": fuel,
+            "transmission": transmission,
+            "engine_power_kw": self._parse_power_kw(power),
+            "body_type": body_type,
+            "country": country,
+            "city": city,
+            "images": raw.get("images", []),
+            "url": url,
+            "condition": "used",
         }
 
-    def _parse_title(self, title: str) -> tuple:
-        if not title:
-            return None, None
-        for make in sorted(KNOWN_MAKES, key=len, reverse=True):
-            if make.lower() in title.lower():
-                rest = re.sub(re.escape(make), "", title, flags=re.IGNORECASE).strip()
+    def _parse_price_eur(self, value: str | None) -> int | None:
+        if not value:
+            return None
+
+        text = str(value)
+        match = re.search(r"(\d[\d\s.,']*)", text)
+        if not match:
+            return None
+
+        number = match.group(1).strip()
+        number = self._strip_price_footnote(number)
+
+        if "," in number and "." in number:
+            last_comma = number.rfind(",")
+            last_dot = number.rfind(".")
+            decimal_separator = "," if last_comma > last_dot else "."
+            thousands_separator = "." if decimal_separator == "," else ","
+            normalized = number.replace(thousands_separator, "")
+            if re.search(rf"\{decimal_separator}\d{{1,2}}$", normalized):
+                normalized = normalized.rsplit(decimal_separator, 1)[0]
+            digits = re.sub(r"\D", "", normalized)
+        elif "," in number or "." in number:
+            separator = "," if "," in number else "."
+            parts = number.split(separator)
+            if len(parts[-1]) == 3:
+                digits = "".join(parts)
+            elif len(parts) == 2 and len(parts[-1]) == 2 and len(parts[0]) == 1:
+                digits = parts[0] + parts[-1] + "00"
+            elif len(parts) == 2 and len(parts[-1]) == 2 and len(parts[0]) == 2:
+                digits = parts[0] + parts[-1] + "0"
+            elif len(parts) == 2 and len(parts[-1]) <= 2:
+                digits = parts[0]
+            else:
+                digits = "".join(parts)
+            digits = re.sub(r"\D", "", digits)
+        else:
+            digits = re.sub(r"\D", "", number)
+
+        if not digits:
+            return None
+
+        price = int(digits)
+        if price < 100 or price > 5_000_000:
+            logger.warning("[AutoScout24] Ignoring invalid price raw=%r parsed=%s", value, price)
+            return None
+
+        return price
+
+    def _strip_price_footnote(self, number: str) -> str:
+        normalized = number.replace(" ", "").replace("'", "")
+        if re.match(r"^\d{1,3}([.,])\d{4}$", normalized):
+            return normalized[:-1]
+        if re.match(r"^\d{1,3}([.,])\d{3}([.,])\d{4}$", normalized):
+            return normalized[:-1]
+        return number
+
+    def _find_mileage_text(self, details: list[str]) -> str | None:
+        first_candidate = None
+        for detail in details:
+            if re.search(r"\b\d[\d\s.,]{0,12}\s*km\b", detail, re.I):
+                first_candidate = first_candidate or detail
+                if self._parse_mileage(detail) is not None:
+                    return detail
+        return first_candidate
+
+    def _parse_mileage(self, value: str | None) -> int | None:
+        if not value:
+            return None
+
+        match = re.search(r"\b(\d[\d\s.,]{0,12})\s*km\b", str(value), re.I)
+        if not match:
+            return None
+
+        digits = re.sub(r"\D", "", match.group(1))
+        if not digits:
+            return None
+
+        mileage = int(digits)
+        if mileage < 0 or mileage > 2_000_000:
+            logger.warning("[AutoScout24] Ignoring invalid mileage raw=%r parsed=%s", value, mileage)
+            return None
+
+        return mileage
+
+    def _external_id(self, raw: dict, url: str) -> str | None:
+        candidate = str(raw.get("external_id") or "").strip()
+        if not candidate:
+            match = re.search(r"([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})", url, re.I)
+            candidate = match.group(1) if match else ""
+
+        candidate = re.sub(r"[^a-zA-Z0-9_-]", "", candidate)
+        return f"as24_{candidate}" if candidate else None
+
+    def _parse_title(self, title: str) -> tuple[str | None, str | None]:
+        known_makes = [
+            "Mercedes-Benz", "Volkswagen", "Alfa Romeo", "Land Rover",
+            "BMW", "Audi", "Ford", "Toyota", "Honda", "Renault", "Peugeot",
+            "Opel", "Skoda", "Seat", "Kia", "Hyundai", "Mazda", "Volvo",
+            "Porsche", "Fiat", "Citroen", "Citroën", "Dacia", "Nissan",
+            "Mitsubishi", "Tesla",
+        ]
+        lowered = title.lower()
+        for make in known_makes:
+            if lowered.startswith(make.lower()) or f" {make.lower()} " in f" {lowered} ":
+                rest = re.sub(re.escape(make), "", title, count=1, flags=re.I).strip()
                 words = rest.split()
-                return make, (" ".join(words[:2]) if words else None)
+                model = " ".join(words[:2]).strip() if words else None
+                return make, model
         words = title.split()
-        return (words[0] if words else None), (" ".join(words[1:3]) if len(words) > 1 else None)
+        return (words[0], words[1] if len(words) > 1 else None) if words else (None, None)
 
-    def _parse_price_eur(self, raw: str) -> int | None:
-        if not raw:
-            return None
-        m = re.search(r'\d[\d.,]+\d', raw)
-        if m:
-            num = m.group(0).replace('.', '').replace(',', '')
-            try:
-                val = int(num)
-                return val if val <= 2_000_000 else None
-            except ValueError:
-                pass
-        digits = re.sub(r'[^\d]', '', raw)
-        return int(digits[:6]) if digits else None
-
-    def _parse_mileage_km(self, raw: str) -> int | None:
-        if not raw:
-            return None
-        m = re.search(r'\d[\d.,]+\d|\d+', raw)
-        if m:
-            num = m.group(0).replace('.', '').replace(',', '')
-            try:
-                val = int(num)
-                return val if 1 <= val <= 999_999 else None
-            except ValueError:
-                pass
-        return None
-
-    def _extract_year(self, text: str) -> int | None:
-        m = re.search(r'\b(0[1-9]|1[0-2])[\/\.](19[5-9]\d|20[0-3]\d)\b', text)
-        if m:
-            return int(m.group(2))
-        m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', text)
-        return int(m.group(1)) if m else None
-
-    def _normalize_transmission(self, val: str) -> str | None:
-        v = val.lower()
-        for k, norm in TRANSMISSION_MAP.items():
-            if k in v:
-                return norm
-        return None
-
-    def _normalize_body(self, val: str) -> str | None:
-        v = val.lower()
-        for k, norm in BODY_MAP.items():
-            if k in v:
-                return norm
-        return None
-
-    def _parse_power_kw(self, raw: str) -> int | None:
-        if not raw:
-            return None
-        kw = re.search(r'(\d+)\s*kw', raw.lower())
-        if kw:
-            return int(kw.group(1))
-        ps = re.search(r'(\d+)\s*(ps|hp)', raw.lower())
-        if ps:
-            return round(int(ps.group(1)) * 0.7355)
-        return None
-
-    def _parse_location(self, raw: str) -> tuple:
-        if not raw:
+    def _parse_location(self, location: str) -> tuple[str | None, str | None]:
+        if not location:
             return None, None
-        raw = raw.split('\n')[0].strip()
-        m = re.match(r'^([A-Z]{2})-\d+\s+(.+)', raw)
-        if m:
-            return m.group(1), m.group(2).split(' - ')[0].strip()
-        parts = [p.strip() for p in raw.split(",")]
-        if len(parts) >= 2:
-            country = parts[-1].strip()
-            city = parts[0].split(' - ')[0].strip()
-            if len(country) <= 3:
-                return country, city
-            return None, parts[0]
-        return None, raw
+
+        parts = [part.strip() for part in re.split(r"[,|]", location) if part.strip()]
+        lowered = location.lower()
+        country_map = {
+            "germany": "DE",
+            "deutschland": "DE",
+            "austria": "AT",
+            "österreich": "AT",
+            "osterreich": "AT",
+            "belgium": "BE",
+            "belgique": "BE",
+            "belgie": "BE",
+            "belgien": "BE",
+            "netherlands": "NL",
+            "nederland": "NL",
+            "france": "FR",
+            "frankreich": "FR",
+            "italy": "IT",
+            "italia": "IT",
+            "italien": "IT",
+        }
+        country = next((code for label, code in country_map.items() if label in lowered), None)
+        city = parse_city(location, country)
+        if not city and parts:
+            city = parse_city(parts[0], country)
+        return country, city
+
+    def _parse_power_kw(self, power_str: str | None) -> int | None:
+        if not power_str:
+            return None
+        kw_match = re.search(r"(\\d+)\\s*kw", power_str.lower())
+        if kw_match:
+            return int(kw_match.group(1))
+        ps_match = re.search(r"(\\d+)\\s*(ps|hp)", power_str.lower())
+        if ps_match:
+            return round(int(ps_match.group(1)) * 0.7355)
+        return None

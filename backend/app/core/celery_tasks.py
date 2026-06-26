@@ -2,13 +2,18 @@ from celery import Celery
 from celery.schedules import crontab
 from datetime import datetime
 import logging
+import json
 
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.models import Listing, ScraperRun
+from app.scrapers.autoscout24 import AutoScout24Scraper
+from app.scrapers.polovni import PolvoniScraper
+from app.scrapers.mobile_de import MobileDeScraper
 
 logger = logging.getLogger(__name__)
 
+# ─── Celery setup ─────────────────────────────────────────────
 celery_app = Celery(
     "autoai",
     broker=settings.REDIS_URL,
@@ -25,196 +30,103 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
 )
 
-# ✅ BEAT SCHEDULE — svi aktivni portali, razmaknutih startova da ne udaraju u isto vreme
+# ─── Automatski raspored taskova ──────────────────────────────
 celery_app.conf.beat_schedule = {
-
-    # ═══════════════════════════════════════════
-    # AutoScout24 — najveći EU portal, 4x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-autoscout24": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=0, hour="0,6,12,18"),
-        "args": ("autoscout24", {"max_pages": 50}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Willhaben — Austrija, 4x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-willhaben": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=15, hour="1,7,13,19"),
-        "args": ("willhaben", {"max_pages": 30}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Marktplaats — Holandija, 3x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-marktplaats": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=30, hour="2,10,18"),
-        "args": ("marktplaats", {"max_pages": 30}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Kleinanzeigen — Nemačka, 3x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-kleinanzeigen": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=45, hour="2,10,18"),
-        "args": ("kleinanzeigen", {"max_pages": 30}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Tweedehands — Belgija/Holandija, 2x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-tweedehands": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=0, hour="3,15"),
-        "args": ("tweedehands", {"max_pages": 20}),
-    },
-
-    # ═══════════════════════════════════════════
-    # LaCentrale — Francuska, 2x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-lacentrale": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=15, hour="4,16"),
-        "args": ("lacentrale", {"max_pages": 20}),
-    },
-
-    # ═══════════════════════════════════════════
-    # LeBonCoin — Francuska, 2x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-leboncoin": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=30, hour="4,16"),
-        "args": ("leboncoin", {"max_pages": 20}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Subito — Italija, 2x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-subito": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=45, hour="4,16"),
-        "args": ("subito", {"max_pages": 20}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Tutti — Švajcarska, 2x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-tutti": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=0, hour="5,17"),
-        "args": ("tutti", {"max_pages": 20}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Bilbasen — Danska, 1x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-bilbasen": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=0, hour=8),
-        "args": ("bilbasen", {"max_pages": 20}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Polovni — Srbija/region, 2x dnevno
-    # ═══════════════════════════════════════════
-    "scrape-polovni": {
-        "task": "app.core.celery_tasks.scrape_portal",
-        "schedule": crontab(minute=30, hour="8,20"),
-        "args": ("polovni", {"max_pages": 20}),
-    },
-
-    # ═══════════════════════════════════════════
-    # Procena cena — svakih sat vremena
-    # ═══════════════════════════════════════════
-    "estimate-prices-hourly": {
-        "task": "app.core.celery_tasks.estimate_prices",
-        "schedule": crontab(minute=0),
-        "args": (),
-    },
-
-    # ═══════════════════════════════════════════
-    # Cleanup starih oglasa — svaki dan u 23:00
-    # ═══════════════════════════════════════════
+    # Cleanup starih oglasa — svaki dan u ponoć
     "cleanup-old-listings": {
         "task": "app.core.celery_tasks.cleanup_old_listings",
-        "schedule": crontab(minute=0, hour=23),
+        "schedule": crontab(minute=0, hour=0),
+    },
+    "send-saved-search-notifications": {
+        "task": "app.core.celery_tasks.send_saved_search_notifications",
+        "schedule": crontab(minute=0, hour=8),
+    },
+    "nightly-marketplace-expansion": {
+        "task": "app.core.celery_tasks.nightly_marketplace_expansion",
+        "schedule": crontab(minute=0, hour=2),
     },
 }
 
+if settings.ENABLE_SCHEDULED_SCRAPING:
+    celery_app.conf.beat_schedule.update({
+        # AutoScout24 — svakih 6 sati
+        "scrape-autoscout24": {
+            "task": "app.core.celery_tasks.scrape_portal",
+            "schedule": crontab(minute=0, hour="*/6"),
+            "args": ("autoscout24", {}),
+        },
+        # Polovniautomobili — svakih 4 sata
+        "scrape-polovni": {
+            "task": "app.core.celery_tasks.scrape_portal",
+            "schedule": crontab(minute=30, hour="*/4"),
+            "args": ("polovni", {}),
+        },
+        # Mobile.de — svakih 6 sati
+        "scrape-mobile-de": {
+            "task": "app.core.celery_tasks.scrape_portal",
+            "schedule": crontab(minute=0, hour="1,7,13,19"),
+            "args": ("mobile_de", {}),
+        },
+    })
 
-# ─────────────────────────────────────────────────────
-# PORTAL → SCRAPER MAPA
-# ─────────────────────────────────────────────────────
-PORTAL_MAP = {
-    "autoscout24":   ("app.scrapers.autoscout24",  "AutoScout24Scraper"),
-    "willhaben":     ("app.scrapers.willhaben",     "WillhabenScraper"),
-    "marktplaats":   ("app.scrapers.marktplaats",   "MarktplaatsScraper"),
-    "kleinanzeigen": ("app.scrapers.kleinanzeigen", "KleinanzeigenScraper"),
-    "tweedehands":   ("app.scrapers.tweedehands",   "TweedehandsScraper"),
-    "lacentrale":    ("app.scrapers.lacentrale",    "LaCentraleScraper"),
-    "leboncoin":     ("app.scrapers.leboncoin",     "LeBonCoinScraper"),
-    "subito":        ("app.scrapers.subito",        "SubitoScraper"),
-    "tutti":         ("app.scrapers.tutti",         "TuttiScraper"),
-    "bilbasen":      ("app.scrapers.bilbasen",      "BilbasenScraper"),
-    "polovni":       ("app.scrapers.polovni",       "PlovniScraper"),
-    "mobile_de":     ("app.scrapers.mobile_de",     "MobileDeScraper"),
-}
 
-
+# ─── Scraping task ────────────────────────────────────────────
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=120)
 def scrape_portal(self, portal: str, filters: dict):
-    """Glavni task za scraping jednog portala."""
+    """
+    Glavni task za scraping jednog portala.
+    Automatski se ponovi do 3 puta ako dođe do greške.
+    """
     db = SessionLocal()
     run = ScraperRun(portal=portal, status="running")
     db.add(run)
     db.commit()
 
     try:
-        logger.info(f"🕷️  START scraping: {portal}")
+        logger.info(f"🕷️ Počinjem scraping: {portal}")
 
-        if portal not in PORTAL_MAP:
+        # Izaberi pravi scraper
+        scrapers = {
+            "autoscout24": AutoScout24Scraper(),
+            "polovni":     PolvoniScraper(),
+            "mobile_de":   MobileDeScraper(),
+        }
+
+        if portal not in scrapers:
             raise ValueError(f"Nepoznat portal: {portal}")
 
-        module_path, class_name = PORTAL_MAP[portal]
-        import importlib
-        module = importlib.import_module(module_path)
-        ScraperClass = getattr(module, class_name)
-        scraper = ScraperClass()
+        scraper = scrapers[portal]
 
-        # ✅ max_pages iz filtera ili default 30
-        max_pages = filters.pop("max_pages", 30)
-
+        # Scraping
         import asyncio
-        listings = asyncio.run(scraper.scrape_listings(filters, max_pages=max_pages))
+        listings = asyncio.run(scraper.scrape_listings(filters, max_pages=10))
         run.listings_found = len(listings)
 
+        # Čuvanje u bazu
         new_count, updated_count = save_listings(db, listings)
-        run.listings_new      = new_count
-        run.listings_updated  = updated_count
-        run.status            = "success"
-        run.finished_at       = datetime.utcnow()
+        run.listings_new = new_count
+        run.listings_updated = updated_count
+        run.status = "success"
+        run.finished_at = datetime.utcnow()
         db.commit()
 
-        logger.info(f"✅ {portal}: {new_count} novih, {updated_count} ažuriranih od {len(listings)} pronađenih")
+        logger.info(f"✅ {portal}: {new_count} novih, {updated_count} ažuriranih od {len(listings)}")
 
+        # Pokreni procenu cene za nove oglase
         if new_count > 0:
             estimate_prices.delay(portal)
 
         return {
-            "portal":   portal,
-            "found":    len(listings),
-            "new":      new_count,
-            "updated":  updated_count,
+            "portal": portal,
+            "found": len(listings),
+            "new": new_count,
+            "updated": updated_count,
         }
 
     except Exception as exc:
-        run.status        = "failed"
-        run.error_message = str(exc)[:500]
-        run.finished_at   = datetime.utcnow()
+        run.status = "failed"
+        run.error_message = str(exc)
+        run.finished_at = datetime.utcnow()
         db.commit()
         logger.error(f"❌ Greška pri scrapingu {portal}: {exc}")
         raise self.retry(exc=exc)
@@ -223,9 +135,9 @@ def scrape_portal(self, portal: str, filters: dict):
         db.close()
 
 
-def save_listings(db, listings: list) -> tuple:
-    """Čuva listu oglasa u bazu, vraća (novi, ažurirani)."""
-    new_count     = 0
+def save_listings(db, listings: list[dict]) -> tuple[int, int]:
+    """Čuva oglase u bazu — insertuje nove, ažurira postojeće."""
+    new_count = 0
     updated_count = 0
 
     for data in listings:
@@ -233,21 +145,28 @@ def save_listings(db, listings: list) -> tuple:
         if not external_id:
             continue
 
-        existing = db.query(Listing).filter(Listing.external_id == external_id).first()
+        existing = db.query(Listing).filter(
+            Listing.external_id == external_id
+        ).first()
 
         if existing:
-            existing.last_seen_at = datetime.utcnow()
-            existing.is_active    = True
+            # Ažuriraj cenu i last_seen
+            old_price = existing.price
             new_price = data.get("price")
-            if new_price and existing.price != float(new_price):
-                existing.price = new_price
+
+            existing.last_seen_at = datetime.utcnow()
+            existing.is_active = True
+
+            if new_price and old_price != float(new_price):
+                existing.price = new_price  # trigger čuva price_history
+
             updated_count += 1
         else:
-            safe_data = {
+            # Novi oglas
+            listing = Listing(**{
                 k: v for k, v in data.items()
                 if hasattr(Listing, k) and v is not None
-            }
-            listing = Listing(**safe_data)
+            })
             db.add(listing)
             new_count += 1
 
@@ -255,9 +174,13 @@ def save_listings(db, listings: list) -> tuple:
     return new_count, updated_count
 
 
+# ─── Procena cene task ────────────────────────────────────────
 @celery_app.task
 def estimate_prices(portal: str = None):
-    """Procenjuje cene za oglase koji još nemaju price_estimated."""
+    """
+    Pokretanje ML modela za procenu cene svih oglasa
+    koji još nemaju procenu.
+    """
     db = SessionLocal()
     try:
         query = db.query(Listing).filter(
@@ -268,38 +191,52 @@ def estimate_prices(portal: str = None):
             query = query.filter(Listing.source == portal)
 
         listings = query.limit(500).all()
+
         if not listings:
             return {"estimated": 0}
 
+        # Uvezi model (lazy import da ne usporava ostale taskove)
         from app.ai.price_estimator import PriceEstimator
         estimator = PriceEstimator.load()
 
         count = 0
         for listing in listings:
+            if listing.special_vehicle:
+                listing.price_estimated = None
+                listing.price_delta_pct = None
+                listing.price_rating = None
+                continue
+
             try:
                 result = estimator.predict({
-                    "make":         listing.make         or "",
-                    "model":        listing.model        or "",
-                    "year":         listing.year         or 0,
-                    "mileage":      listing.mileage      or 0,
-                    "fuel_type":    listing.fuel_type    or "",
+                    "make":         listing.make or "",
+                    "model":        listing.model or "",
+                    "year":         listing.year or 0,
+                    "mileage":      listing.mileage or 0,
+                    "fuel_type":    listing.fuel_type or "",
                     "transmission": listing.transmission or "",
-                    "country":      listing.country      or "",
-                    "engine_cc":    listing.engine_cc    or 0,
+                    "country":      listing.country or "",
+                    "engine_cc":    listing.engine_cc or 0,
                 })
-                estimated = result["estimated_price"]
-                listing.price_estimated = estimated
 
-                if listing.price and estimated:
-                    delta = ((float(listing.price) - estimated) / estimated) * 100
+                listing.price_estimated = result["estimated_price"]
+                if listing.price and result["estimated_price"]:
+                    delta = ((float(listing.price) - result["estimated_price"])
+                             / result["estimated_price"]) * 100
                     listing.price_delta_pct = round(delta, 2)
-                    if   delta < -15: listing.price_rating = "great"
-                    elif delta <  -5: listing.price_rating = "good"
-                    elif delta <   5: listing.price_rating = "fair"
-                    elif delta <  15: listing.price_rating = "high"
-                    else:             listing.price_rating = "overpriced"
-                count += 1
 
+                    if delta < -15:
+                        listing.price_rating = "great"
+                    elif delta < -5:
+                        listing.price_rating = "good"
+                    elif delta < 5:
+                        listing.price_rating = "fair"
+                    elif delta < 15:
+                        listing.price_rating = "high"
+                    else:
+                        listing.price_rating = "overpriced"
+
+                count += 1
             except Exception as e:
                 logger.warning(f"Procena nije uspela za {listing.id}: {e}")
 
@@ -311,53 +248,112 @@ def estimate_prices(portal: str = None):
         db.close()
 
 
+# ─── Cleanup task ─────────────────────────────────────────────
 @celery_app.task
 def cleanup_old_listings():
-    """Drži max 50.000 oglasa — briše najstarije kada se prekorači limit."""
-    from sqlalchemy import text
+    """Deaktivira oglase koje nismo vidjeli >7 dana."""
+    from datetime import timedelta
     db = SessionLocal()
     try:
-        total = db.execute(text("SELECT COUNT(*) FROM listings")).scalar()
-        logger.info(f"🧹 Ukupno oglasa: {total}")
-
-        deleted = 0
-        if total > 50000:
-            to_delete = total - 50000
-            result = db.execute(text(f"""
-                DELETE FROM listings
-                WHERE id IN (
-                    SELECT id FROM listings
-                    ORDER BY scraped_at ASC
-                    LIMIT {to_delete}
-                )
-            """))
-            deleted = result.rowcount
-            db.commit()
-            logger.info(f"🧹 Obrisao {deleted} najstarijih oglasa (limit: 50.000)")
-
-        return {"total_before": total, "deleted": deleted, "total_after": total - deleted}
+        cutoff = datetime.utcnow() - timedelta(days=7)
+        count = db.query(Listing).filter(
+            Listing.last_seen_at < cutoff,
+            Listing.is_active == True,
+        ).update({"is_active": False})
+        db.commit()
+        logger.info(f"🧹 Deaktivirao {count} starih oglasa")
+        return {"deactivated": count}
     finally:
         db.close()
 
 
 @celery_app.task
-def scrape_all_portals_now():
-    """Ručno pokretanje svih portala odjednom — korisno za inicijalno punjenje baze."""
-    portals = [
-        ("autoscout24",   50),
-        ("willhaben",     30),
-        ("marktplaats",   30),
-        ("kleinanzeigen", 30),
-        ("tweedehands",   20),
-        ("lacentrale",    20),
-        ("leboncoin",     20),
-        ("subito",        20),
-        ("tutti",         20),
-        ("bilbasen",      20),
-        ("polovni",       20),
-    ]
-    for portal, pages in portals:
-        scrape_portal.delay(portal, {"max_pages": pages})
-        logger.info(f"🚀 Pokrenuo task za {portal} ({pages} stranica)")
+def send_saved_search_notifications():
+    """Salje jedan email summary po korisniku za nove oglase iz sacuvanih potraga."""
+    from app.services.alert_notifications import send_saved_search_notifications as send_notifications
 
-    return {"launched": len(portals)}
+    db = SessionLocal()
+    try:
+        result = send_notifications(db)
+        logger.info(f"Email notifikacije sacuvanih potraga: {result}")
+        return result
+    finally:
+        db.close()
+
+
+@celery_app.task
+def nightly_marketplace_expansion():
+    """Runs safe weighted EU marketplace expansion once per night."""
+    from app.scripts.expand_marketplace_data import run_expansion
+
+    db = SessionLocal()
+    started_at = datetime.utcnow()
+    try:
+        active = (
+            db.query(ScraperRun)
+            .filter(ScraperRun.portal == "marketplace_expansion", ScraperRun.status == "running")
+            .first()
+        )
+        if active:
+            logger.info("Marketplace expansion skipped: previous run is still active")
+            return {"skipped": True, "reason": "previous run still active", "active_run_id": str(active.id)}
+
+        run = ScraperRun(portal="marketplace_expansion", status="running", started_at=started_at)
+        db.add(run)
+        db.commit()
+
+        logger.info("Marketplace expansion started at %s", started_at.isoformat())
+        report = run_expansion(strategy="weighted-eu")
+        finished_at = datetime.utcnow()
+
+        created = report.get("autoscout24", {}).get("created", 0) + report.get("willhaben", {}).get("created", 0)
+        updated = report.get("autoscout24", {}).get("updated", 0) + report.get("willhaben", {}).get("updated", 0)
+        skipped = report.get("autoscout24", {}).get("skipped", 0) + report.get("willhaben", {}).get("skipped", 0)
+        fetched = report.get("autoscout24", {}).get("fetched", 0) + report.get("willhaben", {}).get("fetched", 0)
+
+        run.listings_found = fetched
+        run.listings_new = created
+        run.listings_updated = updated
+        run.status = "success" if not report.get("errors") else "partial"
+        run.finished_at = finished_at
+        run.error_message = json.dumps({
+            "skipped": skipped,
+            "active_listings_delta": report.get("active_listings_delta", 0),
+            "errors": report.get("errors", []),
+        })[:5000]
+        db.commit()
+
+        logger.info(
+            "Marketplace expansion finished at %s created=%s updated=%s skipped=%s active_listings_delta=%s",
+            finished_at.isoformat(),
+            created,
+            updated,
+            skipped,
+            report.get("active_listings_delta", 0),
+        )
+        return {
+            "started_at": started_at.isoformat(),
+            "finished_at": finished_at.isoformat(),
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "active_listings_delta": report.get("active_listings_delta", 0),
+            "status": run.status,
+        }
+    except Exception as exc:
+        finished_at = datetime.utcnow()
+        run = (
+            db.query(ScraperRun)
+            .filter(ScraperRun.portal == "marketplace_expansion", ScraperRun.status == "running")
+            .order_by(ScraperRun.started_at.desc())
+            .first()
+        )
+        if run:
+            run.status = "failed"
+            run.error_message = str(exc)
+            run.finished_at = finished_at
+            db.commit()
+        logger.exception("Marketplace expansion failed")
+        return {"status": "failed", "error": str(exc), "finished_at": finished_at.isoformat()}
+    finally:
+        db.close()

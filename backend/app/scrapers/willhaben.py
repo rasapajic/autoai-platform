@@ -1,398 +1,599 @@
 import asyncio
 import json
+import logging
 import re
-import aiohttp
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urlencode, urljoin, urlsplit, urlunsplit
 
-CATEGORIES = ["limousine", "suv-gelaendewagen", "cabrio-roadster"]
-CAR_TYPES = ["4", "5", "6", "9", "10"]  # kombi, kleinwagen, coupe, van, pickup
+from app.core.config import settings
+from app.scrapers.base import BaseScraper
+from app.services.location_parser import parse_city
 
-BASE_URL = "https://www.willhaben.at/iad/gebrauchtwagen/auto"
-BASE_URL_TYPES = "https://www.willhaben.at/iad/gebrauchtwagen/auto/gebrauchtwagenboerse"
-IMG_BASE = "https://cache.willhaben.at/mmo/"
+logger = logging.getLogger(__name__)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-}
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 20
+MAX_RETRIES = 2
 
 
-def _extract_next_data(html: str) -> dict | None:
-    match = re.search(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', html, re.DOTALL)
-    if not match:
+class WillhabenScraper(BaseScraper):
+    """Small-batch willhaben adapter for manual Austrian used-car imports."""
+
+    SOURCE_NAME = "willhaben"
+    BASE_URL = "https://www.willhaben.at"
+    SEARCH_PATH = "/iad/gebrauchtwagen/auto/gebrauchtwagenboerse"
+
+    def _build_url(self, filters: dict, page: int = 1) -> str:
+        query_text = " ".join(str(part).strip() for part in [filters.get("make"), filters.get("model")] if part)
+        params = {
+            "isNavigation": "true",
+            "page": page,
+        }
+
+        if query_text:
+            params["keyword"] = query_text
+        if filters.get("min_price"):
+            params["PRICE_FROM"] = filters["min_price"]
+        if filters.get("max_price"):
+            params["PRICE_TO"] = filters["max_price"]
+        if filters.get("min_year"):
+            params["YEAR_MODEL_FROM"] = filters["min_year"]
+        if filters.get("max_year"):
+            params["YEAR_MODEL_TO"] = filters["max_year"]
+        if filters.get("max_km"):
+            params["MILEAGE_TO"] = filters["max_km"]
+
+        return f"{self.BASE_URL}{self.SEARCH_PATH}?{urlencode(params)}"
+
+    async def scrape_listings(
+        self,
+        filters: dict,
+        max_pages: int = 2,
+        limit: int = DEFAULT_LIMIT,
+    ) -> list[dict]:
+        listings: list[dict] = []
+        seen_external_ids: set[str] = set()
+        seen_fingerprints: set[str] = set()
+        safe_limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
+
+        async with self:
+            for page_num in range(1, max_pages + 1):
+                if len(listings) >= safe_limit:
+                    break
+
+                url = self._build_url(filters, page=page_num)
+                logger.info("[willhaben] Fetch page %s: %s", page_num, url)
+                page = await self._get_page_with_retry(url)
+                if not page:
+                    break
+
+                await self._dismiss_consent_if_present(page)
+                await self._log_page_debug(page, page_num)
+                raw_items = await self._extract_search_items(page)
+                await page.close()
+
+                if not raw_items:
+                    logger.info("[willhaben] No listings found on page %s", page_num)
+                    break
+
+                for raw in raw_items:
+                    if len(listings) >= safe_limit:
+                        break
+
+                    parsed = self._parse_listing(raw)
+                    if parsed:
+                        external_id = parsed.get("external_id")
+                        if external_id in seen_external_ids:
+                            logger.info("[willhaben] Duplicate external_id skipped: %s", external_id)
+                            continue
+                        fingerprint = self._listing_fingerprint(parsed)
+                        if fingerprint and fingerprint in seen_fingerprints:
+                            logger.info("[willhaben] Duplicate fingerprint skipped: %s", fingerprint)
+                            continue
+                        seen_external_ids.add(external_id)
+                        if fingerprint:
+                            seen_fingerprints.add(fingerprint)
+                        listings.append(self.normalize(parsed))
+
+                logger.info("[willhaben] Collected %s/%s listings", len(listings), safe_limit)
+                await asyncio.sleep(2)
+
+        return listings
+
+    async def scrape_detail(self, url: str) -> dict:
+        async with self:
+            page = await self._get_page_with_retry(url)
+            if not page:
+                return {}
+
+            data = await page.evaluate("""
+                () => {
+                    const clean = (value) => value?.replace(/\\s+/g, ' ')?.trim() || '';
+                    const images = Array.from(document.querySelectorAll('img'))
+                        .map(img => img.currentSrc || img.src || img.getAttribute('data-src'))
+                        .filter(src => src && !src.includes('logo') && !src.startsWith('data:'))
+                        .slice(0, 20);
+                    const features = Array.from(document.querySelectorAll('li, [data-testid*="attribute"], [data-testid*="detail"]'))
+                        .map(el => clean(el.textContent))
+                        .filter(Boolean)
+                        .slice(0, 50);
+                    const description = clean(document.querySelector('[data-testid*="description"], [class*="description"]')?.textContent);
+                    return { description, features, images };
+                }
+            """)
+
+            await page.close()
+            return data
+
+    async def _get_page_with_retry(self, url: str):
+        for attempt in range(1, MAX_RETRIES + 1):
+            page = await self.get_page(url)
+            if page:
+                return page
+            if attempt < MAX_RETRIES:
+                delay = 2 * attempt
+                logger.warning("[willhaben] Retry %s/%s in %ss", attempt, MAX_RETRIES, delay)
+                await asyncio.sleep(delay)
         return None
-    try:
-        return json.loads(match.group(1))
-    except Exception as e:
-        print(f"[Willhaben] JSON parse greška: {e}")
-        return None
 
-
-def _extract_listings_from_next_data(data: dict) -> list:
-    try:
-        page_props = data.get("props", {}).get("pageProps", {})
-        candidates = [
-            page_props.get("searchResult", {}).get("advertSummaryList", {}).get("advertSummary", []),
-            page_props.get("advertSummaryList", {}).get("advertSummary", []),
-            page_props.get("listings", []),
-            page_props.get("results", []),
+    async def _dismiss_consent_if_present(self, page) -> bool:
+        selectors = [
+            "#didomi-notice-agree-button",
+            "button:has-text('Alle akzeptieren')",
+            "button:has-text('Akzeptieren')",
+            "button:has-text('Zustimmen')",
+            "button:has-text('Accept all')",
         ]
-        for c in candidates:
-            if c:
-                return c
-        print(f"[Willhaben] pageProps ključevi: {list(page_props.keys())[:15]}")
-        return []
-    except Exception as e:
-        print(f"[Willhaben] Greška ekstrakcije: {e}")
-        return []
-
-
-def _parse_price(val) -> float | None:
-    if val is None:
-        return None
-    try:
-        s = str(val).strip()
-        s = re.sub(r"[€EUR\s/Monat]", "", s).strip()
-        if not s:
-            return None
-        if "," not in s and "." in s:
-            parts = s.split(".")
-            if len(parts[-1]) == 3:
-                s = s.replace(".", "")
-        else:
-            s = s.replace(".", "").replace(",", ".")
-        s = re.sub(r"[^\d.]", "", s)
-        if not s:
-            return None
-        price = float(s)
-        if price < 500:
-            return None
-        return price
-    except Exception:
-        return None
-
-
-def _parse_int(val):
-    if val is None:
-        return None
-    try:
-        cleaned = re.sub(r"[^\d]", "", str(val))
-        return int(cleaned) if cleaned else None
-    except Exception:
-        return None
-
-
-def _normalize_fuel(val):
-    if not val:
-        return None
-    val = val.lower().strip()
-    mapping = {
-        "diesel": "diesel", "petrol": "petrol", "benzin": "petrol",
-        "benzine": "petrol", "electric": "electric", "elektro": "electric",
-        "hybrid": "hybrid", "phev": "hybrid", "lpg": "lpg",
-    }
-    for key, norm in mapping.items():
-        if key in val:
-            return norm
-    return val
-
-
-def _normalize_transmission(val):
-    if not val:
-        return None
-    val = val.lower().strip()
-    if any(w in val for w in ["automatic", "automat", "automatik", "dsg", "cvt"]):
-        return "automatic"
-    if any(w in val for w in ["manual", "manuell", "schaltgetriebe"]):
-        return "manual"
-    return val
-
-
-def _get_attr(attributes, name):
-    for attr in attributes:
-        if attr.get("name") == name:
-            vals = attr.get("values", [])
-            return vals[0] if vals else None
-    return None
-
-
-async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> tuple[list, str, str | None]:
-    """Dohvati sve slike i kontakt tip sa stranice oglasa."""
-    images = []
-    contact_type = "unknown"
-    contact_url = None
-    try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            if resp.status != 200:
-                return images
-            html = await resp.text()
-            next_data = _extract_next_data(html)
-            if not next_data:
-                return images
-
-            # Pokušaj naći sve slike u __NEXT_DATA__
-            props = next_data.get("props", {}).get("pageProps", {})
-            advert = props.get("advert", props.get("advertDetails", props.get("advertSummary", {})))
-
-            attrs = advert.get("attributes", {}).get("attribute", [])
-            all_imgs = _get_attr(attrs, "ALL_IMAGE_URLS")
-            if all_imgs:
-                paths = all_imgs.split(";")
-                images = [f"{IMG_BASE}{p.strip()}" for p in paths if p.strip()]
-
-            # Fallback: traži u advertImageList
-            if not images:
-                img_list = advert.get("advertImageList", {}).get("advertImage", [])
-                for img in img_list:
-                    ref = img.get("reference")
-                    if ref:
-                        images.append(f"{IMG_BASE}{ref}")
-
-            # Fallback: traži MMO putanje u HTML-u
-            if not images:
-                mmo_paths = re.findall(r'"reference"\s*:\s*"([^"]+\.jpg)"', html)
-                seen = set()
-                for p in mmo_paths:
-                    if p not in seen:
-                        seen.add(p)
-                        images.append(f"{IMG_BASE}{p}")
-
-            # Detekcija kontakt tipa
-            if re.search(r'mailto:', html):
-                contact_type = "email"
-                m = re.search(r'mailto:([^\s"\'<>]+)', html)
-                if m:
-                    contact_url = m.group(0)
-            elif re.search(r'(H[aä]ndler\s+kontaktieren|Kontakt aufnehmen|open-contact|/contact)', html, re.IGNORECASE):
-                contact_type = "form"
-                m = re.search(r'href=["\']([^"\']*(?:open-contact|/contact|send-message)[^"\']*)["\']', html, re.IGNORECASE)
-                if m:
-                    raw = m.group(1)
-                    contact_url = f"https://www.willhaben.at{raw}" if raw.startswith("/") else raw
-            elif re.search(r'tel:', html):
-                contact_type = "phone"
-                m = re.search(r'tel:([^\s"\'<>]+)', html)
-                if m:
-                    contact_url = m.group(0)
-
-    except Exception as e:
-        print(f"[Willhaben] Detail greška {url}: {e}")
-    return images, contact_type, contact_url
-
-
-def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown", contact_url: str = None) -> dict | None:
-    try:
-        attrs = ad.get("attributes", {}).get("attribute", [])
-        def g(name):
-            return _get_attr(attrs, name)
-
-        ad_id        = str(ad.get("id", ""))
-        make         = g("CAR_MODEL/MAKE")
-        model        = g("CAR_MODEL/MODEL")
-        variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
-        year_str     = g("YEAR_MODEL") or g("YEAR")
-        price_str    = g("PRICE") or g("PRICE_FOR_DISPLAY")
-        mileage_str  = g("MILEAGE")
-        fuel         = g("ENGINE/FUEL_RESOLVED") or g("ENGINE/FUEL") or ""
-        transmission = g("TRANSMISSION_RESOLVED") or g("TRANSMISSION") or ""
-        body         = g("CAR_TYPE") or ""
-        power        = g("ENGINE/EFFECT") or ""
-        color        = g("EXTERIORCOLOURMAIN") or ""
-        city         = g("LOCATION") or g("DISTRICT") or ""
-        country      = g("COUNTRY") or "AT"
-        seo_url      = g("SEO_URL") or ""
-        description  = ad.get("description", "") or ""
-
-        year = None
-        if year_str:
+        for selector in selectors:
             try:
-                m = re.search(r'(\d{4})', str(year_str))
-                if m:
-                    year = int(m.group(1))
+                button = page.locator(selector).first
+                if await button.count():
+                    await button.click(timeout=3000)
+                    logger.info("[willhaben] Cookie/consent wall appeared: yes, accepted via %s", selector)
+                    await page.wait_for_timeout(1000)
+                    return True
             except Exception:
-                pass
-        if not year:
-            ez = g("EZ") or g("REGISTRATION_DATE") or ""
-            if ez:
-                m = re.search(r'(\d{4})', str(ez))
-                if m:
-                    year = int(m.group(1))
+                continue
 
-        price = _parse_price(price_str)
-        if price is None:
+        appeared = await self._consent_wall_present(page)
+        logger.info("[willhaben] Cookie/consent wall appeared: %s", "yes" if appeared else "no")
+        return appeared
+
+    async def _consent_wall_present(self, page) -> bool:
+        return await page.evaluate("""
+            () => Boolean(
+                document.querySelector('#didomi-notice') ||
+                document.querySelector('[id*="consent"]') ||
+                document.querySelector('[class*="consent"]') ||
+                document.body?.innerText?.toLowerCase().includes('cookie') ||
+                document.body?.innerText?.toLowerCase().includes('datenschutz')
+            )
+        """)
+
+    async def _log_page_debug(self, page, page_num: int) -> None:
+        title = await page.title()
+        status = getattr(page, "autoai_status", None)
+        final_url = page.url
+        counts = await page.evaluate("""
+            () => {
+                const selectors = [
+                    'article',
+                    '[data-testid*="search-result"]',
+                    '[data-testid*="result"]',
+                    '[data-testid*="ad"]',
+                    '[class*="SearchResult"]',
+                    'a[href*="/iad/gebrauchtwagen/d/auto/"]',
+                    'a[href*="/iad/gebrauchtwagen/"]'
+                ];
+                return Object.fromEntries(selectors.map(selector => [selector, document.querySelectorAll(selector).length]));
+            }
+        """)
+        logger.info("[willhaben] HTTP status: %s", status)
+        logger.info("[willhaben] Final URL: %s", final_url)
+        logger.info("[willhaben] Page title: %s", title)
+        logger.info("[willhaben] Candidate selector counts: %s", counts)
+
+        if settings.DEBUG:
+            await self._write_debug_snapshot(page, page_num)
+
+    async def _write_debug_snapshot(self, page, page_num: int) -> None:
+        try:
+            debug_dir = Path("/app/debug/willhaben")
+            if not debug_dir.exists():
+                debug_dir = Path.cwd() / "debug" / "willhaben"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            path = debug_dir / f"willhaben_page_{page_num}_{stamp}.html"
+            path.write_text(await page.content(), encoding="utf-8")
+            logger.info("[willhaben] Debug HTML snapshot: %s", path)
+        except Exception as exc:
+            logger.warning("[willhaben] Debug HTML snapshot failed: %s", exc)
+
+    async def _extract_search_items(self, page) -> list[dict]:
+        return await page.evaluate("""
+            () => {
+                const clean = (value) => value?.replace(/\\s+/g, ' ')?.trim() || '';
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    return style && style.display !== 'none' && style.visibility !== 'hidden' && el.getClientRects().length > 0;
+                };
+                const pickText = (root, selectors) => {
+                    for (const selector of selectors) {
+                        const el = root.querySelector(selector);
+                        if (!isVisible(el)) continue;
+                        const value = clean(el.textContent);
+                        if (value) return value;
+                    }
+                    return '';
+                };
+                const pickPrice = (root) => {
+                    const selectors = [
+                        '[data-testid*="price"]',
+                        '[class*="price"]',
+                        '[class*="Price"]'
+                    ];
+                    for (const selector of selectors) {
+                        for (const el of Array.from(root.querySelectorAll(selector))) {
+                            if (!isVisible(el)) continue;
+                            const value = clean(el.textContent || el.getAttribute('aria-label') || el.getAttribute('title'));
+                            if (!value || !/[€]|eur/i.test(value)) continue;
+                            return value;
+                        }
+                    }
+                    const text = clean(root.textContent);
+                    return text.match(/(?:€|EUR)\\s*\\d[\\d\\s.,']+|\\d[\\d\\s.,']+\\s*(?:€|EUR)/i)?.[0] || '';
+                };
+                const pickMileage = (root) => {
+                    const text = clean(root.textContent);
+                    return text.match(/\\b\\d[\\d\\s.,]{0,12}\\s*km\\b/i)?.[0] || '';
+                };
+                const pickYear = (root) => {
+                    const text = clean(root.textContent);
+                    return text.match(/\\b(19|20)\\d{2}\\b/)?.[0] || '';
+                };
+                const titleFromUrl = (url) => {
+                    try {
+                        const path = new URL(url, location.href).pathname;
+                        const last = path.split('/').filter(Boolean).pop() || '';
+                        return clean(last
+                            .replace(/-\\d{6,}.*$/, '')
+                            .replace(/[-_]+/g, ' ')
+                            .replace(/\\b\\w/g, c => c.toUpperCase()));
+                    } catch (_) {
+                        return '';
+                    }
+                };
+                const canonicalUrl = (url) => {
+                    try {
+                        const parsed = new URL(url, location.href);
+                        parsed.hash = '';
+                        parsed.search = '';
+                        return parsed.href.replace(/\\/$/, '');
+                    } catch (_) {
+                        return String(url || '').split('#')[0].split('?')[0].replace(/\\/$/, '');
+                    }
+                };
+                const idFromUrl = (url) => {
+                    const value = String(url || '');
+                    return value.match(/(?:-|\\/)(\\d{6,})(?:[\\/?#.]|$)/)?.[1]
+                        || value.match(/[?&](?:id|adId|objectId)=(\\d{6,})/)?.[1]
+                        || value.match(/(\\d{6,})/)?.[1]
+                        || '';
+                };
+                const bestCardForLink = (link) => {
+                    let node = link;
+                    for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+                        const text = clean(node.textContent);
+                        const listingLinks = Array.from(node.querySelectorAll('a[href*="/iad/gebrauchtwagen/d/auto/"], a[href*="/iad/gebrauchtwagen/"]'))
+                            .map(a => a.href)
+                            .filter(Boolean);
+                        const uniqueLinks = Array.from(new Set(listingLinks));
+                        const looksLikeCard = node.matches?.('article, [data-testid*="search-result"], [data-testid*="result"], [data-testid*="ad"], [class*="Card"], [class*="Item"], [class*="SearchResult"], li, div');
+                        if (looksLikeCard && uniqueLinks.length === 1 && uniqueLinks[0] === link.href && text.length >= 20 && text.length <= 1200) {
+                            return { card: node, scoped: true };
+                        }
+                        if (uniqueLinks.length > 1) break;
+                    }
+                    return { card: link, scoped: false };
+                };
+                const toItem = (card, linkArg = null, scoped = true) => {
+                    const link = linkArg || card.querySelector('a[href*="/iad/gebrauchtwagen/d/auto/"], a[href*="/iad/gebrauchtwagen/"]');
+                    const url = canonicalUrl(link?.href || '');
+                    const rawText = scoped ? clean(card.textContent) : '';
+                    const details = scoped ? Array.from(card.querySelectorAll('li, span, [data-testid*="attribute"], [data-testid*="detail"], [class*="Attribute"]'))
+                        .filter(isVisible)
+                        .map(el => clean(el.textContent))
+                        .filter(Boolean)
+                        .slice(0, 30) : [];
+                    const images = scoped ? Array.from(card.querySelectorAll('img'))
+                        .map(img => img.currentSrc || img.src || img.getAttribute('data-src'))
+                        .filter(src => src && !src.includes('logo') && !src.startsWith('data:'))
+                        .slice(0, 10) : [];
+                    const title = (scoped ? pickText(card, [
+                        'h2',
+                        'h3',
+                        '[data-testid*="title"]',
+                        '[class*="title"]',
+                        '[class*="Title"]'
+                    ]) : '') || clean(link?.textContent || link?.getAttribute('aria-label') || link?.getAttribute('title')) || titleFromUrl(link?.href || '');
+
+                    return {
+                        external_id: idFromUrl(url) || card.getAttribute('data-adid') || card.getAttribute('data-id') || '',
+                        title,
+                        url,
+                        price_raw: scoped ? pickPrice(card) : '',
+                        mileage_raw: scoped ? pickMileage(card) : '',
+                        year_raw: scoped ? pickYear(card) : '',
+                        details,
+                        images,
+                        raw_text: rawText,
+                        location_raw: scoped ? pickText(card, [
+                            '[data-testid*="location"]',
+                            '[class*="location"]',
+                            '[class*="Location"]'
+                        ]) : '',
+                    };
+                };
+
+                let cards = Array.from(document.querySelectorAll('article, [data-testid*="search-result"], [data-testid*="result"], [class*="SearchResult"]'))
+                    .filter(card => {
+                        const links = Array.from(card.querySelectorAll('a[href*="/iad/gebrauchtwagen/d/auto/"], a[href*="/iad/gebrauchtwagen/"]'))
+                            .map(a => a.href);
+                        return new Set(links).size === 1;
+                    });
+
+                const cardItems = cards.map(card => toItem(card)).filter(item => item.url);
+                const linkItems = Array.from(document.querySelectorAll('a[href*="/iad/gebrauchtwagen/d/auto/"], a[href*="/iad/gebrauchtwagen/"]'))
+                    .filter(isVisible)
+                    .map(link => {
+                        const candidate = bestCardForLink(link);
+                        return toItem(candidate.card, link, candidate.scoped);
+                    })
+                    .filter(item => item.url);
+                const seenIds = new Set();
+                const domItems = [...cardItems, ...linkItems].filter(item => {
+                    const dedupeKey = item.external_id || item.url;
+                    if (seenIds.has(dedupeKey)) return false;
+                    seenIds.add(dedupeKey);
+                    return true;
+                });
+                if (domItems.length) return domItems;
+
+                const scriptItems = [];
+                for (const script of Array.from(document.querySelectorAll('script'))) {
+                    const text = script.textContent || '';
+                    if (!text.includes('/iad/gebrauchtwagen/') || !text.includes('price')) continue;
+                    try {
+                        const jsonText = text.trim().replace(/^window\\.__.*?=\\s*/, '').replace(/;$/, '');
+                        const parsed = JSON.parse(jsonText);
+                        const seen = new Set();
+                        const walk = (node) => {
+                            if (!node || typeof node !== 'object') return;
+                            const url = node.url || node.seoUrl || node.href || node.adUrl;
+                            const title = node.name || node.title || node.heading;
+                            if (typeof url === 'string' && url.includes('/iad/gebrauchtwagen/') && title && !seen.has(url)) {
+                                seen.add(url);
+                                scriptItems.push({
+                                    external_id: String(node.id || node.adId || node.uuid || ''),
+                                    title: String(title || ''),
+                                    url,
+                                    price_raw: String(node.price || node.priceForDisplay || node.displayPrice || ''),
+                                    mileage_raw: String(node.mileage || node.mileageForDisplay || ''),
+                                    year_raw: String(node.year || node.firstRegistration || ''),
+                                    details: [],
+                                    images: Array.isArray(node.images) ? node.images.map(img => img.url || img.src || img).filter(Boolean).slice(0, 10) : [],
+                                    location_raw: String(node.location || node.address || ''),
+                                });
+                            }
+                            for (const value of Object.values(node)) {
+                                if (Array.isArray(value)) value.slice(0, 100).forEach(walk);
+                                else if (value && typeof value === 'object') walk(value);
+                            }
+                        };
+                        walk(parsed);
+                    } catch (_) {}
+                }
+                return scriptItems;
+            }
+        """)
+
+    def _parse_listing(self, raw: dict) -> dict | None:
+        url = self._canonical_url(urljoin(self.BASE_URL, raw.get("url") or ""))
+        external_id = self._external_id(raw, url)
+        if not external_id or not url:
+            logger.info("[willhaben] Candidate skipped url=%r external_id=%r", url, external_id)
             return None
 
-        # Slike: detail > search thumbnail
-        if detail_images:
-            images = detail_images
-        else:
-            images = []
-            all_imgs = g("ALL_IMAGE_URLS")
-            if all_imgs:
-                paths = all_imgs.split(";")
-                images = [f"{IMG_BASE}{p.strip()}" for p in paths if p.strip()]
-            if not images:
-                for img in (ad.get("advertImageList", {}).get("advertImage", []) or []):
-                    ref = img.get("reference")
-                    if ref:
-                        images.append(f"{IMG_BASE}{ref}")
-
-        # URL
-        if seo_url:
-            if seo_url.startswith("/iad"):
-                url = f"https://www.willhaben.at{seo_url}"
-            elif seo_url.startswith("/"):
-                url = f"https://www.willhaben.at/iad{seo_url}"
-            else:
-                url = f"https://www.willhaben.at/iad/{seo_url}"
-        else:
-            url = f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}"
-
-        if not ad_id or not make:
+        raw_text = raw.get("raw_text") or " ".join(raw.get("details", []))
+        title = self._clean_title(raw.get("title")) or self._title_from_text(raw_text) or self._title_from_url(url)
+        if not title:
+            logger.info("[willhaben] Candidate skipped url=%r reason=missing title raw_text=%r", url, raw_text[:300])
             return None
+
+        make, model = self._parse_title(title)
+        raw_price = raw.get("price_raw")
+        raw_mileage = (
+            raw.get("mileage_raw")
+            or self._find_detail(raw.get("details", []), r"\b\d[\d\s.,]{0,12}\s*km\b")
+            or self._find_match(raw_text, r"\b\d[\d\s.,]{0,12}\s*km\b")
+        )
+        raw_price = raw_price or self._find_match(raw_text, r"(?:€|EUR)\s*\d[\d\s.,']+|\d[\d\s.,']+\s*(?:€|EUR)")
+        price = self._parse_price_eur(raw_price)
+        mileage = self._parse_mileage(raw_mileage)
+        year = self._parse_year(raw.get("year_raw")) or self._parse_year_from_details(raw.get("details", [])) or self._parse_year(raw_text)
+        fuel = self._parse_fuel(raw.get("details", []))
+        transmission = self._parse_transmission(raw.get("details", []))
+
+        logger.info("[willhaben] Candidate URL: %s", url)
+        logger.info("[willhaben] Candidate raw text: %r", raw_text[:500])
+        logger.info("[willhaben] Parsed title: %r", title)
+        logger.info("[willhaben] Price raw=%r parsed=%s", raw_price, price)
+        logger.info("[willhaben] Mileage raw=%r parsed=%s", raw_mileage, mileage)
 
         return {
-            "external_id":     f"wh_{ad_id}",
-            "source":          "willhaben",
-            "make":            make,
-            "model":           model,
-            "variant":         variant,
-            "year":            year,
-            "price":           price,
-            "currency":        "EUR",
-            "mileage":         _parse_int(mileage_str),
-            "fuel_type":       _normalize_fuel(fuel),
-            "transmission":    _normalize_transmission(transmission),
-            "body_type":       body or None,
-            "engine_power_kw": _parse_int(power),
-            "color":           color.strip() or None,
-            "country":         "AT",
-            "city":            city.strip() or None,
-            "description":     description.strip() or None,
-            "images":          images,
-            "url":             url,
-            "contact_type":    contact_type,
-            "contact_url":     contact_url,
+            "external_id": external_id,
+            "make": make,
+            "model": model,
+            "variant": title or None,
+            "year": year,
+            "price": price,
+            "mileage": mileage,
+            "fuel_type": fuel,
+            "transmission": transmission,
+            "country": "AT",
+            "city": self._parse_city(raw.get("location_raw", ""), raw.get("details", [])),
+            "images": raw.get("images", []),
+            "url": url,
+            "condition": "used",
         }
-    except Exception as e:
-        print(f"[Willhaben] Parse greška: {e}")
+
+    def _external_id(self, raw: dict, url: str) -> str | None:
+        match = (
+            re.search(r"(?:-|/)(\d{6,})(?:[/?#.]|$)", url)
+            or re.search(r"[?&](?:id|adId|objectId)=(\d{6,})", url)
+            or re.search(r"(\d{6,})", url)
+        )
+        candidate = match.group(1) if match else str(raw.get("external_id") or "").strip()
+        candidate = re.sub(r"[^a-zA-Z0-9_-]", "", candidate)
+        return f"wh_{candidate}" if candidate else None
+
+    def _canonical_url(self, url: str) -> str:
+        parsed = urlsplit(url)
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
+
+    def _clean_title(self, value: str | None) -> str | None:
+        if not value:
+            return None
+        title = re.sub(r"\s+", " ", str(value)).strip()
+        title = re.sub(r"\b(€|EUR)\s*\d[\d\s.,']+.*$", "", title).strip()
+        return title[:120] if title else None
+
+    def _title_from_text(self, value: str | None) -> str | None:
+        if not value:
+            return None
+        text = re.sub(r"\s+", " ", str(value)).strip()
+        if not text:
+            return None
+        text = re.split(r"(?:€|EUR)\s*\d|\d[\d\s.,']+\s*(?:€|EUR)|\b\d[\d\s.,]{0,12}\s*km\b", text, maxsplit=1, flags=re.I)[0]
+        return self._clean_title(text)
+
+    def _title_from_url(self, url: str) -> str | None:
+        path = url.split("?", 1)[0].rstrip("/")
+        slug = path.rsplit("/", 1)[-1]
+        slug = re.sub(r"-\d{6,}.*$", "", slug)
+        slug = re.sub(r"[-_]+", " ", slug).strip()
+        if not slug:
+            return None
+        return " ".join(word.capitalize() for word in slug.split())[:120]
+
+    def _parse_title(self, title: str) -> tuple[str | None, str | None]:
+        known_makes = [
+            "Mercedes-Benz", "Volkswagen", "Alfa Romeo", "Land Rover",
+            "BMW", "Audi", "Ford", "Toyota", "Honda", "Renault", "Peugeot",
+            "Opel", "Skoda", "Seat", "Kia", "Hyundai", "Mazda", "Volvo",
+            "Porsche", "Fiat", "Citroen", "Citroën", "Dacia", "Nissan",
+            "Mitsubishi", "Tesla",
+        ]
+        lowered = title.lower()
+        for make in known_makes:
+            if lowered.startswith(make.lower()) or f" {make.lower()} " in f" {lowered} ":
+                rest = re.sub(re.escape(make), "", title, count=1, flags=re.I).strip()
+                words = rest.split()
+                model = " ".join(words[:2]).strip() if words else None
+                return make, model
+        words = title.split()
+        return (words[0], words[1] if len(words) > 1 else None) if words else (None, None)
+
+    def _parse_price_eur(self, value: str | None) -> int | None:
+        if not value:
+            return None
+        match = re.search(r"(\d[\d\s.,']*)", str(value))
+        if not match:
+            return None
+        digits = re.sub(r"\D", "", match.group(1))
+        if not digits:
+            return None
+        price = int(digits)
+        if price < 100 or price > 5_000_000:
+            logger.warning("[willhaben] Ignoring invalid price raw=%r parsed=%s", value, price)
+            return None
+        return price
+
+    def _parse_mileage(self, value: str | None) -> int | None:
+        if not value:
+            return None
+        match = re.search(r"\b(\d[\d\s.,]{0,12})\s*km\b", str(value), re.I)
+        if not match:
+            return None
+        digits = re.sub(r"\D", "", match.group(1))
+        if not digits:
+            return None
+        mileage = int(digits)
+        if mileage < 0 or mileage > 2_000_000:
+            logger.warning("[willhaben] Ignoring invalid mileage raw=%r parsed=%s", value, mileage)
+            return None
+        return mileage
+
+    def _parse_year(self, value: str | None) -> int | None:
+        if not value:
+            return None
+        match = re.search(r"\b(19|20)\d{2}\b", str(value))
+        return int(match.group(0)) if match else None
+
+    def _parse_year_from_details(self, details: list[str]) -> int | None:
+        for detail in details:
+            year = self._parse_year(detail)
+            if year:
+                return year
         return None
 
+    def _parse_fuel(self, details: list[str]) -> str | None:
+        for detail in details:
+            lowered = detail.lower()
+            if any(word in lowered for word in ["diesel", "benzin", "petrol", "gasoline", "elektro", "electric", "hybrid", "lpg", "cng"]):
+                return detail
+        return None
 
-async def _scrape_page(session, url, params, category_name, all_listings, seen_ids):
-    """Scrape jedne stranice i dohvati detalje paralelno."""
-    try:
-        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-            if resp.status != 200:
-                return False
-            html = await resp.text()
-            next_data = _extract_next_data(html)
-            if not next_data:
-                return False
-            adverts = _extract_listings_from_next_data(next_data)
-            if not adverts:
-                return False
+    def _parse_transmission(self, details: list[str]) -> str | None:
+        for detail in details:
+            lowered = detail.lower()
+            if any(word in lowered for word in ["automatik", "automatic", "schaltgetriebe", "manuell", "manual"]):
+                return detail
+        return None
 
-            # Dohvati URL-ove oglasa
-            items_with_urls = []
-            for ad in adverts:
-                attrs = ad.get("attributes", {}).get("attribute", [])
-                seo_url = _get_attr(attrs, "SEO_URL") or ""
-                if seo_url.startswith("/iad"):
-                    detail_url = f"https://www.willhaben.at{seo_url}"
-                elif seo_url.startswith("/"):
-                    detail_url = f"https://www.willhaben.at/iad{seo_url}"
-                elif seo_url:
-                    detail_url = f"https://www.willhaben.at/iad/{seo_url}"
-                else:
-                    ad_id = str(ad.get("id", ""))
-                    detail_url = f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}"
-                items_with_urls.append((ad, detail_url))
+    def _parse_city(self, location: str, details: list[str]) -> str | None:
+        candidates = [location, *details]
+        for candidate in candidates:
+            cleaned = re.sub(r"\s+", " ", str(candidate or "")).strip()
+            if not cleaned:
+                continue
+            city = parse_city(cleaned, "AT")
+            if city:
+                return city
+            if re.search(r"\b(österreich|austria|wien|graz|linz|salzburg|innsbruck|klagenfurt|st\.?\s*pölten)\b", cleaned, re.I):
+                return cleaned[:100]
+        return None
 
-            # Dohvati slike paralelno (max 5)
-            semaphore = asyncio.Semaphore(5)
-            async def fetch_imgs(ad, detail_url):
-                async with semaphore:
-                    await asyncio.sleep(0.3)
-                    return await _fetch_detail_images(session, detail_url)
+    def _find_detail(self, details: list[str], pattern: str) -> str | None:
+        for detail in details:
+            if re.search(pattern, detail, re.I):
+                return detail
+        return None
 
-            detail_results = await asyncio.gather(
-                *[fetch_imgs(ad, du) for ad, du in items_with_urls],
-                return_exceptions=True
-            )
+    def _find_match(self, value: str | None, pattern: str) -> str | None:
+        if not value:
+            return None
+        match = re.search(pattern, str(value), re.I)
+        return match.group(0) if match else None
 
-            before = len(all_listings)
-            for (ad, _), result in zip(items_with_urls, detail_results):
-                if isinstance(result, Exception) or not isinstance(result, tuple):
-                    det_imgs, c_type, c_url = [], "unknown", None
-                else:
-                    det_imgs, c_type, c_url = result
-                parsed = _parse_ad(ad, det_imgs if det_imgs else None, c_type, c_url)
-                if parsed and parsed["external_id"] not in seen_ids:
-                    seen_ids.add(parsed["external_id"])
-                    all_listings.append(parsed)
-
-            added = len(all_listings) - before
-            print(f"[Willhaben] {category_name}: +{added} | Ukupno: {len(all_listings)}")
-            return len(adverts) >= 10
-
-    except Exception as e:
-        print(f"[Willhaben] Greška {category_name}: {e}")
-        return False
-
-
-class WillhabenScraper:
-    async def scrape_listings(self, filters: dict, max_pages: int = 5) -> list:
-        all_listings = []
-        seen_ids = set()
-
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
-
-            # ── Kategorije ──────────────────────────────────────────
-            for category in CATEGORIES:
-                url = f"{BASE_URL}/{category}"
-                print(f"[Willhaben] Kategorija: {category}")
-                for page in range(1, max_pages + 1):
-                    params = {}
-                    if page > 1:
-                        params["page"] = page
-                    if filters.get("min_price"):
-                        params["PRICE_FROM"] = filters["min_price"]
-                    if filters.get("max_price"):
-                        params["PRICE_TO"] = filters["max_price"]
-                    if filters.get("min_year"):
-                        params["YEAR_FROM"] = filters["min_year"]
-                    if filters.get("max_year"):
-                        params["YEAR_TO"] = filters["max_year"]
-                    if filters.get("max_km"):
-                        params["MILEAGE_TO"] = filters["max_km"]
-                    has_more = await _scrape_page(session, url, params, f"{category} str.{page}", all_listings, seen_ids)
-                    if not has_more:
-                        break
-                    await asyncio.sleep(1.5)
-
-            # ── CAR_TYPE stranice ───────────────────────────────────
-            for car_type in CAR_TYPES:
-                print(f"[Willhaben] CAR_TYPE: {car_type}")
-                for page in range(1, max_pages + 1):
-                    params = {"CAR_TYPE": car_type}
-                    if page > 1:
-                        params["page"] = page
-                    if filters.get("min_price"):
-                        params["PRICE_FROM"] = filters["min_price"]
-                    if filters.get("max_price"):
-                        params["PRICE_TO"] = filters["max_price"]
-                    if filters.get("min_year"):
-                        params["YEAR_FROM"] = filters["min_year"]
-                    if filters.get("max_year"):
-                        params["YEAR_TO"] = filters["max_year"]
-                    if filters.get("max_km"):
-                        params["MILEAGE_TO"] = filters["max_km"]
-                    has_more = await _scrape_page(session, BASE_URL_TYPES, params, f"CAR_TYPE={car_type} str.{page}", all_listings, seen_ids)
-                    if not has_more:
-                        break
-                    await asyncio.sleep(1.5)
-
-        print(f"[Willhaben] Završeno — {len(all_listings)} oglasa")
-        return all_listings
+    def _listing_fingerprint(self, data: dict) -> str | None:
+        images = data.get("images") or []
+        first_image = str(images[0]) if images else ""
+        title = re.sub(r"\W+", "", str(data.get("variant") or "").lower())
+        price = str(data.get("price") or "")
+        mileage = str(data.get("mileage") or "")
+        if not first_image or not title or not price:
+            return None
+        return "|".join([title, first_image, price, mileage])

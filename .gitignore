@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+celerybeat-schedule
+backend/debug/
+
+node_modules/
+.next/
+dist/
+build/
+
+.env
+.env.*
+!.env.example

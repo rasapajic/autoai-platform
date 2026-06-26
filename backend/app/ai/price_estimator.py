@@ -187,6 +187,7 @@ def train_from_database():
     """
     from app.core.db import SessionLocal
     from app.models import Listing
+    from app.services.special_vehicle import is_special_vehicle
 
     db = SessionLocal()
     try:
@@ -200,6 +201,8 @@ def train_from_database():
         if len(listings) < 500:
             print(f"⚠️ Samo {len(listings)} oglasa. Preporučujemo min. 5000.")
 
+        eligible_listings = [listing for listing in listings if not is_special_vehicle(listing)]
+
         df = pd.DataFrame([{
             "make":         l.make or "",
             "model":        l.model or "",
@@ -210,7 +213,7 @@ def train_from_database():
             "country":      l.country or "",
             "engine_cc":    l.engine_cc or 0,
             "price":        float(l.price),
-        } for l in listings])
+        } for l in eligible_listings])
 
         estimator = PriceEstimator()
         result = estimator.train(df)

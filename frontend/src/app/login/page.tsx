@@ -1,71 +1,122 @@
 'use client'
-import { useState } from 'react'
+
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { login } from '@/lib/api'
 
 export default function LoginPage() {
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState('')
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  )
+}
 
-  const handleLogin = async (e: React.FormEvent) => {
+function LoginPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true); setError('')
+    setError('')
+    setLoading(true)
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
-      const res  = await fetch(`${apiBase}/users/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.detail || 'Greška pri prijavi'); return }
-      localStorage.setItem('autoai_token', data.access_token)
-      localStorage.setItem('autoai_email', data.user?.email || email)
-      window.location.href = '/search'
-    } catch { setError('Greška pri konekciji') }
-    finally { setLoading(false) }
+      const res = await login({ email, password })
+      localStorage.setItem('token', res.access_token)
+      router.push(searchParams.get('next') || '/account')
+    } catch (err: any) {
+      setError(err?.message || 'Login nije uspeo.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-      <div style={{ width:'100%', maxWidth:400 }}>
-        <h1 style={{ fontSize:26, fontFamily:'Syne,sans-serif', marginBottom:8, textAlign:'center' }}>
-          Prijava
-        </h1>
-        <p style={{ color:'var(--text3)', fontSize:14, textAlign:'center', marginBottom:32 }}>
-          Uloguj se da čuvaš pretrage i dobijaš alerte
-        </p>
-        <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:28 }}>
-          <div style={{ marginBottom:16 }}>
-            <label style={{ fontSize:12, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em' }}>EMAIL</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="tvoj@email.com"
-              style={{ width:'100%', boxSizing:'border-box' as any, marginTop:6,
-                background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8,
-                padding:'11px 14px', color:'var(--text)', fontSize:14, outline:'none' }} />
-          </div>
-          <div style={{ marginBottom:22 }}>
-            <label style={{ fontSize:12, color:'var(--text3)', fontWeight:600, letterSpacing:'.07em' }}>LOZINKA</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              style={{ width:'100%', boxSizing:'border-box' as any, marginTop:6,
-                background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8,
-                padding:'11px 14px', color:'var(--text)', fontSize:14, outline:'none' }} />
-          </div>
-          {error && <p style={{ color:'#EF4444', fontSize:13, marginBottom:14 }}>{error}</p>}
-          <button onClick={handleLogin} disabled={loading} style={{
-            width:'100%', padding:'13px', borderRadius:10,
-            background:'var(--accent)', color:'#fff',
-            border:'none', fontSize:15, fontWeight:700, cursor:'pointer',
-          }}>
-            {loading ? 'Prijavljivanje...' : 'Prijavi se'}
-          </button>
-          <p style={{ textAlign:'center', marginTop:18, fontSize:13, color:'var(--text3)' }}>
-            Nemaš nalog?{' '}
-            <a href="/register" style={{ color:'var(--accent)', fontWeight:600 }}>Registruj se</a>
+    <div style={{ padding: '48px 0 80px' }}>
+      <div className="container" style={{ maxWidth: 420 }}>
+        <h1 style={{ fontSize: 32, marginBottom: 8 }}>Login</h1>
+        <p style={{ color: 'var(--text2)', marginBottom: 24 }}>Pristupi nalogu i sačuvanim potragama.</p>
+
+        <form onSubmit={submit} style={{
+          background: 'var(--bg2)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', padding: 24,
+        }}>
+          <Field label="Email">
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={inputStyle} />
+          </Field>
+          <Field label="Lozinka">
+            <PasswordInput value={password} onChange={setPassword} />
+          </Field>
+          {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
+          <button disabled={loading} style={buttonStyle}>{loading ? 'Ulazim...' : 'Login'}</button>
+          <p style={{ color: 'var(--text3)', fontSize: 13, marginTop: 16 }}>
+            Nemaš nalog? <a href="/register" style={{ color: 'var(--accent)' }}>Registruj se</a>
           </p>
-        </div>
+        </form>
       </div>
     </div>
   )
+}
+
+function Field({ label, children }: { label: string, children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'block', marginBottom: 16 }}>
+      <span style={{ display: 'block', color: 'var(--text3)', fontSize: 12, marginBottom: 6 }}>{label.toUpperCase()}</span>
+      {children}
+    </div>
+  )
+}
+
+function PasswordInput({ value, onChange }: { value: string, onChange: (value: string) => void }) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        required
+        autoComplete="current-password"
+        style={{ ...inputStyle, paddingRight: 44 }}
+      />
+      <button
+        type="button"
+        aria-label={visible ? 'Sakrij lozinku' : 'Prikaži lozinku'}
+        title={visible ? 'Sakrij lozinku' : 'Prikaži lozinku'}
+        onClick={() => setVisible(!visible)}
+        style={{
+          position: 'absolute',
+          right: 8,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: 30,
+          height: 30,
+          border: 'none',
+          borderRadius: 6,
+          background: 'transparent',
+          color: 'var(--text2)',
+          cursor: 'pointer',
+          fontSize: 16,
+          lineHeight: 1,
+        }}
+      >
+        👁
+      </button>
+    </div>
+  )
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', background: 'var(--bg3)', border: '1px solid var(--border)',
+  borderRadius: 8, padding: '10px 12px', color: 'var(--text)', outline: 'none',
+}
+
+const buttonStyle: React.CSSProperties = {
+  width: '100%', padding: 12, border: 'none', borderRadius: 10,
+  background: 'var(--accent)', color: '#fff', fontWeight: 700,
 }

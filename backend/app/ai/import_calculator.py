@@ -7,7 +7,17 @@ from typing import Optional
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+_anthropic_client = None
+
+
+def get_anthropic_client():
+    global _anthropic_client
+    if not settings.ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY nije podesen")
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _anthropic_client
 
 
 class ImportCalcRequest(BaseModel):
@@ -168,7 +178,7 @@ Odgovori kratko i praktično na srpskom jeziku:
 
 Budi konkretan i praktičan. Max 200 reči."""
 
-    message = client.messages.create(
+    message = get_anthropic_client().messages.create(
         model="claude-opus-4-6",
         max_tokens=400,
         messages=[{"role": "user", "content": prompt}],

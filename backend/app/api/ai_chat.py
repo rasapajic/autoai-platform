@@ -12,12 +12,22 @@ from app.core.db import get_db
 from app.ai.import_calculator import ImportCalcRequest, calculate_import_cost, ai_import_advisor
 from app.ai.fraud_detector import check_listing_fraud, get_risk_badge
 from app.models import Listing
+from app.services.special_vehicle import is_special_vehicle_text
 
 router = APIRouter()
-client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+_anthropic_client = None
 
 _estimator = None
 _semantic  = None
+
+def get_anthropic_client():
+    global _anthropic_client
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY nije podesen")
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _anthropic_client
 
 def get_estimator():
     global _estimator
@@ -47,7 +57,7 @@ class QueryRequest(BaseModel):
 def parse_query(req: QueryRequest):
     if not req.query.strip():
         raise HTTPException(400, "Upit ne moze biti prazan")
-    message = client.messages.create(
+    message = get_anthropic_client().messages.create(
         model="claude-opus-4-6",
         max_tokens=300,
         system=PARSE_SYSTEM,
@@ -86,9 +96,18 @@ class EstimateRequest(BaseModel):
     make: str; model: str; year: int; mileage: int
     fuel_type: Optional[str] = None; transmission: Optional[str] = None
     country: Optional[str] = "DE"; engine_cc: Optional[int] = None
+    variant: Optional[str] = None; description: Optional[str] = None
 
 @router.post("/estimate-price")
 def estimate_price(req: EstimateRequest):
+    text = " ".join(str(value) for value in req.model_dump().values() if value)
+    if is_special_vehicle_text(text):
+        return {
+            "estimated_price": None,
+            "confidence": "excluded",
+            "reason": "Specijalna vozila su iskljucena iz procene trzista.",
+        }
+
     estimator = get_estimator()
     if not estimator.is_trained:
         raise HTTPException(503, "Model jos nije istreniran")

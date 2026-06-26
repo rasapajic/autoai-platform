@@ -7,6 +7,7 @@ from app.core.db import get_db
 from app.core.auth import get_current_user, get_optional_user
 from app.models import Listing, PriceHistory, Favorite
 from app.api.schemas import ListingDetail, PriceHistoryPoint, MessageResponse
+from app.services.purchase_rating import calculate_purchase_rating
 
 router = APIRouter()
 
@@ -25,7 +26,9 @@ def get_listing(
     if not listing:
         raise HTTPException(status_code=404, detail="Oglas nije pronađen")
 
-    return ListingDetail.model_validate(listing)
+    detail = ListingDetail.model_validate(listing)
+    detail.purchase_rating = calculate_purchase_rating(db, listing)
+    return detail
 
 
 @router.get("/{listing_id}/price-history", response_model=list[PriceHistoryPoint])
@@ -95,6 +98,7 @@ def get_similar(
             "country":      s.country,
             "images":       s.images[:1] if s.images else [],
             "price_rating": s.price_rating,
+            "special_vehicle": s.special_vehicle,
         }
         for s in similar
     ]
@@ -172,6 +176,7 @@ def compare_listings(
             "url":            l.url,
             "accident_free":  l.accident_free,
             "service_history": l.service_history,
+            "special_vehicle": l.special_vehicle,
         }
         for l in listings
     ]
