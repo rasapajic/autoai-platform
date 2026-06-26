@@ -66,7 +66,7 @@ services:
       - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD:-secret123}@postgres:5432/autoai
       - REDIS_URL=redis://redis:6379
       - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://192.168.8.174:3000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-promeniti-u-produkciji}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}

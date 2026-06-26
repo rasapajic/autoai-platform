@@ -41,9 +41,6 @@ export function formatApiError(err: any): string {
 async function api(path: string, opts?: RequestInit) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
   const url = `${getApiBase()}${path.startsWith('/') ? path : `/${path}`}`
-  if (path === '/users/login') {
-    console.info('[AutoAI API] login URL:', url)
-  }
   const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',

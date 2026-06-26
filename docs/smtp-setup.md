@@ -20,7 +20,9 @@ SMTP_PORT=587
 SMTP_USER=your-gmail-address@gmail.com
 SMTP_PASSWORD=your_16_character_app_password
 SMTP_FROM=AutoAI <your-gmail-address@gmail.com>
-FRONTEND_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=https://app.example.com
+# Optional legacy fallback:
+# FRONTEND_URL=https://app.example.com
 ```
 
 ## Send one test email
