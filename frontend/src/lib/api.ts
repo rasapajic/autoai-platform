@@ -1,4 +1,21 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const API_VERSION_PATH = '/api/v1'
+
+function getDefaultApiUrl() {
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:8000`
+  }
+  return ''
+}
+
+function buildApiBase(url: string | undefined) {
+  const base = (url || getDefaultApiUrl()).replace(/\/+$/, '')
+  if (!base) return API_VERSION_PATH
+  return base.endsWith(API_VERSION_PATH) ? base : `${base}${API_VERSION_PATH}`
+}
+
+function getApiBase() {
+  return buildApiBase(process.env.NEXT_PUBLIC_API_URL)
+}
 
 export function formatApiError(err: any): string {
   const detail = err?.detail ?? err?.message ?? err
@@ -23,7 +40,11 @@ export function formatApiError(err: any): string {
 
 async function api(path: string, opts?: RequestInit) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-  const res = await fetch(`${BASE}${path}`, {
+  const url = `${getApiBase()}${path.startsWith('/') ? path : `/${path}`}`
+  if (path === '/users/login') {
+    console.info('[AutoAI API] login URL:', url)
+  }
+  const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -47,10 +68,81 @@ export const searchListings = (params: Record<string, any>) => {
   const q = new URLSearchParams(
     Object.entries(params).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, String(v)])
   )
-  return api(`/search/?${q}`)
+  const query = q.toString()
+  return api(`/search/${query ? `?${query}` : ''}`).then(data => normalizeSearchResponse(data, params))
+}
+
+function normalizeSearchResponse(data: any, params: Record<string, any> = {}) {
+  const body = data?.data && !Array.isArray(data.data) ? data.data : data
+  const results =
+    pickArray(body?.results) ||
+    pickArray(body?.items) ||
+    pickArray(body?.listings) ||
+    pickArray(data?.data) ||
+    []
+
+  const page = toPositiveInt(
+    body?.page ??
+    body?.pagination?.page ??
+    body?.meta?.page ??
+    params.page,
+    1,
+  )
+  const limit = toPositiveInt(
+    body?.limit ??
+    body?.per_page ??
+    body?.page_size ??
+    body?.pagination?.limit ??
+    body?.pagination?.per_page ??
+    body?.pagination?.page_size ??
+    params.limit,
+    20,
+  )
+  const total = toNonNegativeInt(
+    body?.total ??
+    body?.total_count ??
+    body?.count ??
+    body?.pagination?.total ??
+    body?.meta?.total,
+    results.length,
+  )
+  const pages = toPositiveInt(
+    body?.pages ??
+    body?.total_pages ??
+    body?.pagination?.pages ??
+    body?.pagination?.total_pages,
+    Math.max(1, Math.ceil(total / limit)),
+  )
+
+  return {
+    ...body,
+    total,
+    page,
+    pages,
+    results,
+    filters_applied: body?.filters_applied || {},
+    price_rating_counts: body?.price_rating_counts || {},
+  }
+}
+
+function pickArray(value: any) {
+  return Array.isArray(value) ? value : null
+}
+
+function toPositiveInt(value: any, fallback: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return Math.floor(parsed)
+}
+
+function toNonNegativeInt(value: any, fallback: number) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback
+  return Math.floor(parsed)
 }
 
 export const getSearchStats = () => api('/search/stats')
+export const getCoverageStats = () => api('/stats/coverage')
 export const getMakes = () => api('/search/makes')
 export const getModels = (make: string) => api(`/search/models?make=${encodeURIComponent(make)}`)
 

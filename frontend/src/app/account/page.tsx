@@ -148,6 +148,22 @@ const smallButtonStyle: React.CSSProperties = {
   background: 'transparent', color: 'var(--text2)', fontSize: 12,
 }
 
+const COUNTRY_LABELS: Record<string, string> = {
+  DE: 'Nemačka',
+  AT: 'Austrija',
+  BE: 'Belgija',
+  NL: 'Holandija',
+  FR: 'Francuska',
+  IT: 'Italija',
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  autoscout24: 'Verifikovan izvor',
+  willhaben: 'Verifikovan izvor',
+  mobile_de: 'Verifikovan izvor',
+  demo_seed: 'Demo',
+}
+
 function formatAlertCriteria(filters: Record<string, any> = {}) {
   const labels: Record<string, string> = {
     query_text: 'Tekst',
@@ -161,12 +177,19 @@ function formatAlertCriteria(filters: Record<string, any> = {}) {
     fuel_type: 'Gorivo',
     body_type: 'Karoserija',
     country: 'Zemlja',
+    source: 'Izvor',
     price_rating: 'Ocena cene',
   }
 
   const parts = Object.entries(filters)
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([key, value]) => `${labels[key] || key}: ${value}`)
+    .map(([key, value]) => `${labels[key] || key}: ${formatCriteriaValue(key, value)}`)
 
   return parts.length ? parts.join(' | ') : 'Svi oglasi'
+}
+
+function formatCriteriaValue(key: string, value: any) {
+  if (key === 'country') return COUNTRY_LABELS[String(value)] || value
+  if (key === 'source') return SOURCE_LABELS[String(value)] || value
+  return value
 }

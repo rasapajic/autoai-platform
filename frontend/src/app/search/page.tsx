@@ -1,7 +1,7 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { createAlert, searchListings, parseQuery } from '@/lib/api'
+import { createAlert, getMakes, getModels, searchListings, parseQuery } from '@/lib/api'
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni', hybrid: 'Hibrid', lpg: 'Plin',
@@ -10,6 +10,22 @@ const BODY_LABELS: Record<string, string> = {
   sedan: 'Sedan', suv: 'SUV', hatchback: 'Hatchback',
   kombi: 'Kombi', coupe: 'Coupé', cabrio: 'Kabriolet',
 }
+const COUNTRY_LABELS: Record<string, string> = {
+  DE: 'Nemačka',
+  AT: 'Austrija',
+  BE: 'Belgija',
+  NL: 'Holandija',
+  FR: 'Francuska',
+  IT: 'Italija',
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  autoscout24: 'Verifikovan izvor',
+  willhaben: 'Verifikovan izvor',
+  mobile_de: 'Verifikovan izvor',
+  demo_seed: 'Demo',
+}
+
 const RATING_LABELS: Record<string, {label: string, color: string}> = {
   great:     { label: '🟢 Odlična cena',  color: '#22C55E' },
   good:      { label: '🟡 Dobra cena',    color: '#84CC16' },
@@ -18,8 +34,34 @@ const RATING_LABELS: Record<string, {label: string, color: string}> = {
   overpriced:{ label: '🔴 Preskupo',      color: '#EF4444' },
 }
 
+const DEFAULT_SEARCH_FILTERS = {
+  make: '',
+  model: '',
+  min_price: '',
+  max_price: '',
+  min_year: '',
+  max_year: '',
+  max_km: '',
+  fuel_type: '',
+  body_type: '',
+  country: '',
+  source: '',
+  price_rating: '',
+  sort_by: 'date',
+  page: 1,
+}
+
 export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPageContent />
+    </Suspense>
+  )
+}
+
+function SearchPageContent() {
   const searchParams = useSearchParams()
+  const queryString = searchParams.toString()
   const router = useRouter()
 
   const [results, setResults] = useState<any>(null)
@@ -28,42 +70,66 @@ export default function SearchPage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [makes, setMakes] = useState<any[]>([])
+  const [models, setModels] = useState<any[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
 
-  const [filters, setFilters] = useState({
-    make: searchParams.get('make') || '',
-    model: searchParams.get('model') || '',
-    min_price: searchParams.get('min_price') || '',
-    max_price: searchParams.get('max_price') || '',
-    min_year: searchParams.get('min_year') || '',
-    max_year: searchParams.get('max_year') || '',
-    max_km: searchParams.get('max_km') || '',
-    fuel_type: searchParams.get('fuel_type') || '',
-    body_type: searchParams.get('body_type') || '',
-    country: searchParams.get('country') || '',
-    price_rating: searchParams.get('price_rating') || '',
-    sort_by: searchParams.get('sort_by') || 'date',
-    page: 1,
-  })
+  const [filters, setFilters] = useState(() => readSearchFilters(searchParams))
 
-  const doSearch = useCallback(async (f = filters) => {
+  const doSearch = useCallback(async (f: Record<string, any>) => {
     setLoading(true)
     try {
       const data = await searchListings(f)
       setResults(data)
     } catch { setResults(null) }
     finally { setLoading(false) }
-  }, [filters])
+  }, [])
 
   useEffect(() => {
     setIsLoggedIn(Boolean(localStorage.getItem('token')))
-    doSearch()
+    getMakes().then(setMakes).catch(() => setMakes([]))
   }, [])
 
-  const setFilter = (key: string, val: any) => {
-    const next = { ...filters, [key]: val, page: 1 }
+  useEffect(() => {
+    const params = new URLSearchParams(queryString)
+    const next = readSearchFilters(params)
+    if (!params.has('page')) {
+      router.replace(buildSearchUrl(next, params.get('q') || ''), { scroll: false })
+      return
+    }
     setFilters(next)
+    setAiQuery(params.get('q') || '')
     doSearch(next)
+  }, [queryString, doSearch, router])
+
+  const pushSearchState = (nextFilters: Record<string, any>, queryText = aiQuery) => {
+    router.push(buildSearchUrl(nextFilters, queryText), { scroll: false })
   }
+
+  const setFilter = (key: string, val: any) => {
+    const shouldResetPage = key !== 'page'
+    const next = {
+      ...filters,
+      [key]: val,
+      ...(key === 'make' ? { model: '' } : {}),
+      ...(shouldResetPage ? { page: 1 } : {}),
+    }
+    setFilters(next)
+    pushSearchState(next)
+  }
+
+  useEffect(() => {
+    if (!filters.make) {
+      setModels([])
+      return
+    }
+
+    setModelsLoading(true)
+    getModels(filters.make)
+      .then(setModels)
+      .catch(() => setModels([]))
+      .finally(() => setModelsLoading(false))
+  }, [filters.make])
 
   const handleAiSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,7 +139,7 @@ export default function SearchPage() {
       const { filters: parsed, explanation } = await parseQuery(aiQuery)
       const next = { ...filters, ...parsed, page: 1 }
       setFilters(next)
-      doSearch(next)
+      pushSearchState(next, aiQuery.trim())
     } finally { setAiLoading(false) }
   }
 
@@ -141,7 +207,8 @@ export default function SearchPage() {
           {/* Sidebar Filters */}
           <aside style={{
             background: 'var(--bg2)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', padding: 20, position: 'sticky', top: 80,
+            borderRadius: 'var(--radius)', padding: 20, position: 'sticky', top: 76,
+            maxHeight: 'calc(100vh - 96px)', overflowY: 'auto',
           }}>
             <h3 style={{ fontSize: 14, marginBottom: 16, color: 'var(--text2)', letterSpacing: '0.05em' }}>FILTERI</h3>
 
@@ -157,6 +224,51 @@ export default function SearchPage() {
                 {saveMessage}
               </div>
             )}
+
+            <FilterSection label="Marka">
+              <select value={filters.make} onChange={e => setFilter('make', e.target.value)}
+                style={{ ...inputStyle, width: '100%' }}>
+                <option value="">Sve marke</option>
+                {makes.map((item: any) => (
+                  <option key={item.make} value={item.make}>
+                    {item.make}{item.count ? ` (${item.count})` : ''}
+                  </option>
+                ))}
+              </select>
+            </FilterSection>
+
+            <FilterSection label="Model">
+              <select value={filters.model} onChange={e => setFilter('model', e.target.value)}
+                disabled={!filters.make || modelsLoading}
+                style={{ ...inputStyle, width: '100%', opacity: !filters.make ? 0.65 : 1 }}>
+                <option value="">{filters.make ? 'Svi modeli' : 'Prvo izaberi marku'}</option>
+                {models.map((item: any) => (
+                  <option key={item.model} value={item.model}>
+                    {item.model}{item.count ? ` (${item.count})` : ''}
+                  </option>
+                ))}
+              </select>
+            </FilterSection>
+
+            <FilterSection label="Zemlja">
+              <select value={filters.country} onChange={e => setFilter('country', e.target.value)}
+                style={{ ...inputStyle, width: '100%' }}>
+                <option value="">Sve zemlje</option>
+                {Object.entries(COUNTRY_LABELS).map(([code, label]) => (
+                  <option key={code} value={code}>{label}</option>
+                ))}
+              </select>
+            </FilterSection>
+
+            <FilterSection label="Izvor">
+              <select value={filters.source} onChange={e => setFilter('source', e.target.value)}
+                style={{ ...inputStyle, width: '100%' }}>
+                <option value="">Svi izvori</option>
+                {Object.entries(SOURCE_LABELS).map(([source, label]) => (
+                  <option key={source} value={source}>{label}</option>
+                ))}
+              </select>
+            </FilterSection>
 
             <FilterSection label="Cena (EUR)">
               <div style={{ display: 'flex', gap: 6 }}>
@@ -201,16 +313,25 @@ export default function SearchPage() {
             </FilterSection>
 
             <FilterSection label="Ocjena cene">
-              {Object.entries(RATING_LABELS).map(([val, {label, color}]) => (
-                <FilterChip key={val} label={label} active={filters.price_rating === val}
-                  onClick={() => setFilter('price_rating', filters.price_rating === val ? '' : val)}
-                  color={color} />
-              ))}
+              {Object.entries(RATING_LABELS).map(([val, {label, color}]) => {
+                const count = Number(results?.price_rating_counts?.[val] || 0)
+                const active = filters.price_rating === val
+                const disabled = count === 0 && !active
+                return (
+                  <FilterChip key={val} label={`${label} (${count})`} active={active}
+                    onClick={() => {
+                      if (disabled) return
+                      setFilter('price_rating', active ? '' : val)
+                    }}
+                    color={color}
+                    disabled={disabled} />
+                )
+              })}
             </FilterSection>
 
             <button onClick={() => {
-              const reset = { make:'', model:'', min_price:'', max_price:'', min_year:'', max_year:'', max_km:'', fuel_type:'', body_type:'', country:'', price_rating:'', sort_by:'date', page:1 }
-              setFilters(reset); doSearch(reset)
+              const reset = { make:'', model:'', min_price:'', max_price:'', min_year:'', max_year:'', max_km:'', fuel_type:'', body_type:'', country:'', source:'', price_rating:'', sort_by:'date', page:1 }
+              setFilters(reset); pushSearchState(reset, '')
             }} style={{
               width: '100%', padding: '10px', borderRadius: 8, marginTop: 8,
               background: 'transparent', border: '1px solid var(--border)',
@@ -246,16 +367,11 @@ export default function SearchPage() {
                   {results.results.map((l: any) => <ListingCard key={l.id} listing={l} />)}
                 </div>
                 {results.pages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 32 }}>
-                    {[...Array(Math.min(results.pages, 8))].map((_, i) => (
-                      <button key={i} onClick={() => setFilter('page', i + 1)} style={{
-                        width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
-                        background: filters.page === i + 1 ? 'var(--accent)' : 'var(--bg2)',
-                        color: filters.page === i + 1 ? '#fff' : 'var(--text2)',
-                        fontSize: 14, cursor: 'pointer',
-                      }}>{i + 1}</button>
-                    ))}
-                  </div>
+                  <Pagination
+                    currentPage={filters.page}
+                    totalPages={results.pages}
+                    onPageChange={(page) => setFilter('page', page)}
+                  />
                 )}
               </>
             ) : (
@@ -269,6 +385,116 @@ export default function SearchPage() {
       </div>
     </div>
   )
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number
+  totalPages: number
+  onPageChange: (page: number) => void
+}) {
+  const page = Math.min(Math.max(1, Number(currentPage) || 1), totalPages)
+  const pages = getPaginationItems(page, totalPages)
+  const goToPage = (nextPage: number) => {
+    const safePage = Math.min(Math.max(1, nextPage), totalPages)
+    if (safePage !== page) onPageChange(safePage)
+  }
+
+  return (
+    <nav aria-label="Paginacija" style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 32,
+      flexWrap: 'wrap',
+    }}>
+      <PaginationButton label="<< Prva" title="Prva stranica" disabled={page === 1} onClick={() => goToPage(1)} />
+      <PaginationButton label="< Prethodna" title="Prethodna stranica" disabled={page === 1} onClick={() => goToPage(page - 1)} />
+
+      {pages.map((item) => item === 'ellipsis-start' || item === 'ellipsis-end' ? (
+        <span key={item} style={{
+          minWidth: 28,
+          height: 36,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text3)',
+          fontSize: 14,
+        }}>...</span>
+      ) : (
+        <PaginationButton
+          key={item}
+          label={String(item)}
+          title={`Stranica ${item}`}
+          active={page === item}
+          onClick={() => goToPage(item)}
+        />
+      ))}
+
+      <PaginationButton label="> Sledeća" title="Sledeća stranica" disabled={page === totalPages} onClick={() => goToPage(page + 1)} />
+      <PaginationButton label=">> Poslednja" title="Poslednja stranica" disabled={page === totalPages} onClick={() => goToPage(totalPages)} />
+    </nav>
+  )
+}
+
+function PaginationButton({
+  label,
+  title,
+  active = false,
+  disabled = false,
+  onClick,
+}: {
+  label: string
+  title: string
+  active?: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-current={active ? 'page' : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        minWidth: label.length > 2 ? 44 : 36,
+        height: 36,
+        padding: '0 10px',
+        borderRadius: 8,
+        border: '1px solid var(--border)',
+        background: active ? 'var(--accent)' : 'var(--bg2)',
+        color: active ? '#fff' : 'var(--text2)',
+        fontSize: 14,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function getPaginationItems(currentPage: number, totalPages: number) {
+  const total = Math.max(1, Number(totalPages) || 1)
+  const current = Math.min(Math.max(1, Number(currentPage) || 1), total)
+  if (total <= 8) return Array.from({ length: total }, (_, index) => index + 1)
+
+  const items: Array<number | 'ellipsis-start' | 'ellipsis-end'> = [1]
+  const start = Math.max(2, current - 2)
+  const end = Math.min(total - 1, current + 2)
+
+  if (start > 2) items.push('ellipsis-start')
+  for (let page = start; page <= end; page += 1) items.push(page)
+  if (end < total - 1) items.push('ellipsis-end')
+  items.push(total)
+
+  return items
 }
 
 function ListingCard({ listing }: { listing: any }) {
@@ -300,11 +526,19 @@ function ListingCard({ listing }: { listing: any }) {
             backdropFilter: 'blur(4px)',
           }}>{rating.label}</span>
         )}
+        {listing.special_vehicle && (
+          <span style={{
+            position: 'absolute', top: rating ? 38 : 10, right: 10,
+            background: 'rgba(245, 158, 11, .95)', borderRadius: 20,
+            padding: '3px 10px', fontSize: 11, color: '#111827',
+            fontWeight: 700,
+          }}>⚠️ Specijalno vozilo</span>
+        )}
         <span style={{
           position: 'absolute', bottom: 10, left: 10,
           background: 'rgba(0,0,0,.7)', borderRadius: 4, padding: '2px 8px',
           fontSize: 11, color: 'var(--text2)', backdropFilter: 'blur(4px)',
-        }}>{listing.source}</span>
+        }}>Verifikovan izvor</span>
       </div>
 
       {/* Info */}
@@ -343,15 +577,17 @@ function FilterSection({ label, children }: { label: string, children: React.Rea
   )
 }
 
-function FilterChip({ label, active, onClick, color }: { label: string, active: boolean, onClick: () => void, color?: string }) {
+function FilterChip({ label, active, onClick, color, disabled = false }: { label: string, active: boolean, onClick: () => void, color?: string, disabled?: boolean }) {
   return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} disabled={disabled} style={{
       display: 'inline-block', margin: '0 4px 4px 0',
       padding: '4px 10px', borderRadius: 20, fontSize: 12,
       background: active ? (color ? color + '20' : 'var(--accent)20') : 'transparent',
       border: `1px solid ${active ? (color || 'var(--accent)') : 'var(--border)'}`,
       color: active ? (color || 'var(--accent)') : 'var(--text3)',
-      cursor: 'pointer', transition: 'all .15s',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.45 : 1,
+      transition: 'all .15s',
     }}>{label}</button>
   )
 }
@@ -366,4 +602,37 @@ function buildSearchName(filters: Record<string, any>) {
   if (makeModel) return makeModel
   if (filters.query_text) return filters.query_text
   return 'Moja potraga'
+}
+
+function readSearchFilters(params: { get: (key: string) => string | null }) {
+  return {
+    ...DEFAULT_SEARCH_FILTERS,
+    make: params.get('make') || '',
+    model: params.get('model') || '',
+    min_price: params.get('min_price') || '',
+    max_price: params.get('max_price') || '',
+    min_year: params.get('min_year') || '',
+    max_year: params.get('max_year') || '',
+    max_km: params.get('max_km') || '',
+    fuel_type: params.get('fuel_type') || '',
+    body_type: params.get('body_type') || '',
+    country: params.get('country') || '',
+    source: params.get('source') || '',
+    price_rating: params.get('price_rating') || '',
+    sort_by: params.get('sort_by') || 'date',
+    page: Math.max(1, Number(params.get('page') || 1) || 1),
+  }
+}
+
+function buildSearchUrl(filters: Record<string, any>, queryText = '') {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === '') return
+    if (key === 'sort_by' && value === 'date') return
+    params.set(key, String(value))
+  })
+  if (!params.has('page')) params.set('page', '1')
+  if (queryText.trim()) params.set('q', queryText.trim())
+  const query = params.toString()
+  return `/search${query ? `?${query}` : ''}`
 }

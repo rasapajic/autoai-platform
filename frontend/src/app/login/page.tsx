@@ -1,10 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { login } from '@/lib/api'
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  )
+}
+
+function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
@@ -41,7 +49,7 @@ export default function LoginPage() {
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={inputStyle} />
           </Field>
           <Field label="Lozinka">
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required style={inputStyle} />
+            <PasswordInput value={password} onChange={setPassword} />
           </Field>
           {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
           <button disabled={loading} style={buttonStyle}>{loading ? 'Ulazim...' : 'Login'}</button>
@@ -56,10 +64,50 @@ export default function LoginPage() {
 
 function Field({ label, children }: { label: string, children: React.ReactNode }) {
   return (
-    <label style={{ display: 'block', marginBottom: 16 }}>
+    <div style={{ display: 'block', marginBottom: 16 }}>
       <span style={{ display: 'block', color: 'var(--text3)', fontSize: 12, marginBottom: 6 }}>{label.toUpperCase()}</span>
       {children}
-    </label>
+    </div>
+  )
+}
+
+function PasswordInput({ value, onChange }: { value: string, onChange: (value: string) => void }) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        required
+        autoComplete="current-password"
+        style={{ ...inputStyle, paddingRight: 44 }}
+      />
+      <button
+        type="button"
+        aria-label={visible ? 'Sakrij lozinku' : 'Prikaži lozinku'}
+        title={visible ? 'Sakrij lozinku' : 'Prikaži lozinku'}
+        onClick={() => setVisible(!visible)}
+        style={{
+          position: 'absolute',
+          right: 8,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: 30,
+          height: 30,
+          border: 'none',
+          borderRadius: 6,
+          background: 'transparent',
+          color: 'var(--text2)',
+          cursor: 'pointer',
+          fontSize: 16,
+          lineHeight: 1,
+        }}
+      >
+        👁
+      </button>
+    </div>
   )
 }
 

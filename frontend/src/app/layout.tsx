@@ -47,6 +47,7 @@ function Navbar() {
           {[
             { href: '/search', label: 'Pretraga' },
             { href: '/import-calculator', label: 'Uvoz kalkulator' },
+            { href: '/admin/coverage', label: 'Coverage' },
           ].map(link => (
             <a key={link.href} href={link.href} className="nav-link" style={{
               padding: '6px 14px', borderRadius: 8, fontSize: 14,

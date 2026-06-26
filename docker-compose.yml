@@ -66,6 +66,7 @@ services:
       - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD:-secret123}@postgres:5432/autoai
       - REDIS_URL=redis://redis:6379
       - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://192.168.8.174:3000}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-promeniti-u-produkciji}
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
@@ -73,7 +74,8 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
+      - FRONTEND_URL=${FRONTEND_URL:-}
     volumes:
       - ./backend:/app
     ports:
@@ -102,7 +104,8 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
+      - FRONTEND_URL=${FRONTEND_URL:-}
     volumes:
       - ./backend:/app
     depends_on:
@@ -128,7 +131,8 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
+      - FRONTEND_URL=${FRONTEND_URL:-}
     volumes:
       - ./backend:/app
     depends_on:
@@ -144,7 +148,8 @@ services:
     container_name: autoai_frontend
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
     ports:
       - "3000:3000"
     depends_on:
