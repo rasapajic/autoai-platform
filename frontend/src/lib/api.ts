@@ -92,7 +92,7 @@ export const searchListings = (params: Record<string, any>) => {
     Object.entries(params).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, String(v)])
   )
   const query = q.toString()
-  return api(`/search${query ? `?${query}` : ''}`).then(data => normalizeSearchResponse(data, params))
+  return api(`/search/${query ? `?${query}` : ''}`).then(data => normalizeSearchResponse(data, params))
 }
 
 function normalizeSearchResponse(data: any, params: Record<string, any> = {}) {
