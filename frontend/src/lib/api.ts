@@ -1,15 +1,19 @@
 const API_VERSION_PATH = '/api/v1'
+const PRODUCTION_API_URL = 'https://autoai-platform-production.up.railway.app'
 
 function getDefaultApiUrl() {
   if (typeof window !== 'undefined' && window.location.hostname) {
-    return `${window.location.protocol}//${window.location.hostname}:8000`
+    const { hostname, protocol } = window.location
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return `${protocol}//${hostname}:8000`
+    }
   }
-  return ''
+  return PRODUCTION_API_URL
 }
 
 function buildApiBase(url: string | undefined) {
-  const base = (url || getDefaultApiUrl()).replace(/\/+$/, '')
-  if (!base) return API_VERSION_PATH
+  const configuredBase = (url || '').trim()
+  const base = (/^https?:\/\//i.test(configuredBase) ? configuredBase : getDefaultApiUrl()).replace(/\/+$/, '')
   return base.endsWith(API_VERSION_PATH) ? base : `${base}${API_VERSION_PATH}`
 }
 
