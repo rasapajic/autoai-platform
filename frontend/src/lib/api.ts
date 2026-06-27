@@ -1,19 +1,41 @@
 const API_VERSION_PATH = '/api/v1'
 const PRODUCTION_API_URL = 'https://autoai-platform-production.up.railway.app'
 
+function isLocalHostname(hostname: string) {
+  return hostname === 'localhost' || hostname === '127.0.0.1'
+}
+
 function getDefaultApiUrl() {
   if (typeof window !== 'undefined' && window.location.hostname) {
     const { hostname, protocol } = window.location
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    if (isLocalHostname(hostname)) {
       return `${protocol}//${hostname}:8000`
     }
   }
   return PRODUCTION_API_URL
 }
 
-function buildApiBase(url: string | undefined) {
+function getConfiguredApiUrl(url: string | undefined) {
   const configuredBase = (url || '').trim()
-  const base = (/^https?:\/\//i.test(configuredBase) ? configuredBase : getDefaultApiUrl()).replace(/\/+$/, '')
+  if (!/^https?:\/\//i.test(configuredBase)) return getDefaultApiUrl()
+
+  if (typeof window !== 'undefined') {
+    try {
+      const configuredHost = new URL(configuredBase).host
+      const currentHost = window.location.host
+      if (configuredHost === currentHost && !isLocalHostname(window.location.hostname)) {
+        return getDefaultApiUrl()
+      }
+    } catch {
+      return getDefaultApiUrl()
+    }
+  }
+
+  return configuredBase
+}
+
+function buildApiBase(url: string | undefined) {
+  const base = getConfiguredApiUrl(url).replace(/\/+$/, '')
   return base.endsWith(API_VERSION_PATH) ? base : `${base}${API_VERSION_PATH}`
 }
 
