@@ -196,6 +196,12 @@ export const register = (data: any) =>
 export const login = (data: any) =>
   api('/users/login', { method: 'POST', body: JSON.stringify(data) })
 
+export const forgotPassword = (data: any) =>
+  api('/users/forgot-password', { method: 'POST', body: JSON.stringify(data) })
+
+export const resetPassword = (data: any) =>
+  api('/users/reset-password', { method: 'POST', body: JSON.stringify(data) })
+
 export const getProfile = () => api('/users/me')
 export const getFavorites = () => api('/users/me/favorites')
 

@@ -51,6 +51,18 @@ function LoginPageContent() {
           <Field label="Lozinka">
             <PasswordInput value={password} onChange={setPassword} />
           </Field>
+          <a
+            href="/forgot-password"
+            style={{
+              display: 'inline-block',
+              color: 'var(--accent)',
+              fontSize: 13,
+              marginBottom: 16,
+              textDecoration: 'none',
+            }}
+          >
+            Zaboravili ste lozinku?
+          </a>
           {error && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
           <button disabled={loading} style={buttonStyle}>{loading ? 'Ulazim...' : 'Login'}</button>
           <p style={{ color: 'var(--text3)', fontSize: 13, marginTop: 16 }}>

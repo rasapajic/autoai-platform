@@ -149,6 +149,12 @@ class SearchResponse(BaseModel):
 # USERS & AUTH
 # ─────────────────────────────────────────────────────────────
 
+def _validate_password_strength(value: str) -> str:
+    if len(value) < 8:
+        raise ValueError("Lozinka mora imati najmanje 8 karaktera")
+    return value
+
+
 class UserRegister(BaseModel):
     email:    EmailStr
     password: str
@@ -157,14 +163,33 @@ class UserRegister(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v):
-        if len(v) < 8:
-            raise ValueError("Lozinka mora imati najmanje 8 karaktera")
-        return v
+        return _validate_password_strength(v)
 
 
 class UserLogin(BaseModel):
     email:    EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+    @field_validator("token")
+    @classmethod
+    def token_required(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Token je obavezan")
+        return v.strip()
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v):
+        return _validate_password_strength(v)
 
 
 class UserOut(BaseModel):
