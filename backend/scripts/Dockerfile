@@ -4,8 +4,5 @@ WORKDIR /app
 
 COPY . /app/
 
-RUN pip install --no-cache-dir psycopg2-binary aiohttp anthropic
-
-RUN ls -la /app/
-
-CMD ["python", "/app/scraper.py"]
+# Emergency legal-source freeze: this image must never fetch or update listings.
+CMD ["python", "-c", "print('AutoAI external data updates are disabled')"]

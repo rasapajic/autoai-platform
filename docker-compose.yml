@@ -22,7 +22,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── Redis (cache + queue) ────────────────────────────────────
+  # ─── Redis (cache only; scheduled data updates are disabled) ──
   redis:
     image: redis:7-alpine
     container_name: autoai_redis
@@ -57,7 +57,7 @@ services:
       timeout: 10s
       retries: 5
 
-  # ─── Backend API ──────────────────────────────────────────────
+  # ─── Backend API — no Celery worker/beat, no scraper ──────────
   backend:
     build:
       context: ./backend
@@ -79,41 +79,6 @@ services:
       redis:
         condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  # ─── Celery Worker (scraping taskovi) ────────────────────────
-  celery_worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: autoai_celery
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD:-secret123}@postgres:5432/autoai
-      - REDIS_URL=redis://redis:6379
-    volumes:
-      - ./backend:/app
-    depends_on:
-      - redis
-      - postgres
-    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
-
-  # ─── Celery Beat (scheduler) ──────────────────────────────────
-  celery_beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: autoai_beat
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD:-secret123}@postgres:5432/autoai
-      - REDIS_URL=redis://redis:6379
-    volumes:
-      - ./backend:/app
-    depends_on:
-      - redis
-    command: celery -A app.core.celery_app beat --loglevel=info
 
   # ─── Frontend ─────────────────────────────────────────────────
   frontend:

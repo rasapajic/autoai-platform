@@ -15,4 +15,6 @@ RUN playwright install chromium --with-deps
 
 COPY . .
 EXPOSE 8000
-CMD ["python", "scripts/scraper.py"]
+
+# API only. External listing updates and scraper entrypoints are disabled.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
