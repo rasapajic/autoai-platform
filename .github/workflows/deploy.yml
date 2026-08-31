@@ -23,10 +23,20 @@ jobs:
           cd backend
           pip install -r requirements.txt
 
-      - name: Run backend tests
+      - name: Validate backend syntax
         run: |
           cd backend
-          python -m pytest tests/ -v --tb=short || echo "Nema testova još"
+          python -m compileall -q app
+
+      - name: Run backend tests if present
+        run: |
+          cd backend
+          if [ -d tests ] && find tests -type f -name 'test_*.py' -print -quit | grep -q .; then
+            python -m pip install pytest
+            python -m pytest tests/ -v --tb=short
+          else
+            echo "::warning::No backend tests found; backend test suite was not executed"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
