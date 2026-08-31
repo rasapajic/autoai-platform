@@ -1,24 +1,32 @@
-# AutoAI external data-source freeze
+# AutoAI external data-source policy
 
-**Effective:** 2026-08-12
+**Original freeze effective:** 2026-08-12  
+**M0.1 internal recovery amendment:** 2026-08-31
 
-AutoAI must not fetch, refresh, import, rate, clean up, or otherwise mutate
-third-party listing data while source usage rights are unverified.
+AutoAI's public/commercial external listing pipeline remains fail-closed while
+source usage rights are unverified.
 
-The freeze covers:
+The original freeze covered scheduled and manual scrapers, Celery update jobs,
+scraper Docker entrypoints, admin-triggered imports, valuation jobs and cleanup
+jobs that mutate third-party listing data.
 
-- scheduled and manual scrapers;
-- Celery worker and beat update jobs;
-- scraper Docker entrypoints;
-- manual admin-triggered scraper imports;
-- automated valuation or cleanup jobs that mutate the existing listing set.
+## M0.1 internal recovery exception
 
-Re-enabling any source requires all of the following:
+For the internal **M0.1 Live Listings Recovery** phase, controlled manual
+listing recovery is permitted only when all of the following are true:
 
-1. a documented commercial right to access and use the source;
-2. documented rights for metadata, descriptions, images, storage, attribution,
-   translation, derived valuation, contact handling, and monetization;
-3. source-specific retention and deletion rules;
-4. a reviewed code change that enables only that approved source.
+1. `AUTOAI_INTERNAL_LISTING_INGEST_ENABLED=true` is explicitly set in the runtime;
+2. the source is present in `AUTOAI_INTERNAL_LISTING_SOURCES`;
+3. the request uses the new environment-backed admin secret;
+4. ingestion is manually triggered through the M0.1 internal endpoint;
+5. no unattended schedule, Celery beat job or public/commercial listing service
+   is enabled by this exception.
 
-Default policy: **deny unless explicitly approved**.
+M0.1 starts with Austria and Germany only: `willhaben` and `mobile_de`.
+
+Before a source is enabled for public/commercial production, AutoAI still
+requires documented rights for access/use, metadata, descriptions, images,
+storage, attribution, translation, derived valuation, contact handling,
+monetization, retention and deletion.
+
+Default public/commercial policy remains: **deny unless explicitly approved**.
