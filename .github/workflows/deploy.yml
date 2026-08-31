@@ -58,6 +58,14 @@ jobs:
           cd frontend
           npm run build
 
+      - name: Probe deployed backend health
+        continue-on-error: true
+        run: |
+          echo "--- AutoAI deployed backend /health ---"
+          curl --silent --show-error --fail-with-body --max-time 20 \
+            https://autoai-platform-production.up.railway.app/health
+          echo
+
   # ── Deploy na Railway ──────────────────────────────────────
   deploy:
     needs: test
