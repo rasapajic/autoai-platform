@@ -23,10 +23,25 @@ jobs:
           cd backend
           pip install -r requirements.txt
 
-      - name: Run backend tests
+      - name: Validate active M0.1 backend syntax
         run: |
           cd backend
-          python -m pytest tests/ -v --tb=short || echo "Nema testova još"
+          python -m compileall -q app/api app/ai app/core app/models app/main.py
+          python -m py_compile app/scrapers/willhaben.py app/scrapers/mobile_de.py
+
+      - name: Run backend tests if present
+        run: |
+          cd backend
+          if [ -d tests ] && find tests -type f -name 'test_*.py' -print -quit | grep -q .; then
+            python -m pip install pytest
+            python -m pytest tests/ -v --tb=short
+          else
+            echo "::warning::No backend tests found; backend test suite was not executed"
+          fi
+
+      - name: Report quarantined legacy scrapers
+        run: |
+          echo "::warning::Legacy scrapers kleinanzeigen.py and marktplaats.py remain quarantined and are not part of M0.1 AT/DE ingestion"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
