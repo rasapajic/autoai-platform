@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     # AutoAI M0.1 Live Listings Recovery
     AUTOAI_ADMIN_SECRET: str = ""
     AUTOAI_INTERNAL_LISTING_INGEST_ENABLED: bool = False
-    AUTOAI_INTERNAL_LISTING_SOURCES: str = "willhaben,mobile_de"
+    AUTOAI_INTERNAL_LISTING_SOURCES: str = (
+        "willhaben,autoscout24,marktplaats,2dehands,kleinanzeigen"
+    )
 
     # Database
     DATABASE_URL: str = "postgresql://admin:secret123@localhost:5432/autoai"

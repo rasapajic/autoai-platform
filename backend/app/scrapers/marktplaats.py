@@ -1,4 +1,3 @@
-import asyncio
 import json
 import re
 import aiohttp
@@ -11,14 +10,6 @@ HEADERS = {
     "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8",
     "Referer": "https://www.marktplaats.nl/c/auto-s/c91.html",
 }
-
-DETAIL_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8",
-    "Referer": "https://www.marktplaats.nl/",
-}
-
 
 def _hq_image(url: str) -> str:
     if not url:
@@ -120,73 +111,7 @@ def _extract_price(item: dict) -> float | None:
     return None
 
 
-async def _fetch_detail_images(session: aiohttp.ClientSession, url: str) -> list:
-    images = []
-    try:
-        async with session.get(url, headers=DETAIL_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            if resp.status != 200:
-                return images
-            html = await resp.text()
-            seen_ids = set()
-            all_uuids = re.findall(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', html)
-            for uuid in all_uuids:
-                if uuid in seen_ids:
-                    continue
-                idx = html.find(uuid)
-                context = html[max(0, idx-150):idx+50]
-                if 'marktplaats.com' in context:
-                    seen_ids.add(uuid)
-                    images.append(f"https://images.marktplaats.com/api/v1/hz-mp-pro-listing/images/{uuid}?rule=ecg_mp_eps$_57")
-    except Exception as e:
-        print(f"[Marktplaats] Detail greška {url}: {e}")
-    return images
-            html = await resp.text()
-
-            # Trazi sve UUID-ove koji su u blizini "marktplaats" i "images"
-            seen_ids = set()
-            # Najpre nadji sve UUID-ove u HTML-u
-            all_uuids = re.findall(
-                r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',
-                html
-            )
-            # Filtriraj samo one koji su u kontekstu marktplaats slika
-            for uuid in all_uuids:
-                if uuid in seen_ids:
-                    continue
-                idx = html.find(uuid)
-                context = html[max(0, idx-100):idx+50]
-                if 'marktplaats' in context and ('image' in context or 'listing' in context):
-                    seen_ids.add(uuid)
-                    images.append(
-                        f"https://images.marktplaats.com/api/v1/hz-mp-pro-listing/images/{uuid}?rule=ecg_mp_eps$_57"
-                    )
-
-    except Exception as e:
-        print(f"[Marktplaats] Detail greška {url}: {e}")
-
-    return images
-            html = await resp.text()
-
-            # Decode unicode escape karaktere
-            # Izvuci sve jedinstvene image UUID-ove (direktno, bez decode)
-            seen_ids = set()
-            for m in re.finditer(
-                r'images\.marktplaats\.com(?:\\\\u002F|/|%2F)api(?:\\\\u002F|/|%2F)v1(?:\\\\u002F|/|%2F)(?:hz-mp-pro-listing|listing-mp-p)(?:\\\\u002F|/|%2F)images(?:\\\\u002F|/|%2F)([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})',
-            ):
-                img_id = m.group(1)
-                if img_id not in seen_ids:
-                    seen_ids.add(img_id)
-                    images.append(
-                        f"https://images.marktplaats.com/api/v1/hz-mp-pro-listing/images/{img_id}?rule=ecg_mp_eps$_57"
-                    )
-
-    except Exception as e:
-        print(f"[Marktplaats] Detail greška {url}: {e}")
-
-    return images
-
-
-def _parse_listing(item: dict, detail_images: list = None) -> dict | None:
+def _parse_listing(item: dict) -> dict | None:
     try:
         item_id = str(item.get("itemId", "") or item.get("id", ""))
         if not item_id:
@@ -224,21 +149,21 @@ def _parse_listing(item: dict, detail_images: list = None) -> dict | None:
         if year and year < 1970:
             return None
 
-        # Slike: detalji > API thumbnail
-        if detail_images:
-            images = detail_images
-        else:
-            images = []
-            for img in (item.get("pictures", []) or item.get("images", []) or []):
-                if isinstance(img, dict):
-                    url = (img.get("largeUrl") or img.get("mediumUrl") or
-                           img.get("url") or img.get("src") or "")
-                    if not url and img.get("id"):
-                        url = f"https://images.marktplaats.com/api/v1/listing-mp-p/{img['id']}/image.jpg?rule=ecg_mp_eps$_57.jpg&imageVariantName=MASTER"
-                else:
-                    url = str(img)
-                if url and url.startswith("http"):
-                    images.append(_hq_image(url))
+        images = []
+        for img in (item.get("pictures", []) or item.get("images", []) or []):
+            if isinstance(img, dict):
+                url = (
+                    img.get("extraExtraLargeUrl")
+                    or img.get("largeUrl")
+                    or img.get("mediumUrl")
+                    or img.get("url")
+                    or img.get("src")
+                    or ""
+                )
+            else:
+                url = str(img)
+            if url and url.startswith("http"):
+                images.append(_hq_image(url))
 
         vip_url = item.get("vipUrl") or item.get("url") or ""
         if vip_url and not vip_url.startswith("http"):
@@ -277,7 +202,7 @@ class MarktplaatsScraper:
         seen_ids = set()
         limit = 30
 
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with aiohttp.ClientSession(headers=HEADERS, trust_env=True) as session:
             for page_num in range(max_pages):
                 offset = page_num * limit
                 params = {
@@ -314,29 +239,9 @@ class MarktplaatsScraper:
                         if not all_items:
                             break
 
-                        # Dohvati slike paralelno (max 5 odjednom)
-                        semaphore = asyncio.Semaphore(5)
-
-                        async def fetch_images(item):
-                            vip = item.get("vipUrl") or ""
-                            if vip and not vip.startswith("http"):
-                                vip = f"https://www.marktplaats.nl{vip}"
-                            if not vip:
-                                return []
-                            async with semaphore:
-                                await asyncio.sleep(0.3)
-                                return await _fetch_detail_images(session, vip)
-
-                        detail_images_list = await asyncio.gather(
-                            *[fetch_images(it) for it in all_items],
-                            return_exceptions=True
-                        )
-
                         before = len(all_listings)
-                        for item, det_imgs in zip(all_items, detail_images_list):
-                            if isinstance(det_imgs, Exception):
-                                det_imgs = []
-                            parsed = _parse_listing(item, det_imgs if det_imgs else None)
+                        for item in all_items:
+                            parsed = _parse_listing(item)
                             if parsed and parsed["external_id"] not in seen_ids:
                                 seen_ids.add(parsed["external_id"])
                                 all_listings.append(parsed)
@@ -347,8 +252,6 @@ class MarktplaatsScraper:
                         total = data.get("totalResultCount", 0)
                         if offset + limit >= total or len(all_items) < limit:
                             break
-
-                        await asyncio.sleep(2.0)
 
                 except Exception as e:
                     print(f"[Marktplaats] Greška str.{page_num+1}: {e}")

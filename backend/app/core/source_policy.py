@@ -7,7 +7,7 @@ from app.core.config import settings
 class ListingSource:
     key: str
     storage_source: str
-    country: str
+    default_country: str | None
     module: str
     class_name: str
 
@@ -16,16 +16,37 @@ SOURCE_REGISTRY: dict[str, ListingSource] = {
     "willhaben": ListingSource(
         key="willhaben",
         storage_source="willhaben",
-        country="AT",
+        default_country="AT",
         module="app.scrapers.willhaben",
         class_name="WillhabenScraper",
     ),
-    "mobile_de": ListingSource(
-        key="mobile_de",
-        storage_source="mobile.de",
-        country="DE",
-        module="app.scrapers.mobile_de",
-        class_name="MobileDeScraper",
+    "autoscout24": ListingSource(
+        key="autoscout24",
+        storage_source="autoscout24",
+        default_country=None,
+        module="app.scrapers.autoscout24",
+        class_name="AutoScout24Scraper",
+    ),
+    "marktplaats": ListingSource(
+        key="marktplaats",
+        storage_source="marktplaats",
+        default_country="NL",
+        module="app.scrapers.marktplaats",
+        class_name="MarktplaatsScraper",
+    ),
+    "2dehands": ListingSource(
+        key="2dehands",
+        storage_source="2dehands",
+        default_country="BE",
+        module="app.scrapers.tweedehands",
+        class_name="TweedehandsScraper",
+    ),
+    "kleinanzeigen": ListingSource(
+        key="kleinanzeigen",
+        storage_source="kleinanzeigen",
+        default_country="DE",
+        module="app.scrapers.kleinanzeigen",
+        class_name="KleinanzeigenScraper",
     ),
 }
 

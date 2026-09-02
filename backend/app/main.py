@@ -44,7 +44,7 @@ if settings.APP_ENV == "production":
 app = FastAPI(
     title="AutoAI Platform API",
     description="AI platforma za pretragu polovnih automobila u Evropi",
-    version="1.0.1-m01",
+    version="1.0.2-m01-all-sources",
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
@@ -63,7 +63,7 @@ app.add_middleware(
 async def health():
     return {
         "status": "ok",
-        "version": "1.0.1-m01",
+        "version": "1.0.2-m01-all-sources",
         "environment": settings.APP_ENV,
         "external_data_updates": (
             "internal_recovery"

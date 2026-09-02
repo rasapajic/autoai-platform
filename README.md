@@ -18,6 +18,26 @@ Platforma je dostupna na: **http://localhost:3000**
 
 ---
 
+## M0.1 Internal Live Listings Recovery
+
+The guarded internal recovery pipeline covers the five sources that populated
+the legacy production catalog: Willhaben, AutoScout24, Marktplaats, 2dehands,
+and Kleinanzeigen. It remains disabled unless all three runtime variables are
+explicitly configured:
+
+```text
+AUTOAI_ADMIN_SECRET=<new random secret>
+AUTOAI_INTERNAL_LISTING_INGEST_ENABLED=true
+AUTOAI_INTERNAL_LISTING_SOURCES=willhaben,autoscout24,marktplaats,2dehands,kleinanzeigen
+```
+
+`POST /api/v1/internal/m01/probe-all` fetches and validates every source without
+writing to the database. `POST /api/v1/internal/m01/refresh-all` stages a
+non-empty valid batch from every source and then replaces the old catalog in one
+transaction. If any source or database write fails, the old catalog is retained.
+
+---
+
 ## Struktura Projekta
 
 ```
