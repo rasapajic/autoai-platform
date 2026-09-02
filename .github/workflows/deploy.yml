@@ -79,6 +79,19 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
+      - name: Prepare one-time all-source listing recovery
+        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          RECOVERY_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$RECOVERY_SECRET"
+          echo "AUTOAI_RECOVERY_SECRET=$RECOVERY_SECRET" >> "$GITHUB_ENV"
+          railway variable set --service backend --skip-deploys \
+            "AUTOAI_ADMIN_SECRET=$RECOVERY_SECRET" \
+            "AUTOAI_INTERNAL_LISTING_INGEST_ENABLED=true" \
+            "AUTOAI_INTERNAL_LISTING_SOURCES=willhaben,autoscout24,marktplaats,2dehands,kleinanzeigen"
+
       - name: Deploy Backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -92,6 +105,90 @@ jobs:
         run: |
           cd frontend
           railway up --service frontend
+
+      - name: Wait for the recovered backend version
+        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+        run: |
+          for attempt in $(seq 1 60); do
+            HEALTH="$(curl --silent --show-error --max-time 20 \
+              https://autoai-platform-production.up.railway.app/health || true)"
+            if echo "$HEALTH" | jq -e \
+              '.status == "ok" and .version == "1.0.2-m01-all-sources" and .external_data_updates == "internal_recovery"' \
+              >/dev/null; then
+              echo "$HEALTH" | jq .
+              exit 0
+            fi
+            echo "Backend is not ready yet (attempt $attempt/60)."
+            sleep 10
+          done
+          echo "::error::Recovered backend did not become healthy in time"
+          exit 1
+
+      - name: Probe every historical listing source
+        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+        env:
+          RECOVERY_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 900 \
+            --request POST \
+            --header "X-AutoAI-Admin-Secret: $AUTOAI_RECOVERY_SECRET" \
+            "$RECOVERY_URL/probe-all?max_pages=1" \
+            --output /tmp/autoai-probe.json
+          jq -e '
+            .status == "ok" and
+            .database_changed == false and
+            ([.by_source.willhaben.accepted,
+              .by_source.autoscout24.accepted,
+              .by_source.marktplaats.accepted,
+              .by_source["2dehands"].accepted,
+              .by_source.kleinanzeigen.accepted] | all(. > 0))
+          ' /tmp/autoai-probe.json >/dev/null
+          jq '{status, database_changed, by_source}' /tmp/autoai-probe.json
+
+      - name: Atomically replace all listings with fresh data
+        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+        env:
+          RECOVERY_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 1800 \
+            --request POST \
+            --header "X-AutoAI-Admin-Secret: $AUTOAI_RECOVERY_SECRET" \
+            "$RECOVERY_URL/refresh-all?confirm=REPLACE_ALL_LISTINGS_WITH_FRESH&max_pages=3" \
+            --output /tmp/autoai-refresh.json
+          jq -e '
+            .status == "ok" and
+            .before >= 0 and
+            .deleted == .before and
+            .inserted == .after and
+            .after > 0 and
+            ([.by_source.willhaben.accepted,
+              .by_source.autoscout24.accepted,
+              .by_source.marktplaats.accepted,
+              .by_source["2dehands"].accepted,
+              .by_source.kleinanzeigen.accepted] | all(. > 0))
+          ' /tmp/autoai-refresh.json >/dev/null
+          jq '{status, before, deleted, inserted, after, by_source}' /tmp/autoai-refresh.json
+
+      - name: Verify the fresh production catalog
+        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+        env:
+          RECOVERY_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
+        run: |
+          curl --silent --show-error --fail-with-body --max-time 60 \
+            --header "X-AutoAI-Admin-Secret: $AUTOAI_RECOVERY_SECRET" \
+            "$RECOVERY_URL/status" \
+            --output /tmp/autoai-status.json
+          jq -e '
+            .status == "ok" and
+            .total_all > 0 and
+            .total_active == .total_all and
+            ([.active_by_source.willhaben,
+              .active_by_source.autoscout24,
+              .active_by_source.marktplaats,
+              .active_by_source["2dehands"],
+              .active_by_source.kleinanzeigen] | all(. > 0))
+          ' /tmp/autoai-status.json >/dev/null
+          jq '{status, active_by_source, total_active, total_all}' /tmp/autoai-status.json
 
       - name: Notify deploy success
         run: echo "✅ Deploy uspješan!"

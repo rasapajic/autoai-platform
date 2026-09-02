@@ -1,0 +1,3 @@
+This marker authorizes exactly one guarded production refresh of the AutoAI
+listing catalog after the five historical sources pass a live probe. Remove it
+from main immediately after the recovery workflow succeeds.
