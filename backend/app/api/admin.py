@@ -1,15 +1,20 @@
 import logging
+import secrets
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
-ADMIN_SECRET = "autoai-admin-2024"
 
 
 def check_secret(secret: Optional[str]):
-    if secret != ADMIN_SECRET:
+    configured = (settings.AUTOAI_ADMIN_SECRET or "").strip()
+    if not configured:
+        raise HTTPException(status_code=503, detail="AUTOAI_ADMIN_SECRET is not configured")
+    if not secrets.compare_digest(secret or "", configured):
         raise HTTPException(status_code=403, detail="Zabranjen pristup")
 
 

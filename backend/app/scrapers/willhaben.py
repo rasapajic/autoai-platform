@@ -281,7 +281,12 @@ def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown
 
 
 async def _scrape_page(session, url, params, category_name, all_listings, seen_ids):
-    """Scrape jedne stranice i dohvati detalje paralelno."""
+    """Scrape one current search-result page.
+
+    The listing page already carries the fields and image references needed by
+    recovery. Avoiding one detail request per advert makes a full refresh much
+    faster and less likely to be rate-limited.
+    """
     try:
         async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
             if resp.status != 200:
@@ -294,41 +299,9 @@ async def _scrape_page(session, url, params, category_name, all_listings, seen_i
             if not adverts:
                 return False
 
-            # Dohvati URL-ove oglasa
-            items_with_urls = []
-            for ad in adverts:
-                attrs = ad.get("attributes", {}).get("attribute", [])
-                seo_url = _get_attr(attrs, "SEO_URL") or ""
-                if seo_url.startswith("/iad"):
-                    detail_url = f"https://www.willhaben.at{seo_url}"
-                elif seo_url.startswith("/"):
-                    detail_url = f"https://www.willhaben.at/iad{seo_url}"
-                elif seo_url:
-                    detail_url = f"https://www.willhaben.at/iad/{seo_url}"
-                else:
-                    ad_id = str(ad.get("id", ""))
-                    detail_url = f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}"
-                items_with_urls.append((ad, detail_url))
-
-            # Dohvati slike paralelno (max 5)
-            semaphore = asyncio.Semaphore(5)
-            async def fetch_imgs(ad, detail_url):
-                async with semaphore:
-                    await asyncio.sleep(0.3)
-                    return await _fetch_detail_images(session, detail_url)
-
-            detail_results = await asyncio.gather(
-                *[fetch_imgs(ad, du) for ad, du in items_with_urls],
-                return_exceptions=True
-            )
-
             before = len(all_listings)
-            for (ad, _), result in zip(items_with_urls, detail_results):
-                if isinstance(result, Exception) or not isinstance(result, tuple):
-                    det_imgs, c_type, c_url = [], "unknown", None
-                else:
-                    det_imgs, c_type, c_url = result
-                parsed = _parse_ad(ad, det_imgs if det_imgs else None, c_type, c_url)
+            for ad in adverts:
+                parsed = _parse_ad(ad)
                 if parsed and parsed["external_id"] not in seen_ids:
                     seen_ids.add(parsed["external_id"])
                     all_listings.append(parsed)
@@ -347,7 +320,7 @@ class WillhabenScraper:
         all_listings = []
         seen_ids = set()
 
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with aiohttp.ClientSession(headers=HEADERS, trust_env=True) as session:
 
             # ── Kategorije ──────────────────────────────────────────
             for category in CATEGORIES:

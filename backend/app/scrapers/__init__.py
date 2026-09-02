@@ -1,16 +1,6 @@
+"""AutoAI listing source adapters.
+
+Importing an adapter does not authorize ingestion. Runtime access is guarded by
+``app.core.source_policy`` and the environment-backed internal admin endpoint.
+Public/commercial and unattended ingestion remain disabled.
 """
-AutoAI external source ingestion is frozen.
-
-Importing any scraper is blocked by default so admin endpoints, scripts,
-Celery tasks, and ad-hoc executions cannot fetch third-party listings.
-Re-enable only after the source has documented commercial usage rights.
-"""
-
-
-class ScrapingDisabledError(RuntimeError):
-    pass
-
-
-raise ScrapingDisabledError(
-    "AutoAI external data updates are disabled pending verified source rights."
-)

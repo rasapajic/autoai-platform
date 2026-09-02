@@ -203,7 +203,7 @@ class TweedehandsScraper:
         limit = 30
         first_run = True
 
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with aiohttp.ClientSession(headers=HEADERS, trust_env=True) as session:
             for page_num in range(max_pages):
                 offset = page_num * limit
                 params = {

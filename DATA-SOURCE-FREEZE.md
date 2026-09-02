@@ -22,7 +22,14 @@ listing recovery is permitted only when all of the following are true:
 5. no unattended schedule, Celery beat job or public/commercial listing service
    is enabled by this exception.
 
-M0.1 starts with Austria and Germany only: `willhaben` and `mobile_de`.
+The controlled internal recovery set is limited to the five sources that had
+actually populated the legacy production database: `willhaben`, `autoscout24`,
+`marktplaats`, `2dehands`, and `kleinanzeigen`.
+
+The all-source refresh first stages and validates a fresh non-empty batch from
+every one of those sources. Only then does it replace the listing catalog in a
+single database transaction. A source failure or an insert failure leaves the
+legacy catalog unchanged.
 
 Before a source is enabled for public/commercial production, AutoAI still
 requires documented rights for access/use, metadata, descriptions, images,
