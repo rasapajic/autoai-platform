@@ -103,16 +103,12 @@ jobs:
       - name: Deploy Backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          cd backend
-          railway up --service autoai-platform
+        run: railway up --service autoai-platform
 
       - name: Deploy Frontend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          cd frontend
-          railway up --service content-youth
+        run: railway up --service content-youth
 
       - name: Wait for the recovered backend version
         if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
