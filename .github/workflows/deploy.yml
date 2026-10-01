@@ -85,7 +85,7 @@ jobs:
         run: |
           echo "--- Railway project and services ---"
           railway status --json | jq '{project: .name, environment: .environment.name, services: [.services.edges[].node | {id, name}]}'
-          railway service status --all --json | jq .
+          railway service list --json | jq .
 
       - name: Prepare one-time all-source listing recovery
         if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
@@ -95,7 +95,7 @@ jobs:
           RECOVERY_SECRET="$(openssl rand -hex 32)"
           echo "::add-mask::$RECOVERY_SECRET"
           echo "AUTOAI_RECOVERY_SECRET=$RECOVERY_SECRET" >> "$GITHUB_ENV"
-          railway variable set --service backend --skip-deploys \
+          railway variable set --service autoai-platform --skip-deploys \
             "AUTOAI_ADMIN_SECRET=$RECOVERY_SECRET" \
             "AUTOAI_INTERNAL_LISTING_INGEST_ENABLED=true" \
             "AUTOAI_INTERNAL_LISTING_SOURCES=willhaben,autoscout24,marktplaats,2dehands,kleinanzeigen"
@@ -105,14 +105,14 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           cd backend
-          railway up --service backend
+          railway up --service autoai-platform
 
       - name: Deploy Frontend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           cd frontend
-          railway up --service frontend
+          railway up --service content-youth
 
       - name: Wait for the recovered backend version
         if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
