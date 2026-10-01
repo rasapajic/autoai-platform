@@ -79,6 +79,14 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
+      - name: Discover Railway services
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "--- Railway project and services ---"
+          railway status --json | jq '{project: .name, environment: .environment.name, services: [.services.edges[].node | {id, name}]}'
+          railway service status --all --json | jq .
+
       - name: Prepare one-time all-source listing recovery
         if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
         env:
