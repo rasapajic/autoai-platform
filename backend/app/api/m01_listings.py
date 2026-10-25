@@ -23,6 +23,7 @@ router = APIRouter()
 
 PURGE_CONFIRMATION = "PURGE_LEGACY_LISTINGS"
 REFRESH_CONFIRMATION = "REPLACE_ALL_LISTINGS_WITH_FRESH"
+SCHEDULED_REFRESH_CONFIRMATION = "REFRESH_ACTIVE_INTERNAL_CATALOG"
 HISTORICAL_SOURCE_KEYS = tuple(SOURCE_REGISTRY.keys())
 LISTING_WRITE_FIELDS = frozenset(Listing.__table__.columns.keys()) - {"id"}
 
@@ -155,6 +156,7 @@ async def _stage_all_sources(max_pages: int) -> tuple[dict[str, list[dict]], dic
     now = datetime.now(timezone.utc)
     staged: dict[str, list[dict]] = {}
     results: dict[str, dict] = {}
+    seen_external_ids: set[str] = set()
 
     for source in sources:
         try:
@@ -172,9 +174,87 @@ async def _stage_all_sources(max_pages: int) -> tuple[dict[str, list[dict]], dic
                 status_code=502,
                 detail=f"source_returned_no_valid_listings:{source.key}",
             )
+
+        duplicate_ids = sorted(
+            payload["external_id"]
+            for payload in batch
+            if payload["external_id"] in seen_external_ids
+        )
+        if duplicate_ids:
+            raise HTTPException(
+                status_code=502,
+                detail=f"duplicate_external_id_across_sources:{duplicate_ids[0]}",
+            )
+        seen_external_ids.update(payload["external_id"] for payload in batch)
         staged[source.key] = batch
 
     return staged, {"checked_at": now.isoformat(), "by_source": results}
+
+
+def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]]) -> dict:
+    """Merge a complete staged catalog while preserving listing relationships."""
+    source_names = [source.storage_source for source in SOURCE_REGISTRY.values()]
+    db = SessionLocal()
+    new_count = 0
+    updated_count = 0
+
+    try:
+        active_before = (
+            db.query(func.count(Listing.id))
+            .filter(Listing.source.in_(source_names), Listing.is_active == True)
+            .scalar()
+            or 0
+        )
+        db.query(Listing).filter(
+            Listing.source.in_(source_names),
+            Listing.is_active == True,
+        ).update({Listing.is_active: False}, synchronize_session=False)
+
+        for source_rows in staged.values():
+            for payload in source_rows:
+                existing = (
+                    db.query(Listing)
+                    .filter(Listing.external_id == payload["external_id"])
+                    .first()
+                )
+                if existing:
+                    for key, value in payload.items():
+                        if key in {"external_id", "first_seen_at"}:
+                            continue
+                        setattr(existing, key, value)
+                    updated_count += 1
+                else:
+                    db.add(Listing(**payload))
+                    new_count += 1
+
+        db.flush()
+        active_after = (
+            db.query(func.count(Listing.id))
+            .filter(Listing.source.in_(source_names), Listing.is_active == True)
+            .scalar()
+            or 0
+        )
+        inactive_after = (
+            db.query(func.count(Listing.id))
+            .filter(Listing.source.in_(source_names), Listing.is_active == False)
+            .scalar()
+            or 0
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("M0.2 scheduled catalog refresh rolled back")
+        raise
+    finally:
+        db.close()
+
+    return {
+        "active_before": active_before,
+        "new": new_count,
+        "updated": updated_count,
+        "active_after": active_after,
+        "inactive_after": inactive_after,
+    }
 
 
 @router.get("/status")
@@ -192,7 +272,7 @@ def m01_status(x_autoai_admin_secret: Optional[str] = Header(default=None)):
         total_active = sum(count for _, count in rows)
         return {
             "status": "ok",
-            "phase": "M0.1 All-source Live Listings Recovery",
+            "phase": "M0.2 Internal Scheduled Listings Refresh",
             "ingest_enabled": settings.AUTOAI_INTERNAL_LISTING_INGEST_ENABLED,
             "configured_sources": sorted(configured_source_keys()),
             "required_sources": list(HISTORICAL_SOURCE_KEYS),
@@ -303,6 +383,44 @@ async def refresh_all_sources(
         "deleted": deleted,
         "inserted": len(fresh_rows),
         "after": after,
+        **report,
+    }
+
+
+@router.post("/scheduled-refresh")
+async def scheduled_refresh_all_sources(
+    confirm: str = Query(...),
+    max_pages: int = Query(3, ge=1, le=5),
+    x_autoai_admin_secret: Optional[str] = Header(default=None),
+):
+    """Refresh the internal active catalog without deleting listing records.
+
+    All five sources are staged first. Existing rows are updated in place, new
+    rows are inserted, and historical-source rows absent from the fresh batches
+    become inactive. Any failure rolls back the complete database transaction.
+    """
+    require_admin_secret(x_autoai_admin_secret)
+    if confirm != SCHEDULED_REFRESH_CONFIRMATION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"confirm must equal {SCHEDULED_REFRESH_CONFIRMATION}",
+        )
+
+    staged, report = await _stage_all_sources(max_pages)
+    counts = _apply_scheduled_catalog_refresh(staged)
+    logger.warning(
+        "M0.2 scheduled refresh completed: active_before=%s new=%s updated=%s "
+        "active_after=%s inactive_after=%s",
+        counts["active_before"],
+        counts["new"],
+        counts["updated"],
+        counts["active_after"],
+        counts["inactive_after"],
+    )
+    return {
+        "status": "ok",
+        "action": "scheduled_refresh_all_sources",
+        **counts,
         **report,
     }
 

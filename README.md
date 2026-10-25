@@ -18,12 +18,23 @@ Platforma je dostupna na: **http://localhost:3000**
 
 ---
 
-## M0.1 Internal Live Listings Recovery
+## M0.2 Internal Scheduled Listings Refresh
 
-The guarded internal recovery pipeline covers the five sources that populated
-the legacy production catalog: Willhaben, AutoScout24, Marktplaats, 2dehands,
-and Kleinanzeigen. It remains disabled unless all three runtime variables are
-explicitly configured:
+The guarded internal pipeline covers the five sources that populated the legacy
+production catalog: Willhaben, AutoScout24, Marktplaats, 2dehands, and
+Kleinanzeigen. Public/commercial external listing use remains disabled.
+
+The Railway cron service `appealing-communication` runs at 02:00 and 14:00 UTC.
+It calls the secret-protected `POST /api/v1/internal/m01/scheduled-refresh`
+endpoint with at most three pages per source.
+
+Each cycle stages a valid, non-empty batch from every source before opening a
+database transaction. Existing listings are updated in place, new listings are
+inserted, and missing historical-source listings are marked inactive. Records
+are not deleted, so favorites, price history, and conversations remain linked.
+A source or database failure leaves the existing catalog unchanged.
+
+Required backend variables:
 
 ```text
 AUTOAI_ADMIN_SECRET=<new random secret>
@@ -31,10 +42,17 @@ AUTOAI_INTERNAL_LISTING_INGEST_ENABLED=true
 AUTOAI_INTERNAL_LISTING_SOURCES=willhaben,autoscout24,marktplaats,2dehands,kleinanzeigen
 ```
 
-`POST /api/v1/internal/m01/probe-all` fetches and validates every source without
-writing to the database. `POST /api/v1/internal/m01/refresh-all` stages a
-non-empty valid batch from every source and then replaces the old catalog in one
-transaction. If any source or database write fails, the old catalog is retained.
+Required cron variables:
+
+```text
+AUTOAI_ADMIN_SECRET=<same backend secret>
+AUTOAI_BACKEND_URL=https://autoai-platform-production.up.railway.app
+AUTOAI_CRON_MAX_PAGES=3
+```
+
+`POST /api/v1/internal/m01/probe-all` remains available for read-only source
+validation. The destructive M0.1 recovery endpoint is retained only for
+emergency, explicitly confirmed recovery and is not used by the cron service.
 
 ---
 
@@ -77,7 +95,7 @@ autoai-platform/
 - [x] **Faza 01** — Infrastruktura & Baza
 - [ ] **Faza 02** — Web Scraper Engine
 - [ ] **Faza 03** — Backend API
-- [ ] **Faza 04** — AI Komponente  
+- [ ] **Faza 04** — AI Komponente
 - [ ] **Faza 05** — Frontend
 - [ ] **Faza 06** — Deployment & Launch
 
@@ -96,6 +114,6 @@ docker compose down -v && docker compose up -d
 # Pristupi PostgreSQL konzoli
 docker compose exec postgres psql -U admin -d autoai
 
-# Pristupi Redis konzoli  
+# Pristupi Redis konzoli
 docker compose exec redis redis-cli
 ```

@@ -7,7 +7,6 @@ on:
     branches: [main]
 
 jobs:
-  # ── Testiranje ─────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
@@ -23,26 +22,23 @@ jobs:
           cd backend
           pip install -r requirements.txt
 
-      - name: Validate active M0.1 backend syntax
+      - name: Validate active M0.2 backend syntax
         run: |
           cd backend
           python -m compileall -q app/api app/ai app/core app/models app/main.py
           python -m py_compile \
+            scripts/scraper.py \
             app/scrapers/willhaben.py \
             app/scrapers/autoscout24.py \
             app/scrapers/marktplaats.py \
             app/scrapers/tweedehands.py \
             app/scrapers/kleinanzeigen.py
 
-      - name: Run backend tests if present
+      - name: Run backend tests
         run: |
           cd backend
-          if [ -d tests ] && find tests -type f -name 'test_*.py' -print -quit | grep -q .; then
-            python -m pip install pytest
-            python -m pytest tests/ -v --tb=short
-          else
-            echo "::warning::No backend tests found; backend test suite was not executed"
-          fi
+          python -m pip install pytest
+          python -m pytest tests/ -v --tb=short
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -59,15 +55,6 @@ jobs:
           cd frontend
           npm run build
 
-      - name: Probe deployed backend health
-        continue-on-error: true
-        run: |
-          echo "--- AutoAI deployed backend /health ---"
-          curl --silent --show-error --fail-with-body --max-time 20 \
-            https://autoai-platform-production.up.railway.app/health
-          echo
-
-  # ── Deploy na Railway ──────────────────────────────────────
   deploy:
     needs: test
     runs-on: ubuntu-latest
@@ -83,41 +70,39 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          echo "--- Railway project and services ---"
           railway status --json | jq '{project: .name, environment: .environment.name, services: [.services.edges[].node | {id, name}]}'
           railway service list --json | jq .
 
-      - name: Prepare one-time all-source listing recovery
-        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+      - name: Configure guarded internal refresh
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          RECOVERY_SECRET="$(openssl rand -hex 32)"
-          echo "::add-mask::$RECOVERY_SECRET"
-          echo "AUTOAI_RECOVERY_SECRET=$RECOVERY_SECRET" >> "$GITHUB_ENV"
+          INTERNAL_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$INTERNAL_SECRET"
+          echo "AUTOAI_INTERNAL_SECRET=$INTERNAL_SECRET" >> "$GITHUB_ENV"
+
           railway variable set --service autoai-platform --skip-deploys \
-            "AUTOAI_ADMIN_SECRET=$RECOVERY_SECRET" \
+            "AUTOAI_ADMIN_SECRET=$INTERNAL_SECRET" \
             "AUTOAI_INTERNAL_LISTING_INGEST_ENABLED=true" \
             "AUTOAI_INTERNAL_LISTING_SOURCES=willhaben,autoscout24,marktplaats,2dehands,kleinanzeigen"
+
+          railway variable set --service appealing-communication --skip-deploys \
+            "AUTOAI_ADMIN_SECRET=$INTERNAL_SECRET" \
+            "AUTOAI_BACKEND_URL=https://autoai-platform-production.up.railway.app" \
+            "AUTOAI_CRON_MAX_PAGES=3"
 
       - name: Deploy Backend
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: railway up --service autoai-platform
 
-      - name: Deploy Frontend
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service content-youth
-
-      - name: Wait for the recovered backend version
-        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+      - name: Wait for M0.2 backend
         run: |
           for attempt in $(seq 1 60); do
             HEALTH="$(curl --silent --show-error --max-time 20 \
               https://autoai-platform-production.up.railway.app/health || true)"
             if echo "$HEALTH" | jq -e \
-              '.status == "ok" and .version == "1.0.2-m01-all-sources" and .external_data_updates == "internal_recovery"' \
+              '.status == "ok" and .version == "1.0.3-m02-scheduled-refresh" and .external_data_updates == "internal_scheduled_refresh"' \
               >/dev/null; then
               echo "$HEALTH" | jq .
               exit 0
@@ -125,18 +110,28 @@ jobs:
             echo "Backend is not ready yet (attempt $attempt/60)."
             sleep 10
           done
-          echo "::error::Recovered backend did not become healthy in time"
+          echo "::error::M0.2 backend did not become healthy in time"
           exit 1
 
-      - name: Probe every historical listing source
-        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+      - name: Deploy Frontend
         env:
-          RECOVERY_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service content-youth
+
+      - name: Deploy Cron
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service appealing-communication
+
+      - name: Probe every source before schedule activation
+        if: ${{ hashFiles('.github/AUTOAI_M02_SCHEDULE_ENABLE_PENDING') != '' }}
+        env:
+          INTERNAL_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
         run: |
           curl --silent --show-error --fail-with-body --max-time 900 \
             --request POST \
-            --header "X-AutoAI-Admin-Secret: $AUTOAI_RECOVERY_SECRET" \
-            "$RECOVERY_URL/probe-all?max_pages=1" \
+            --header "X-AutoAI-Admin-Secret: $AUTOAI_INTERNAL_SECRET" \
+            "$INTERNAL_URL/probe-all?max_pages=1" \
             --output /tmp/autoai-probe.json
           jq -e '
             .status == "ok" and
@@ -149,43 +144,41 @@ jobs:
           ' /tmp/autoai-probe.json >/dev/null
           jq '{status, database_changed, by_source}' /tmp/autoai-probe.json
 
-      - name: Atomically replace all listings with fresh data
-        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+      - name: Run first relationship-safe scheduled refresh
+        if: ${{ hashFiles('.github/AUTOAI_M02_SCHEDULE_ENABLE_PENDING') != '' }}
         env:
-          RECOVERY_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
+          INTERNAL_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
         run: |
           curl --silent --show-error --fail-with-body --max-time 1800 \
             --request POST \
-            --header "X-AutoAI-Admin-Secret: $AUTOAI_RECOVERY_SECRET" \
-            "$RECOVERY_URL/refresh-all?confirm=REPLACE_ALL_LISTINGS_WITH_FRESH&max_pages=3" \
+            --header "X-AutoAI-Admin-Secret: $AUTOAI_INTERNAL_SECRET" \
+            "$INTERNAL_URL/scheduled-refresh?confirm=REFRESH_ACTIVE_INTERNAL_CATALOG&max_pages=3" \
             --output /tmp/autoai-refresh.json
           jq -e '
             .status == "ok" and
-            .before >= 0 and
-            .deleted == .before and
-            .inserted == .after and
-            .after > 0 and
+            .active_after > 0 and
+            .active_after == (.new + .updated) and
             ([.by_source.willhaben.accepted,
               .by_source.autoscout24.accepted,
               .by_source.marktplaats.accepted,
               .by_source["2dehands"].accepted,
               .by_source.kleinanzeigen.accepted] | all(. > 0))
           ' /tmp/autoai-refresh.json >/dev/null
-          jq '{status, before, deleted, inserted, after, by_source}' /tmp/autoai-refresh.json
+          jq '{status, active_before, new, updated, active_after, inactive_after, by_source}' /tmp/autoai-refresh.json
 
-      - name: Verify the fresh production catalog
-        if: ${{ hashFiles('.github/AUTOAI_M01_REFRESH_PENDING') != '' }}
+      - name: Verify active production catalog
+        if: ${{ hashFiles('.github/AUTOAI_M02_SCHEDULE_ENABLE_PENDING') != '' }}
         env:
-          RECOVERY_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
+          INTERNAL_URL: https://autoai-platform-production.up.railway.app/api/v1/internal/m01
         run: |
           curl --silent --show-error --fail-with-body --max-time 60 \
-            --header "X-AutoAI-Admin-Secret: $AUTOAI_RECOVERY_SECRET" \
-            "$RECOVERY_URL/status" \
+            --header "X-AutoAI-Admin-Secret: $AUTOAI_INTERNAL_SECRET" \
+            "$INTERNAL_URL/status" \
             --output /tmp/autoai-status.json
           jq -e '
             .status == "ok" and
-            .total_all > 0 and
-            .total_active == .total_all and
+            .total_active > 0 and
+            .total_all >= .total_active and
             ([.active_by_source.willhaben,
               .active_by_source.autoscout24,
               .active_by_source.marktplaats,

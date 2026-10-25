@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     print("✅ Migracija contact_type/contact_url primenjena")
 
     if settings.AUTOAI_INTERNAL_LISTING_INGEST_ENABLED:
-        print("🧪 AutoAI M0.1 internal listing recovery is ENABLED")
+        print("🧪 AutoAI M0.2 internal scheduled listing refresh is ENABLED")
     else:
         print("🛑 AutoAI external listing ingest is disabled by default")
 
@@ -44,7 +44,7 @@ if settings.APP_ENV == "production":
 app = FastAPI(
     title="AutoAI Platform API",
     description="AI platforma za pretragu polovnih automobila u Evropi",
-    version="1.0.2-m01-all-sources",
+    version="1.0.3-m02-scheduled-refresh",
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
@@ -63,10 +63,10 @@ app.add_middleware(
 async def health():
     return {
         "status": "ok",
-        "version": "1.0.2-m01-all-sources",
+        "version": "1.0.3-m02-scheduled-refresh",
         "environment": settings.APP_ENV,
         "external_data_updates": (
-            "internal_recovery"
+            "internal_scheduled_refresh"
             if settings.AUTOAI_INTERNAL_LISTING_INGEST_ENABLED
             else "disabled"
         ),
@@ -82,11 +82,11 @@ app.include_router(alerts.router,    prefix="/api/v1/alerts",   tags=["🔔 Aler
 app.include_router(ai_chat.router,   prefix="/api/v1/ai",       tags=["🤖 AI"])
 app.include_router(analyze.router,   prefix="/api/v1/analyze",  tags=["🔍 Analiza oglasa"])
 # Legacy /api/v1/admin router is intentionally not mounted because its secret
-# was committed in plaintext. M0.1 uses header-based auth from the environment.
+# was committed in plaintext. Internal refresh uses environment-backed auth.
 app.include_router(
     m01_listings.router,
     prefix="/api/v1/internal/m01",
-    tags=["🧪 M0.1 Live Listings Recovery"],
+    tags=["🧪 M0.2 Internal Listings Refresh"],
 )
 app.include_router(vin.router,       prefix="/api/v1/vin",      tags=["🔐 VIN"])
 app.include_router(inbox.router,     prefix="/api/v1/inbox",    tags=["📬 Inbox"])
