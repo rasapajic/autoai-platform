@@ -47,3 +47,13 @@
 - [ ] Godište filter u pretrazi — testirati
 - [ ] Povećati broj stranica po scrape runu kada baza poraste
 - [ ] Razmotriti willhaben.at kao dodatni izvor za AT tržište
+
+
+## M0.2 — 25.10.2026
+
+- Internal cron `appealing-communication` is the only unattended listing updater.
+- Schedule remains 02:00 and 14:00 UTC.
+- All five sources must stage successfully before any database write.
+- Existing rows are updated in place; missing rows become inactive.
+- Scheduled refresh never deletes listing rows, favorites, price history, or conversations.
+- Public/commercial external listing use remains fail-closed.
