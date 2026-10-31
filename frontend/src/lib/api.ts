@@ -22,7 +22,7 @@ export const searchListings = (params: Record<string, any>) => {
 }
 
 export const getSearchStats = () => api('/search/stats')
-export const getMakes = () => api('/search/makes')
+export const getMakes = (minCount = 1) => api(`/search/makes?min_count=${minCount}`)
 export const getModels = (make: string) => api(`/search/models?make=${encodeURIComponent(make)}`)
 
 // ── Oglasi ────────────────────────────────────────────────────
