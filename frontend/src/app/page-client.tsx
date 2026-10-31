@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { searchListings, parseQuery } from '@/lib/api'
+import { searchListings, parseQuery, getMakes } from '@/lib/api'
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni',
@@ -20,6 +20,14 @@ const POPULAR_MAKES = [
   'Ford', 'Opel', 'Skoda', 'Renault', 'Peugeot',
   'Hyundai', 'Kia', 'Volvo', 'Seat', 'Mazda',
 ]
+
+function makeKey(make: string): string {
+  return make
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
 
 function calcBreakdown(price: number) {
   const carina    = Math.round(price * 0.05)
@@ -123,6 +131,8 @@ export default function SearchPage() {
   const [aiLoading,   setAiLoading]   = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [customMake,  setCustomMake]  = useState(false)
+  const [makeOptions, setMakeOptions] = useState<Array<{ make: string; count: number }>>([])
+  const [makesLoading, setMakesLoading] = useState(true)
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '',
@@ -148,6 +158,15 @@ export default function SearchPage() {
 
   useEffect(() => { doSearch() }, [])
 
+  useEffect(() => {
+    let active = true
+    getMakes(1)
+      .then(data => { if (active) setMakeOptions(Array.isArray(data) ? data : []) })
+      .catch(() => { if (active) setMakeOptions([]) })
+      .finally(() => { if (active) setMakesLoading(false) })
+    return () => { active = false }
+  }, [])
+
   const setFilter = (key: string, val: any) => {
     const next = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
     setFilters(next); doSearch(next)
@@ -171,6 +190,11 @@ export default function SearchPage() {
   ].filter(Boolean).length
 
   const isCustomMakeActive = filters.make && !POPULAR_MAKES.includes(filters.make)
+  const popularMakeKeys = new Set(POPULAR_MAKES.map(makeKey))
+  const makeCountByKey = new Map(makeOptions.map(({ make, count }) => [makeKey(make), count]))
+  const otherMakes = makeOptions
+    .filter(({ make }) => !popularMakeKeys.has(makeKey(make)))
+    .sort((a, b) => a.make.localeCompare(b.make, 'sr', { sensitivity: 'base' }))
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -183,6 +207,7 @@ export default function SearchPage() {
           .hsub{font-size:12px!important}
           .hbadges{display:none!important}
           .mkgrid{grid-template-columns:repeat(3,1fr)!important}
+          .other-makes-grid{grid-template-columns:repeat(2,1fr)!important}
         }
         @media(min-width:769px){
           .mfb{display:none!important}
@@ -257,27 +282,42 @@ export default function SearchPage() {
             BRZI IZBOR MARKE
           </div>
           <div className="mkgrid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 }}>
-            {POPULAR_MAKES.map(make => (
-              <button key={make} className="mkbtn cb"
-                onClick={() => { setCustomMake(false); setFilter('make', filters.make === make ? '' : make) }}
-                style={{
-                  padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-                  background: filters.make === make ? 'rgba(255,107,0,.12)' : 'var(--bg2)',
-                  border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
-                  color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
-                  cursor: 'pointer', textAlign: 'center', whiteSpace: 'nowrap',
-                  overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>
-                {make === 'Mercedes-Benz' ? 'Mercedes' : make === 'Volkswagen' ? 'VW' : make}
-              </button>
-            ))}
-            {!customMake && !isCustomMakeActive && (
-              <button className="mkbtn cb" onClick={() => setCustomMake(true)} style={{
-                padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
-                background: 'var(--bg2)', border: '1px dashed var(--border)',
-                color: 'var(--text3)', cursor: 'pointer', textAlign: 'center', gridColumn: 'span 2',
-              }}>+ Ostale marke</button>
-            )}
+            {POPULAR_MAKES.map(make => {
+              const count = makeCountByKey.get(makeKey(make)) || 0
+              const label = make === 'Mercedes-Benz' ? 'Mercedes' : make === 'Volkswagen' ? 'VW' : make
+              return (
+                <button key={make} className="mkbtn cb"
+                  onClick={() => { setCustomMake(false); setFilter('make', filters.make === make ? '' : make) }}
+                  style={{
+                    padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 500,
+                    background: filters.make === make ? 'rgba(255,107,0,.12)' : 'var(--bg2)',
+                    border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
+                    color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 7, whiteSpace: 'nowrap', overflow: 'hidden',
+                  }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+                  {!makesLoading && (
+                    <span aria-label={`${count} vozila`} style={{
+                      flexShrink: 0, minWidth: 22, padding: '1px 6px', borderRadius: 999,
+                      background: filters.make === make ? 'rgba(255,107,0,.18)' : 'var(--bg3)',
+                      color: filters.make === make ? 'var(--accent)' : 'var(--text3)',
+                      fontSize: 10, fontWeight: 700,
+                    }}>{count.toLocaleString('sr-RS')}</span>
+                  )}
+                </button>
+              )
+            })}
+            <button className="mkbtn cb" aria-expanded={customMake}
+              onClick={() => setCustomMake(!customMake)} style={{
+                padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                background: customMake ? 'rgba(255,107,0,.10)' : 'var(--bg2)',
+                border: `1px ${customMake ? 'solid var(--accent)' : 'dashed var(--border)'}`,
+                color: customMake ? 'var(--accent)' : 'var(--text3)',
+                cursor: 'pointer', textAlign: 'center', gridColumn: 'span 2',
+              }}>
+              {customMake ? '− Sakrij ostale marke' : `+ Ostale marke${otherMakes.length ? ` (${otherMakes.length})` : ''}`}
+            </button>
             {isCustomMakeActive && !customMake && (
               <button className="mkbtn cb" onClick={() => setFilter('make', '')} style={{
                 padding: '8px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600,
@@ -286,18 +326,49 @@ export default function SearchPage() {
               }}>{filters.make} ✕</button>
             )}
             {customMake && (
-              <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, marginTop: 2 }}>
-                <input autoFocus placeholder="Upiši marku npr. Porsche, Jeep, Ferrari..."
-                  defaultValue={isCustomMakeActive ? filters.make : ''}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') { const val = (e.target as HTMLInputElement).value.trim(); if (val) setFilter('make', val); setCustomMake(false) }
-                    if (e.key === 'Escape') setCustomMake(false)
-                  }}
-                  style={{ flex: 1, background: 'var(--bg3)', border: '1px solid var(--accent)', borderRadius: 10, padding: '9px 14px', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
-                <button onClick={() => { const input = document.querySelector('input[placeholder*="Upiši marku"]') as HTMLInputElement; const val = input?.value.trim(); if (val) setFilter('make', val); setCustomMake(false) }}
-                  style={{ padding: '9px 16px', borderRadius: 10, background: 'var(--accent)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Traži</button>
-                <button onClick={() => setCustomMake(false)}
-                  style={{ padding: '9px 14px', borderRadius: 10, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text3)', fontSize: 12, cursor: 'pointer' }}>✕</button>
+              <div style={{
+                gridColumn: '1 / -1', marginTop: 8, padding: 14, borderRadius: 12,
+                background: 'var(--bg2)', border: '1px solid var(--border)',
+              }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  gap: 10, marginBottom: 10, fontSize: 11, color: 'var(--text3)',
+                  letterSpacing: '.06em', fontWeight: 600,
+                }}>
+                  <span>OSTALE MARKE — ABECEDNO</span>
+                  {!makesLoading && <span>{otherMakes.length} marki</span>}
+                </div>
+                {makesLoading ? (
+                  <div style={{ padding: '12px 0', color: 'var(--text3)', fontSize: 12 }}>Učitavam marke...</div>
+                ) : otherMakes.length > 0 ? (
+                  <div className="other-makes-grid" style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6,
+                  }}>
+                    {otherMakes.map(({ make, count }) => (
+                      <button key={make} className="mkbtn cb"
+                        onClick={() => { setFilter('make', make); setCustomMake(false) }}
+                        style={{
+                          minWidth: 0, padding: '8px 9px', borderRadius: 9,
+                          background: filters.make === make ? 'rgba(255,107,0,.12)' : 'var(--bg3)',
+                          border: `1px solid ${filters.make === make ? 'var(--accent)' : 'var(--border)'}`,
+                          color: filters.make === make ? 'var(--accent)' : 'var(--text2)',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center',
+                          justifyContent: 'space-between', gap: 6, fontSize: 11,
+                        }}>
+                        <span title={make} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{make}</span>
+                        <span style={{
+                          flexShrink: 0, minWidth: 22, padding: '1px 5px', borderRadius: 999,
+                          background: 'var(--bg2)', color: 'var(--text3)',
+                          fontSize: 10, fontWeight: 700, textAlign: 'center',
+                        }}>{count.toLocaleString('sr-RS')}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ padding: '12px 0', color: 'var(--text3)', fontSize: 12 }}>
+                    Marke trenutno nisu dostupne.
+                  </div>
+                )}
               </div>
             )}
           </div>
