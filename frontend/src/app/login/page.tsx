@@ -33,7 +33,7 @@ export default function LoginPage() {
           Prijava
         </h1>
         <p style={{ color:'var(--text3)', fontSize:14, textAlign:'center', marginBottom:32 }}>
-          Uloguj se da čuvaš pretrage i dobijaš alerte
+          Interna verzija — pristup je dozvoljen samo odobrenim nalozima
         </p>
         <div style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:16, padding:28 }}>
           <div style={{ marginBottom:16 }}>
@@ -60,9 +60,8 @@ export default function LoginPage() {
           }}>
             {loading ? 'Prijavljivanje...' : 'Prijavi se'}
           </button>
-          <p style={{ textAlign:'center', marginTop:18, fontSize:13, color:'var(--text3)' }}>
-            Nemaš nalog?{' '}
-            <a href="/register" style={{ color:'var(--accent)', fontWeight:600 }}>Registruj se</a>
+          <p style={{ textAlign:'center', marginTop:18, fontSize:12, color:'var(--text3)' }}>
+            🔒 Javna registracija je isključena.
           </p>
         </div>
       </div>
