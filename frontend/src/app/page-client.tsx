@@ -29,6 +29,22 @@ function makeKey(make: string): string {
     .replace(/[^a-z0-9]/g, '')
 }
 
+const KNOWN_MAKES = new Set([
+  ...POPULAR_MAKES,
+  'Abarth', 'Acura', 'Aiways', 'Aixam', 'Alfa Romeo', 'Alpina', 'Alpine',
+  'Aston Martin', 'Austin', 'Bentley', 'Buick', 'BYD', 'Cadillac',
+  'Chevrolet', 'Chrysler', 'Citroën', 'Corvette', 'Cupra', 'Dacia',
+  'Daewoo', 'Daihatsu', 'Dodge', 'DS Automobiles', 'Ferrari', 'Fiat',
+  'Fisker', 'Fuso', 'Geely', 'Genesis', 'GMC', 'Honda', 'Hummer',
+  'Infiniti', 'Isuzu', 'Iveco', 'Jaguar', 'Jeep', 'KTM', 'Lada',
+  'Lamborghini', 'Lancia', 'Land Rover', 'Leapmotor', 'Lexus', 'Ligier',
+  'Lincoln', 'Lotus', 'Lucid', 'MAN', 'Maserati', 'Maybach', 'McLaren',
+  'MG', 'Mini', 'Mitsubishi', 'Morgan', 'NIO', 'Nissan', 'Oldsmobile',
+  'ORA', 'Pagani', 'Piaggio', 'Polestar', 'Pontiac', 'Porsche', 'Puch',
+  'RAM', 'Rivian', 'Rolls-Royce', 'Rover', 'Saab', 'Smart', 'SsangYong',
+  'Subaru', 'Suzuki', 'Tesla', 'Triumph', 'Vanderhall', 'XPENG',
+].map(makeKey))
+
 function calcBreakdown(price: number) {
   const carina    = Math.round(price * 0.05)
   const pdv       = Math.round((price + carina) * 0.20)
@@ -193,7 +209,7 @@ export default function SearchPage() {
   const popularMakeKeys = new Set(POPULAR_MAKES.map(makeKey))
   const makeCountByKey = new Map(makeOptions.map(({ make, count }) => [makeKey(make), count]))
   const otherMakes = makeOptions
-    .filter(({ make }) => !popularMakeKeys.has(makeKey(make)))
+    .filter(({ make }) => KNOWN_MAKES.has(makeKey(make)) && !popularMakeKeys.has(makeKey(make)))
     .sort((a, b) => a.make.localeCompare(b.make, 'sr', { sensitivity: 'base' }))
 
   return (
