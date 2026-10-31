@@ -330,7 +330,7 @@ export default function SearchPage() {
                 background: customMake ? 'rgba(255,107,0,.10)' : 'var(--bg2)',
                 border: `1px ${customMake ? 'solid var(--accent)' : 'dashed var(--border)'}`,
                 color: customMake ? 'var(--accent)' : 'var(--text3)',
-                cursor: 'pointer', textAlign: 'center', gridColumn: 'span 2',
+                cursor: 'pointer', textAlign: 'center', gridColumn: '1 / -1',
               }}>
               {customMake ? '− Sakrij ostale marke' : `+ Ostale marke${otherMakes.length ? ` (${otherMakes.length})` : ''}`}
             </button>
