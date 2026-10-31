@@ -1,16 +1,42 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import './globals.css'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const [accessReady, setAccessReady] = useState(false)
+
+  useEffect(() => {
+    if (pathname === '/login') {
+      setAccessReady(true)
+      return
+    }
+
+    const token = localStorage.getItem('autoai_token')
+    if (!token) {
+      window.location.replace('/login')
+      return
+    }
+    setAccessReady(true)
+  }, [pathname])
+
   return (
     <html lang="sr">
       <body>
-        <Navbar />
-        <main>{children}</main>
-        <Footer />
+        {accessReady ? (
+          <>
+            <Navbar />
+            <main>{children}</main>
+            <Footer />
+          </>
+        ) : (
+          <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text2)', padding:24, textAlign:'center' }}>
+            AutoAI je trenutno interna verzija. Preusmeravam na prijavu...
+          </div>
+        )}
       </body>
     </html>
   )
@@ -51,7 +77,7 @@ function Navbar() {
   const handleLogout = () => {
     localStorage.removeItem('autoai_token')
     localStorage.removeItem('autoai_email')
-    window.location.href = '/'
+    window.location.href = '/login'
   }
 
   const links = [
@@ -116,10 +142,9 @@ function Navbar() {
               </button>
             </div>
           ) : (
-            <div style={{ display:'flex', gap:4, marginLeft:8 }}>
-              <a href="/login"    style={{ padding:'6px 14px', borderRadius:8, fontSize:13, textDecoration:'none', color:'var(--text2)', border:'1px solid var(--border)', fontWeight:500 }}>Prijava</a>
-              <a href="/register" style={{ padding:'6px 14px', borderRadius:8, textDecoration:'none', background:'var(--accent)', color:'#fff', fontSize:13, fontWeight:500 }}>Registracija</a>
-            </div>
+            <span style={{ marginLeft:8, padding:'6px 12px', borderRadius:8, fontSize:12, color:'var(--text3)', border:'1px solid var(--border)' }}>
+              🔒 Interna verzija
+            </span>
           )}
         </nav>
 
@@ -127,7 +152,7 @@ function Navbar() {
         <div className="nav-hamburger" style={{ display:'none', alignItems:'center', gap:8 }}>
           {userEmail
             ? <span style={{ fontSize:12, color:'var(--text2)', background:'var(--bg3)', border:'1px solid var(--border)', padding:'5px 10px', borderRadius:8 }}>👤 {userEmail.split('@')[0]}</span>
-            : <a href="/register" style={{ padding:'6px 12px', borderRadius:8, textDecoration:'none', background:'var(--accent)', color:'#fff', fontSize:13, fontWeight:600 }}>Registracija</a>
+            : <span style={{ fontSize:11, color:'var(--text3)' }}>🔒 Interna verzija</span>
           }
           <button onClick={() => setMenuOpen(!menuOpen)} style={{ background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:8, padding:'6px 10px', color:'var(--text)', fontSize:18, cursor:'pointer', lineHeight:1, position:'relative' }}>
             {menuOpen ? '✕' : '☰'}
@@ -166,10 +191,7 @@ function Navbar() {
             <div style={{ borderTop:'1px solid var(--border)', marginTop:8, paddingTop:8 }}>
               {userEmail
                 ? <button onClick={handleLogout} style={{ width:'100%', padding:'10px', borderRadius:8, fontSize:13, background:'transparent', border:'1px solid var(--border)', color:'var(--text3)', cursor:'pointer' }}>Odjava</button>
-                : <div style={{ display:'flex', gap:8 }}>
-                    <a href="/login"    style={{ flex:1, padding:'10px', borderRadius:8, fontSize:13, textDecoration:'none', color:'var(--text2)', border:'1px solid var(--border)', fontWeight:500, textAlign:'center' as any }}>Prijava</a>
-                    <a href="/register" style={{ flex:1, padding:'10px', borderRadius:8, textDecoration:'none', background:'var(--accent)', color:'#fff', fontSize:13, fontWeight:500, textAlign:'center' as any }}>Registracija</a>
-                  </div>
+                : <a href="/login" style={{ display:'block', width:'100%', boxSizing:'border-box', padding:'10px', borderRadius:8, fontSize:13, textDecoration:'none', color:'var(--text2)', border:'1px solid var(--border)', fontWeight:500, textAlign:'center' as any }}>Prijava</a>
               }
             </div>
           </div>
