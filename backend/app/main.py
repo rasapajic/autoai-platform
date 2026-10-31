@@ -34,9 +34,9 @@ async def lifespan(app: FastAPI):
     print("👋 AutoAI Platform se gasi")
 
 
-if settings.APP_ENV == "production":
+if settings.APP_ENV == "production" and settings.SENTRY_DSN:
     sentry_sdk.init(
-        dsn="tvoj_sentry_dsn_ovde",
+        dsn=settings.SENTRY_DSN,
         traces_sample_rate=0.1,
         environment=settings.APP_ENV,
     )
