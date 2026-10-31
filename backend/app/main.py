@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from jose import JWTError, jwt
 from contextlib import asynccontextmanager
 import sentry_sdk
 
@@ -57,6 +59,49 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_internal_access(request: Request, call_next):
+    """Protect all public AutoAI API routes while the product is internal-only."""
+    if not settings.INTERNAL_ACCESS_REQUIRED:
+        return await call_next(request)
+
+    path = request.url.path
+    if (
+        request.method == "OPTIONS"
+        or path == "/health"
+        or path == "/api/v1/users/login"
+        or path.startswith("/api/v1/internal/m01")
+        or not path.startswith("/api/v1/")
+    ):
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer "):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "AutoAI je trenutno dostupan samo ovlašćenim korisnicima."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        if not payload.get("sub"):
+            raise JWTError("missing subject")
+    except JWTError:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Prijava je istekla ili nije važeća."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return await call_next(request)
 
 
 @app.get("/health")
