@@ -1,7 +1,7 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 async function api(path: string, opts?: RequestInit) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+  const token = typeof window !== 'undefined' ? localStorage.getItem('autoai_token') : null
   const res = await fetch(`${BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
@@ -9,7 +9,16 @@ async function api(path: string, opts?: RequestInit) {
     },
     ...opts,
   })
-  if (!res.ok) throw await res.json()
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Greška pri komunikaciji sa serverom' }))
+    if (res.status === 401 && typeof window !== 'undefined' && path !== '/users/login') {
+      localStorage.removeItem('autoai_token')
+      localStorage.removeItem('autoai_email')
+      localStorage.removeItem('autoai_name')
+      window.location.replace('/login')
+    }
+    throw error
+  }
   return res.json()
 }
 

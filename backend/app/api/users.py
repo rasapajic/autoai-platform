@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.config import settings
 from app.core.auth import hash_password, verify_password, create_token, get_current_user
 from app.models import User, Favorite, Listing
 from app.api.schemas import UserRegister, UserLogin, UserOut, Token, MessageResponse
@@ -12,6 +13,12 @@ router = APIRouter()
 @router.post("/register", response_model=Token, status_code=201)
 def register(data: UserRegister, db: Session = Depends(get_db)):
     """Registracija novog korisnika."""
+    if settings.INTERNAL_ACCESS_REQUIRED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registracija je zatvorena dok je AutoAI u internoj fazi.",
+        )
+
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

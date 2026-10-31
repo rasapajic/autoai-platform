@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "promeniti-u-produkciji"
     CORS_ORIGINS: str = '["http://localhost:3000"]'
     SENTRY_DSN: str = ""
+    INTERNAL_ACCESS_REQUIRED: bool = False
 
     # AutoAI M0.1 Live Listings Recovery
     AUTOAI_ADMIN_SECRET: str = ""
