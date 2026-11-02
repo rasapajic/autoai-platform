@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 
 import aiohttp
 from bs4 import BeautifulSoup
+from app.core.catalog_plan import page_window
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,8 @@ class AutoScout24Scraper:
     async def scrape_listings(self, filters: dict, max_pages: int = 3) -> list[dict]:
         all_listings: list[dict] = []
         seen_ids: set[str] = set()
+        window = page_window(filters, max_pages)
+        strict = bool(filters.get("strict_window"))
         markets = (filters.get("country") or "",)
         if not markets[0]:
             markets = MARKETS
@@ -183,7 +186,7 @@ class AutoScout24Scraper:
         timeout = aiohttp.ClientTimeout(total=35)
         async with aiohttp.ClientSession(headers=HEADERS, timeout=timeout, trust_env=True) as session:
             for market in markets:
-                for page in range(1, max_pages + 1):
+                for page in window:
                     params = {
                         "atype": "C",
                         "cy": str(market).upper(),
@@ -208,15 +211,21 @@ class AutoScout24Scraper:
                         async with session.get(BASE_URL, params=params) as response:
                             if response.status != 200:
                                 logger.warning("[AutoScout24] HTTP %s", response.status)
+                                if strict:
+                                    raise RuntimeError(f"source_http_{response.status}")
                                 break
                             html = await response.text()
                     except Exception as exc:
                         logger.warning("[AutoScout24] %s page %s failed: %s", market, page, exc)
+                        if strict:
+                            raise
                         break
 
                     soup = BeautifulSoup(html, "html.parser")
                     cards = soup.select('article[data-testid="list-item"], article[data-guid]')
                     if not cards:
+                        if strict:
+                            raise RuntimeError("source_empty_or_unrecognized_page")
                         break
 
                     added = 0
@@ -227,6 +236,8 @@ class AutoScout24Scraper:
                             all_listings.append(parsed)
                             added += 1
                     logger.info("[AutoScout24] %s page %s: +%s", market, page, added)
+                    if strict and added == 0:
+                        raise RuntimeError("source_page_has_no_unique_valid_rows")
                     await asyncio.sleep(0.75)
 
         return all_listings

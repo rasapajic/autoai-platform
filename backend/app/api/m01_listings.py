@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import hashlib
 import logging
 import math
 import secrets
@@ -7,18 +8,19 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.listing_normalization import normalize_vehicle_fields
+from app.core.catalog_plan import PARTITION_BY_KEY
 from app.core.source_policy import (
     SOURCE_REGISTRY,
     ListingSource,
     configured_source_keys,
     get_enabled_source,
 )
-from app.models import Listing
+from app.models import Listing, CatalogScanCursor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -101,14 +103,15 @@ async def _fetch_source_batch(
     source: ListingSource,
     max_pages: int,
     now: datetime,
+    filters: dict | None = None,
 ) -> tuple[list[dict], dict]:
     raw_listings = []
     last_error: Exception | None = None
-    attempts = 3
+    attempts = 1 if filters and filters.get("strict_window") else 3
     for attempt in range(1, attempts + 1):
         scraper = _load_scraper(source)
         try:
-            raw_listings = await scraper.scrape_listings({}, max_pages=max_pages)
+            raw_listings = await scraper.scrape_listings(filters or {}, max_pages=max_pages)
         except Exception as exc:
             last_error = exc
             logger.warning(
@@ -196,10 +199,12 @@ async def _stage_all_sources(max_pages: int) -> tuple[dict[str, list[dict]], dic
     return staged, {"checked_at": now.isoformat(), "by_source": results}
 
 
-def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]]) -> dict:
+def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]], db=None) -> dict:
     """Merge a partial search sample without deactivating unseen listings."""
     source_names = [source.storage_source for source in SOURCE_REGISTRY.values()]
-    db = SessionLocal()
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
     new_count = 0
     updated_count = 0
 
@@ -259,13 +264,15 @@ def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]]) -> dict:
             .scalar()
             or 0
         )
-        db.commit()
+        if owns_session:
+            db.commit()
     except Exception:
         db.rollback()
         logger.exception("M0.2 scheduled catalog refresh rolled back")
         raise
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
     return {
         "active_before": active_before,
@@ -276,6 +283,96 @@ def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]]) -> dict:
         "deactivated": 0,
         "coverage": "partial_sample",
     }
+
+
+@router.post("/collect-window")
+async def collect_window(
+    partition_key: str = Query(...),
+    confirm: str = Query(...),
+    scan_mode: str = Query("growth", regex="^(head|growth)$"),
+    max_pages: int = Query(3, ge=1, le=3),
+    x_autoai_admin_secret: Optional[str] = Header(default=None),
+):
+    """Commit one bounded partition and its durable bookmark atomically."""
+    require_admin_secret(x_autoai_admin_secret)
+    if confirm != "COLLECT_INTERNAL_CATALOG_WINDOW":
+        raise HTTPException(400, "invalid_collection_confirmation")
+    partition = PARTITION_BY_KEY.get(partition_key)
+    if partition is None:
+        raise HTTPException(400, "unknown_collection_partition")
+    try:
+        source = get_enabled_source(partition.source)
+    except (ValueError, RuntimeError, PermissionError) as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if scan_mode not in {"head", "growth"} or not 1 <= max_pages <= 3:
+        raise HTTPException(400, "invalid_collection_window")
+
+    db = SessionLocal()
+    try:
+        lock_id = list(PARTITION_BY_KEY).index(partition_key) + 1
+        locked = db.execute(text("SELECT pg_try_advisory_xact_lock(3704, :key)"), {"key": lock_id}).scalar()
+        if not locked:
+            raise HTTPException(409, "collection_partition_busy")
+        database_bytes = db.execute(text("SELECT pg_database_size(current_database())")).scalar()
+        if scan_mode == "growth" and database_bytes > 250 * 1024 * 1024:
+            raise HTTPException(507, "collection_database_size_guard_250mb")
+        cursor = db.get(CatalogScanCursor, partition_key)
+        if cursor is None:
+            cursor = CatalogScanCursor(partition_key=partition_key, next_page=1)
+            db.add(cursor)
+        start_page = cursor.next_page if scan_mode == "growth" else 1
+        now = datetime.now(timezone.utc)
+        filters = {**partition.filters, "start_page": start_page, "strict_window": True}
+        effective_pages = max_pages
+        try:
+            batch, report = await asyncio.wait_for(_fetch_source_batch(source, max_pages, now, filters), timeout=240)
+        except RuntimeError as exc:
+            if str(exc) != "source_window_incomplete" or max_pages == 1:
+                raise
+            # A short last page must not make us skip the preceding observations.
+            effective_pages = 1
+            batch, report = await asyncio.wait_for(_fetch_source_batch(source, 1, now, filters), timeout=240)
+        if not batch:
+            raise HTTPException(502, "collection_window_has_no_valid_rows")
+        if report["unresolved_make"] * 10 > report["accepted"]:
+            raise HTTPException(422, "collection_vehicle_identity_quality_low")
+        fingerprint = hashlib.sha256("\n".join(sorted(row["external_id"] for row in batch)).encode()).hexdigest()
+        if scan_mode == "growth" and start_page > 1 and fingerprint == cursor.last_fingerprint:
+            raise HTTPException(409, "source_pagination_did_not_advance")
+        counts = _apply_scheduled_catalog_refresh({source.key: batch}, db=db)
+        cursor.last_scan_at = now
+        if scan_mode == "growth":
+            cursor.next_page = start_page + effective_pages
+            cursor.last_fingerprint = fingerprint
+            cursor.last_growth_at = now
+        next_page = cursor.next_page
+        db.commit()
+        logger.warning("M0.4 partition=%s mode=%s pages=%s-%s next=%s new=%s updated=%s", partition_key, scan_mode, start_page, start_page + effective_pages - 1, next_page, counts["new"], counts["updated"])
+        return {
+            "status": "ok", "partition": partition_key, "scan_mode": scan_mode,
+            "database_bytes_before": database_bytes,
+            "start_page": start_page, "end_page": start_page + effective_pages - 1,
+            "next_page": next_page, "by_source": {source.key: report}, **counts,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@router.get("/collection-status")
+def collection_status(x_autoai_admin_secret: Optional[str] = Header(default=None)):
+    require_admin_secret(x_autoai_admin_secret)
+    db = SessionLocal()
+    try:
+        return {"status": "ok", "database_bytes": db.execute(text("SELECT pg_database_size(current_database())")).scalar(), "partitions": [
+            {"key": row.partition_key, "next_page": row.next_page,
+             "last_scan_at": row.last_scan_at, "last_growth_at": row.last_growth_at}
+            for row in db.query(CatalogScanCursor).all()
+        ]}
+    finally:
+        db.close()
 
 
 @router.get("/status")
@@ -293,7 +390,7 @@ def m01_status(x_autoai_admin_secret: Optional[str] = Header(default=None)):
         total_active = sum(count for _, count in rows)
         return {
             "status": "ok",
-            "phase": "M0.3 Normalized Incremental Catalog",
+            "phase": "M0.4 Resumable Internal Catalog",
             "ingest_enabled": settings.AUTOAI_INTERNAL_LISTING_INGEST_ENABLED,
             "configured_sources": sorted(configured_source_keys()),
             "required_sources": list(HISTORICAL_SOURCE_KEYS),

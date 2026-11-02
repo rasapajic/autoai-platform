@@ -2,9 +2,15 @@
 
 import logging
 import os
+import sys
+from pathlib import Path
+from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.core.catalog_plan import COLLECTION_PLAN
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -42,6 +48,8 @@ def main() -> int:
     backend_url = _required_env("AUTOAI_BACKEND_URL")
     admin_secret = _required_env("AUTOAI_ADMIN_SECRET")
     max_pages = _max_pages()
+    if os.getenv("AUTOAI_CATALOG_CURSORS_ENABLED", "").strip().lower() in {"true", "1", "yes"}:
+        return _collect_windows(backend_url, admin_secret, min(max_pages, 3))
     refresh_url = urljoin(f"{backend_url.rstrip('/')}/", REFRESH_PATH.lstrip("/"))
 
     logger.info("Starting guarded internal catalog refresh (max_pages=%s)", max_pages)
@@ -84,6 +92,45 @@ def main() -> int:
         result.get("updated", 0),
         result.get("inactive_after", 0),
     )
+    return 0
+
+
+def _collect_windows(backend_url: str, admin_secret: str, max_pages: int) -> int:
+    mode = os.getenv("AUTOAI_CATALOG_SCAN_MODE", "auto").strip().lower()
+    if mode == "auto":
+        mode = "head" if datetime.now(timezone.utc).hour < 12 else "growth"
+    if mode not in {"head", "growth"}:
+        raise RuntimeError("AUTOAI_CATALOG_SCAN_MODE must be auto, head or growth")
+    url = urljoin(f"{backend_url.rstrip('/')}/", "api/v1/internal/m01/collect-window")
+    failed = []
+    accepted = {}
+    total_new = total_updated = 0
+    active_after = database_bytes = None
+    logger.info("Starting bounded catalog collection: mode=%s partitions=%s max_pages=%s", mode, len(COLLECTION_PLAN), max_pages)
+    for partition in COLLECTION_PLAN:
+        try:
+            response = requests.post(url, params={
+                "confirm": "COLLECT_INTERNAL_CATALOG_WINDOW", "partition_key": partition.key,
+                "scan_mode": mode, "max_pages": max_pages,
+            }, headers={"X-AutoAI-Admin-Secret": admin_secret}, timeout=(30, 540))
+            response.raise_for_status()
+            result = response.json()
+            details = result.get("by_source", {}).get(partition.source, {})
+            if result.get("status") != "ok" or details.get("accepted", 0) <= 0:
+                raise RuntimeError("invalid_collection_response")
+            accepted[partition.source] = accepted.get(partition.source, 0) + details["accepted"]
+            total_new += result.get("new", 0)
+            total_updated += result.get("updated", 0)
+            active_after = result.get("active_after", active_after)
+            database_bytes = result.get("database_bytes_before", database_bytes)
+            logger.info("Partition %s: pages=%s-%s next=%s accepted=%s new=%s updated=%s unresolved_make=%s", partition.key, result["start_page"], result["end_page"], result["next_page"], details["accepted"], result.get("new", 0), result.get("updated", 0), details.get("unresolved_make", "unknown"))
+        except Exception as exc:
+            failed.append(partition.key)
+            logger.error("Partition %s request failed (%s); inspect its saved checkpoint before retry", partition.key, type(exc).__name__)
+    logger.info("Catalog collection finished: status=%s active=%s new=%s updated=%s database_bytes=%s accepted_by_source=%s failed_partitions=%s", "partial" if failed else "ok", active_after, total_new, total_updated, database_bytes, accepted, failed)
+    missing = [source for source in REQUIRED_SOURCES if accepted.get(source, 0) <= 0]
+    if missing:
+        raise RuntimeError(f"collection incomplete; failed_partitions={','.join(failed)}; invalid sources={','.join(missing)}")
     return 0
 
 
