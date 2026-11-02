@@ -1,6 +1,27 @@
 import pytest
+from types import SimpleNamespace
 
 from scripts import scraper
+
+
+@pytest.mark.parametrize("hour,expected", [(2, "head"), (8, "growth"), (14, "growth"), (20, "growth")])
+def test_scheduled_modes_refresh_head_once_and_grow_three_times(monkeypatch, hour, expected):
+    monkeypatch.setenv("AUTOAI_CATALOG_SCAN_MODE", "auto")
+    monkeypatch.setattr(scraper, "datetime", SimpleNamespace(now=lambda _tz: SimpleNamespace(hour=hour)))
+    seen = []
+
+    def post(_url, **kwargs):
+        params = kwargs["params"]
+        seen.append(params["scan_mode"])
+        source = next(part.source for part in scraper.COLLECTION_PLAN if part.key == params["partition_key"])
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {
+            "status": "ok", "start_page": 1, "end_page": 3, "next_page": 4,
+            "by_source": {source: {"accepted": 1}},
+        })
+
+    monkeypatch.setattr(scraper.requests, "post", post)
+    assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
+    assert seen == [expected] * 16
 
 
 def test_cron_requires_backend_url(monkeypatch):

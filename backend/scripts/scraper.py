@@ -98,7 +98,7 @@ def main() -> int:
 def _collect_windows(backend_url: str, admin_secret: str, max_pages: int) -> int:
     mode = os.getenv("AUTOAI_CATALOG_SCAN_MODE", "auto").strip().lower()
     if mode == "auto":
-        mode = "head" if datetime.now(timezone.utc).hour < 12 else "growth"
+        mode = "head" if datetime.now(timezone.utc).hour == 2 else "growth"
     if mode not in {"head", "growth"}:
         raise RuntimeError("AUTOAI_CATALOG_SCAN_MODE must be auto, head or growth")
     url = urljoin(f"{backend_url.rstrip('/')}/", "api/v1/internal/m01/collect-window")
