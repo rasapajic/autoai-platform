@@ -12,35 +12,17 @@ import re
 import logging
 from uuid import UUID
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
 from app.core.db import get_db
+from app.core.auth import get_current_user
 from app.models import Conversation, Message, Listing, User
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-# ── Auth helper ────────────────────────────────────────────────────────────────
-
-def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> User:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Nije autorizovano")
-    token = authorization.replace("Bearer ", "")
-    try:
-        import jwt
-        from app.core.config import settings
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        user_id = payload.get("sub")
-    except Exception:
-        raise HTTPException(status_code=401, detail="Nevažeći token")
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Korisnik nije pronađen")
-    return user
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
@@ -397,3 +379,4 @@ Vrati SAMO validan JSON:
     raw = re.sub(r'^```json\s*', '', raw)
     raw = re.sub(r'\s*```$', '', raw)
     return json.loads(raw)
+

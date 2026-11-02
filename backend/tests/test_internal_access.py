@@ -49,3 +49,51 @@ def test_rejected_session_does_not_allow_untrusted_browser_origin(monkeypatch):
     assert response.status_code == 401
     assert "access-control-allow-origin" not in response.headers
 
+
+def test_inbox_accepts_the_same_session_as_the_catalog(monkeypatch):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.core.auth import create_token
+    from app.core.db import get_db
+
+    monkeypatch.setattr(settings, "INTERNAL_ACCESS_REQUIRED", True)
+    monkeypatch.setattr(settings, "SECRET_KEY", "test-only-signing-key")
+    user = SimpleNamespace(id=uuid4(), is_active=True)
+
+    class FakeSession:
+        def query(self, *args):
+            return self
+
+        def filter(self, *args):
+            return self
+
+        def group_by(self, *args):
+            return self
+
+        def join(self, *args):
+            return self
+
+        def first(self):
+            return user
+
+        def all(self):
+            return []
+
+        def scalar(self):
+            return 0
+
+    previous = app.dependency_overrides.copy()
+    app.dependency_overrides[get_db] = lambda: FakeSession()
+    try:
+        response = TestClient(app).get(
+            "/api/v1/inbox/conversations/stats/summary",
+            headers={"Authorization": f"Bearer {create_token(str(user.id))}"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+
