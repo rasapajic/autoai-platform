@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import logging
+import math
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
@@ -10,6 +11,7 @@ from sqlalchemy import func
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.core.listing_normalization import normalize_vehicle_fields
 from app.core.source_policy import (
     SOURCE_REGISTRY,
     ListingSource,
@@ -65,8 +67,8 @@ def _prepare_source_batch(
         price = data.get("price")
 
         try:
-            valid_price = price is not None and float(price) > 0
-        except (TypeError, ValueError):
+            valid_price = price is not None and not isinstance(price, bool) and math.isfinite(float(price)) and float(price) > 0
+        except (TypeError, ValueError, OverflowError):
             valid_price = False
 
         if not external_id or not url.startswith(("http://", "https://")) or not valid_price:
@@ -74,6 +76,7 @@ def _prepare_source_batch(
             continue
 
         payload = _safe_listing_payload(data, now)
+        payload.update(normalize_vehicle_fields(data))
         payload["external_id"] = external_id
         payload["url"] = url
         payload["source"] = source.storage_source
@@ -128,6 +131,8 @@ async def _fetch_source_batch(
         "found": len(raw_listings),
         "accepted": len(prepared),
         "skipped": skipped,
+        "unresolved_make": sum(row.get("make") is None for row in prepared),
+        "unresolved_model": sum(row.get("model") is None for row in prepared),
     }
 
 
@@ -192,7 +197,7 @@ async def _stage_all_sources(max_pages: int) -> tuple[dict[str, list[dict]], dic
 
 
 def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]]) -> dict:
-    """Merge a complete staged catalog while preserving listing relationships."""
+    """Merge a partial search sample without deactivating unseen listings."""
     source_names = [source.storage_source for source in SOURCE_REGISTRY.values()]
     db = SessionLocal()
     new_count = 0
@@ -205,19 +210,33 @@ def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]]) -> dict:
             .scalar()
             or 0
         )
-        db.query(Listing).filter(
-            Listing.source.in_(source_names),
-            Listing.is_active == True,
-        ).update({Listing.is_active: False}, synchronize_session=False)
+        external_ids = [row["external_id"] for rows in staged.values() for row in rows]
+        existing_by_id = {
+            row.external_id: row
+            for row in db.query(Listing).filter(Listing.external_id.in_(external_ids)).all()
+        }
 
         for source_rows in staged.values():
             for payload in source_rows:
-                existing = (
-                    db.query(Listing)
-                    .filter(Listing.external_id == payload["external_id"])
-                    .first()
-                )
+                existing = existing_by_id.get(payload["external_id"])
                 if existing:
+                    if existing.source != payload["source"]:
+                        raise ValueError("external_id_source_conflict")
+                    previous_identity = normalize_vehicle_fields({
+                        key: getattr(existing, key, None)
+                        for key in ("make", "model", "description", "url")
+                    })
+                    if payload.get("make") is None and previous_identity["make"]:
+                        payload["make"] = previous_identity["make"]
+                    if payload.get("model") is None and payload.get("make") == previous_identity["make"]:
+                        payload["model"] = previous_identity["model"]
+                    identity_changed = any(
+                        key in payload and getattr(existing, key, None) != payload[key]
+                        for key in ("make", "model", "price")
+                    )
+                    if identity_changed:
+                        for key in ("price_estimated", "price_delta_pct", "price_rating", "embedding"):
+                            setattr(existing, key, None)
                     for key, value in payload.items():
                         if key in {"external_id", "first_seen_at"}:
                             continue
@@ -254,6 +273,8 @@ def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]]) -> dict:
         "updated": updated_count,
         "active_after": active_after,
         "inactive_after": inactive_after,
+        "deactivated": 0,
+        "coverage": "partial_sample",
     }
 
 
@@ -272,7 +293,7 @@ def m01_status(x_autoai_admin_secret: Optional[str] = Header(default=None)):
         total_active = sum(count for _, count in rows)
         return {
             "status": "ok",
-            "phase": "M0.2 Internal Scheduled Listings Refresh",
+            "phase": "M0.3 Normalized Incremental Catalog",
             "ingest_enabled": settings.AUTOAI_INTERNAL_LISTING_INGEST_ENABLED,
             "configured_sources": sorted(configured_source_keys()),
             "required_sources": list(HISTORICAL_SOURCE_KEYS),
@@ -395,9 +416,9 @@ async def scheduled_refresh_all_sources(
 ):
     """Refresh the internal active catalog without deleting listing records.
 
-    All five sources are staged first. Existing rows are updated in place, new
-    rows are inserted, and historical-source rows absent from the fresh batches
-    become inactive. Any failure rolls back the complete database transaction.
+    All five sources are staged first. Existing rows are updated in place and
+    new rows are inserted. Absence from a partial page sample never proves a
+    listing unavailable. Any failure rolls back the complete transaction.
     """
     require_admin_secret(x_autoai_admin_secret)
     if confirm != SCHEDULED_REFRESH_CONFIRMATION:

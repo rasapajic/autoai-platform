@@ -46,7 +46,7 @@ if settings.APP_ENV == "production" and settings.SENTRY_DSN:
 app = FastAPI(
     title="AutoAI Platform API",
     description="AI platforma za pretragu polovnih automobila u Evropi",
-    version="1.0.3-m02-scheduled-refresh",
+    version="1.0.4-m03-catalog-quality",
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
@@ -110,7 +110,7 @@ app.add_middleware(
 async def health():
     return {
         "status": "ok",
-        "version": "1.0.3-m02-scheduled-refresh",
+        "version": "1.0.4-m03-catalog-quality",
         "environment": settings.APP_ENV,
         "external_data_updates": (
             "internal_scheduled_refresh"

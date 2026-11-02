@@ -4,6 +4,14 @@
 **M0.1 internal recovery amendment:** 2026-08-31  
 **M0.2 internal schedule amendment:** 2026-10-25
 
+**M0.3 internal catalog-quality amendment:** 2026-11-02
+
+The existing internal refresh now normalizes vehicle labels and accumulates
+verified observations without deactivating listings absent from its partial
+search sample. Numeric taxonomy IDs are never treated as manufacturer names or
+guessed from an ID map. This amendment does not change the source allowlist,
+schedule, configured page limit or public/commercial restrictions.
+
 AutoAI's public/commercial external listing pipeline remains fail-closed while
 source usage rights are unverified.
 
@@ -24,8 +32,8 @@ UTC, and only when all of the following are true:
 5. at most three pages are requested per source per cycle;
 6. every source produces a fresh, valid, non-empty staged batch before the
    database transaction starts;
-7. catalog rows are updated in place or marked inactive, never deleted by the
-   scheduled operation;
+7. catalog rows are updated in place or inserted, never deleted or marked
+   inactive merely because they are absent from the sampled pages;
 8. no public/commercial listing service is enabled by this exception.
 
 The approved internal source set is limited to `willhaben`, `autoscout24`,

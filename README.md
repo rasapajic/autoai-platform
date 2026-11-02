@@ -18,7 +18,7 @@ Platforma je dostupna na: **http://localhost:3000**
 
 ---
 
-## M0.2 Internal Scheduled Listings Refresh
+## M0.3 Normalized Incremental Internal Catalog
 
 The guarded internal pipeline covers the five sources that populated the legacy
 production catalog: Willhaben, AutoScout24, Marktplaats, 2dehands, and
@@ -29,10 +29,22 @@ It calls the secret-protected `POST /api/v1/internal/m01/scheduled-refresh`
 endpoint with at most three pages per source.
 
 Each cycle stages a valid, non-empty batch from every source before opening a
-database transaction. Existing listings are updated in place, new listings are
-inserted, and missing historical-source listings are marked inactive. Records
-are not deleted, so favorites, price history, and conversations remain linked.
-A source or database failure leaves the existing catalog unchanged.
+database transaction. Vehicle names are normalized from readable source labels,
+title prefixes or readable URL slugs. Unresolved taxonomy codes become unknown
+fields; numeric models such as 208, 500 and 911 remain valid.
+
+Existing listings are fetched in one batch, updated in place and new listings
+are inserted. Listings absent from this partial sample remain unchanged.
+Absence from a few search pages does not prove that a vehicle was removed.
+Favorites, price history and conversations remain linked. A source or database
+failure rolls back the complete cycle. Identity or price changes clear stale
+valuation fields; automated valuation remains disabled.
+
+The cron logs accepted rows and unresolved make/model counts per source.
+The target is 10,000 → 50,000 → 200,000+ current listings. Persistent page
+cursors, complete coverage/freshness checks and larger-volume collection are
+the next gate, not features claimed by this bounded normalization release.
+See [catalog scaling](docs/CATALOG-SCALING.md).
 
 Required backend variables:
 

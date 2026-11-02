@@ -19,6 +19,40 @@ EXPECTED_SOURCES = {
 }
 
 
+def test_prepare_batch_normalizes_numeric_vehicle_codes_from_title():
+    rows, skipped = _prepare_source_batch(SOURCE_REGISTRY["willhaben"], [{
+        "external_id": "wh_123", "url": "https://example.test/123", "price": 12000,
+        "make": "1036", "model": "10004", "description": "Volkswagen Golf 1.6 TDI",
+    }], datetime.now(timezone.utc))
+    assert skipped == 0
+    assert rows[0]["make"] == "Volkswagen"
+    assert rows[0]["model"] == "Golf"
+
+
+def test_prepare_batch_rejects_non_finite_or_boolean_prices():
+    rows, skipped = _prepare_source_batch(SOURCE_REGISTRY["willhaben"], [
+        {"external_id": f"wh_{i}", "url": "https://example.test/123", "price": price}
+        for i, price in enumerate([float("inf"), float("nan"), True, 12000])
+    ], datetime.now(timezone.utc))
+    assert skipped == 3
+    assert len(rows) == 1
+    assert rows[0]["price"] == 12000
+
+
+def test_willhaben_prefers_readable_source_labels_over_taxonomy_ids():
+    from app.scrapers.willhaben import _parse_ad
+
+    row = _parse_ad({"id": "123", "attributes": {"attribute": [
+        {"name": "CAR_MODEL/MAKE", "values": ["1036"]},
+        {"name": "CAR_MODEL/MAKE_RESOLVED", "values": ["Volkswagen"]},
+        {"name": "CAR_MODEL/MODEL", "values": ["10004"]},
+        {"name": "CAR_MODEL/MODEL_RESOLVED", "values": ["Golf"]},
+        {"name": "PRICE", "values": ["12000"]},
+    ]}})
+    assert row["make"] == "Volkswagen"
+    assert row["model"] == "Golf"
+
+
 def test_registry_matches_sources_that_populated_the_legacy_database():
     assert {
         key: (source.storage_source, source.default_country)
@@ -217,9 +251,11 @@ def test_scheduled_refresh_updates_in_place_and_never_deletes(monkeypatch):
 
     class ExistingListing:
         external_id = "wh_existing"
+        source = "willhaben"
         first_seen_at = preserved_first_seen
         url = "https://example.test/old"
         is_active = False
+        price_rating = "great"
 
     existing = ExistingListing()
     staged = {
@@ -258,8 +294,8 @@ def test_scheduled_refresh_updates_in_place_and_never_deletes(monkeypatch):
             self.bulk_values = values
             return 5
 
-        def first(self):
-            return self.first_results.pop(0)
+        def all(self):
+            return [existing]
 
     class CountQuery:
         def __init__(self, values):
@@ -274,7 +310,7 @@ def test_scheduled_refresh_updates_in_place_and_never_deletes(monkeypatch):
     class FakeSession:
         def __init__(self):
             self.listing_query = ListingQuery()
-            self.count_query = CountQuery([5, 2, 4])
+            self.count_query = CountQuery([5, 7, 4])
             self.added = []
             self.committed = False
             self.rolled_back = False
@@ -305,18 +341,84 @@ def test_scheduled_refresh_updates_in_place_and_never_deletes(monkeypatch):
 
     result = recovery._apply_scheduled_catalog_refresh(staged)
 
-    assert fake_db.listing_query.bulk_values == {recovery.Listing.is_active: False}
+    assert fake_db.listing_query.bulk_values is None
     assert existing.url == "https://example.test/current"
     assert existing.is_active is True
     assert existing.first_seen_at == preserved_first_seen
+    assert existing.price_rating is None
     assert [row.external_id for row in fake_db.added] == ["as24_new"]
     assert result == {
         "active_before": 5,
         "new": 1,
         "updated": 1,
-        "active_after": 2,
+        "active_after": 7,
         "inactive_after": 4,
+        "deactivated": 0,
+        "coverage": "partial_sample",
     }
     assert fake_db.committed is True
     assert fake_db.rolled_back is False
     assert fake_db.closed is True
+
+
+def test_large_partial_batch_uses_one_existing_listing_lookup(monkeypatch):
+    size = 10000
+
+    class CountQuery:
+        def filter(self, *_):
+            return self
+
+        def scalar(self):
+            return counts.pop(0)
+
+    class ExistingQuery:
+        def filter(self, *_):
+            return self
+
+        def all(self):
+            return []
+
+        def first(self):
+            raise AssertionError("per-row listing lookups do not scale")
+
+        def update(self, *_args, **_kwargs):
+            raise AssertionError("a partial sample cannot deactivate unseen rows")
+
+    class Session:
+        existing_lookups = 0
+        added = 0
+
+        def query(self, value):
+            if value is recovery.Listing:
+                self.existing_lookups += 1
+                return ExistingQuery()
+            return CountQuery()
+
+        def add(self, _row):
+            self.added += 1
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+        def rollback(self):
+            raise AssertionError("unexpected rollback")
+
+    counts = [5000, 15000, 0]
+    session = Session()
+    monkeypatch.setattr(recovery, "SessionLocal", lambda: session)
+    result = recovery._apply_scheduled_catalog_refresh({"willhaben": [
+        {"external_id": f"wh_{i}", "source": "willhaben", "url": f"https://example.test/{i}", "price": 12000}
+        for i in range(size)
+    ]})
+
+    assert session.existing_lookups == 1
+    assert session.added == size
+    assert result["new"] == size
+    assert result["active_after"] == 15000
+    assert result["deactivated"] == 0
