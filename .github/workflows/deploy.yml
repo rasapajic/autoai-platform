@@ -40,6 +40,17 @@ jobs:
           python -m pip install pytest
           python -m pytest tests/ -v --tb=short
 
+      - name: Validate isolated cron image
+        run: |
+          docker build -f backend/scripts/Dockerfile -t autoai-cron-ci backend
+          set +e
+          output=$(docker run --rm --network none autoai-cron-ci 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$status" -eq 1
+          printf '%s' "$output" | grep -F "AUTOAI_BACKEND_URL is required"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
