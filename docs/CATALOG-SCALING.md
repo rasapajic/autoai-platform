@@ -75,6 +75,10 @@ precede a recognized manufacturer and is not itself a make. This is a narrow
 source-label correction, not a claim that every body type is now classified.
 Microcar and Panther Westwinds are recognized readable manufacturer names;
 unknown names remain unknown and the 10% identity guard is retained.
+Further bounded diagnostics identified repeated `Chery Tiggo` headlines in the
+two Willhaben SUV partitions. Chery and the observed Tiggo 4/7/8/9 labels are
+recognized from readable names; the numeric source code 10057 alone still
+resolves to unknown. See the [manufacturer model range](https://chery.at/).
 
 Manufacturer references: [AutoScout24 catalog](https://admin.autoscout24.com/)
 and [Ligier manufacturer history](https://www.ligier.fr/ligier-group/notre-histoire/).

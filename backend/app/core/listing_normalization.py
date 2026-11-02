@@ -13,7 +13,7 @@ def _words(value: str) -> str:
 _MAKES = (
     "Abarth", "Acura", "Aiways", "Aixam", "Alfa Romeo", "Alpina", "Alpine",
     "Aston Martin", "Audi", "Austin", "Bentley", "BMW", "Buick", "BYD",
-    "Cadillac", "Chevrolet", "Chrysler", "Citroën", "Corvette", "Cupra",
+    "Cadillac", "Chery", "Chevrolet", "Chrysler", "Citroën", "Corvette", "Cupra",
     "Dacia", "Daewoo", "Daihatsu", "Dodge", "DS Automobiles", "Ferrari",
     "Fiat", "Fisker", "Ford", "Fuso", "Geely", "Genesis", "GMC", "Honda",
     "Hummer", "Hyundai", "Infiniti", "Isuzu", "Iveco", "Jaguar", "Jeep",
@@ -37,6 +37,7 @@ _MULTIWORD_MODELS = (
     "range rover sport", "range rover evoque", "range rover velar", "range rover",
     "grand cherokee", "grand scenic", "land cruiser", "model 3", "model s",
     "model x", "model y", "mustang mach e", "mx 5", "cx 5", "cx 3", "c hr", "m go",
+    "tiggo 4", "tiggo 7", "tiggo 8", "tiggo 9",
 )
 _NUMERIC_MODELS = {
     "Audi": {"50", "80", "90", "100", "200"},
