@@ -1,9 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
+import { getAlerts, getInboxStats } from '@/lib/api'
 import './globals.css'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -55,16 +54,12 @@ function Navbar() {
 
     if (token) {
       // Inbox badge
-      fetch(`${API_BASE}/inbox/conversations/stats/summary`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(r => r.ok ? r.json() : null)
+      getInboxStats()
         .then(data => { if (data?.unread_replies) setUnread(data.unread_replies) })
         .catch(() => {})
 
       // Potrage badge — broj novih match-eva
-      fetch(`${API_BASE}/alerts/`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(r => r.ok ? r.json() : null)
+      getAlerts()
         .then(data => {
           if (Array.isArray(data)) {
             const total = data.reduce((acc: number, a: any) => acc + (a.new_matches_count || 0), 0)
@@ -211,3 +206,4 @@ function Footer() {
     </footer>
   )
 }
+

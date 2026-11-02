@@ -52,15 +52,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.get_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 @app.middleware("http")
 async def require_internal_access(request: Request, call_next):
     """Protect all public AutoAI API routes while the product is internal-only."""
@@ -104,6 +95,17 @@ async def require_internal_access(request: Request, call_next):
     return await call_next(request)
 
 
+# CORS must wrap the access gate so browsers can read its 401 response and
+# return an expired session to the login screen.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.get_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 @app.get("/health")
 async def health():
     return {
@@ -135,3 +137,4 @@ app.include_router(
 )
 app.include_router(vin.router,       prefix="/api/v1/vin",      tags=["🔐 VIN"])
 app.include_router(inbox.router,     prefix="/api/v1/inbox",    tags=["📬 Inbox"])
+

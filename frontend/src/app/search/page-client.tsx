@@ -2,10 +2,8 @@
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { searchListings, parseQuery } from '@/lib/api'
+import { searchListings, parseQuery, parseSearch, getMakes, getModels, createAlert } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', gasoline: 'Benzin',
@@ -287,14 +285,8 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
     if (!aiText.trim()) return
     setAiParsing(true)
     try {
-      const res = await fetch(`${API_BASE}/ai/parse-search/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: aiText })
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setForm(prev => ({
+      const data = await parseSearch(aiText)
+      setForm(prev => ({
           ...prev,
           make: data.make || prev.make,
           model: data.model || prev.model,
@@ -305,8 +297,7 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
           transmission: data.transmission || prev.transmission,
           name: data.name || (data.make ? `${data.make}${data.model?' '+data.model:''}` : prev.name),
         }))
-        setShowAdvanced(true)
-      }
+      setShowAdvanced(true)
     } catch {}
     setAiParsing(false)
   }
@@ -316,16 +307,12 @@ function PronadiModal({ onClose, filters }: { onClose: ()=>void; filters: any })
     if (!token) { setShowLogin(true); return }
     setSaving(true)
     try {
-      const res = await fetch(`${API_BASE}/alerts/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          name: form.name || `${form.make} ${form.model}`.trim() || 'Moja potraga',
-          filters: { ...form, countries: form.countries.join(',') },
-          frequency: 'daily'
-        })
+      await createAlert({
+        name: form.name || `${form.make} ${form.model}`.trim() || 'Moja potraga',
+        filters: { ...form, countries: form.countries.join(',') },
+        frequency: 'daily'
       })
-      if (res.ok) setSuccess(true)
+      setSuccess(true)
     } catch {}
     setSaving(false)
   }
@@ -589,6 +576,7 @@ export default function SearchPage() {
   }
 
   const [results,setResults]=useState<any>(null)
+  const [searchError,setSearchError]=useState('')
   const [loading,setLoading]=useState(true)
   const [aiQuery,setAiQuery]=useState(searchParams.get('q')||'')
   const [aiLoading,setAiLoading]=useState(false)
@@ -602,6 +590,9 @@ export default function SearchPage() {
   const [makes,setMakes]=useState<{make:string;count:number}[]>([])
   const [rawModels,setRawModels]=useState<{model:string;count:number}[]>([])
   const [makesLoading,setMakesLoading]=useState(false)
+  const [makesError,setMakesError]=useState('')
+  const [modelsLoading,setModelsLoading]=useState(false)
+  const [modelsError,setModelsError]=useState('')
   const [modelSearch,setModelSearch]=useState('')
   const [filters,setFilters]=useState(DEFAULT_FILTERS)
   const [logoErrors,setLogoErrors]=useState<Record<string,boolean>>({})
@@ -609,16 +600,29 @@ export default function SearchPage() {
   useEffect(()=>{ setFilters(getInitialFilters()) },[])
 
   useEffect(()=>{
+    let active=true
     setMakesLoading(true)
-    fetch(`${API_BASE}/search/makes`).then(r=>r.json()).then(data=>{
-      const filtered=(data||[]).filter((m:any)=>m.make&&m.make.trim())
-      setMakes(groupMakes(filtered))
-    }).catch(()=>{}).finally(()=>setMakesLoading(false))
+    setMakesError('')
+    getMakes(1).then(data=>{
+      if(!Array.isArray(data)) throw new Error('Neispravan odgovor za marke')
+      const filtered=data.filter((m:any)=>m.make&&m.make.trim())
+      if(active) setMakes(groupMakes(filtered))
+    }).catch(()=>{if(active) setMakesError('Marke nisu učitane. Osveži stranicu i pokušaj ponovo.')})
+      .finally(()=>{if(active) setMakesLoading(false)})
+    return ()=>{active=false}
   },[])
 
   useEffect(()=>{
-    if (!filters.make){setRawModels([]);return}
-    fetch(`${API_BASE}/search/models?make=${encodeURIComponent(filters.make)}`).then(r=>r.json()).then(data=>setRawModels((data||[]).filter((m:any)=>m.model&&m.model.trim()))).catch(()=>setRawModels([]))
+    let active=true
+    setRawModels([]);setModelsError('')
+    if (!filters.make){setModelsLoading(false);return}
+    setModelsLoading(true)
+    getModels(filters.make).then(data=>{
+      if(!Array.isArray(data)) throw new Error('Neispravan odgovor za modele')
+      if(active) setRawModels(data.filter((m:any)=>m.model&&m.model.trim()))
+    }).catch(()=>{if(active) setModelsError('Modeli nisu učitani. Ponovo izaberi marku.')})
+      .finally(()=>{if(active) setModelsLoading(false)})
+    return ()=>{active=false}
   },[filters.make])
 
   const groupedModels = groupModels(rawModels)
@@ -626,9 +630,10 @@ export default function SearchPage() {
 
   const doSearch = useCallback(async(f=filters)=>{
     setLoading(true)
+    setSearchError('')
     try{sessionStorage.setItem('autoai_filters',JSON.stringify(f));sessionStorage.setItem('autoai_search_url',window.location.href)}catch{}
     try{const fSend={...f,countries:(f.countries||[]).join(',')};const data=await searchListings(fSend);setResults(data)}
-    catch{setResults(null)}
+    catch{setResults(null);setSearchError('Oglasi nisu učitani. Proveri vezu ili se ponovo prijavi.')}
     finally{setLoading(false)}
   },[filters])
 
@@ -663,8 +668,9 @@ export default function SearchPage() {
   const makesCountMap=new Map(makes.map(m=>[m.make,m.count]))
   const gridMakes:{make:string;count:number}[]=TOP_19_MAKES.filter(m=>makesCountMap.has(m)).map(m=>({make:m,count:makesCountMap.get(m)!}))
   const inGrid=new Set(gridMakes.map(m=>m.make))
-  const fallback=makes.sort((a,b)=>b.count-a.count).filter(m=>!inGrid.has(m.make))
+  const fallback=[...makes].sort((a,b)=>b.count-a.count).filter(m=>!inGrid.has(m.make))
   while(gridMakes.length<19&&fallback.length>0)gridMakes.push(fallback.shift()!)
+  gridMakes.sort((a,b)=>a.make.localeCompare(b.make,'sr',{sensitivity:'base'}))
 
   return (
     <div style={{minHeight:'100vh',background:'var(--bg)'}}>
@@ -782,6 +788,7 @@ export default function SearchPage() {
           <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,letterSpacing:'.07em',marginBottom:10}}>
             MARKA {makesLoading&&<span style={{opacity:.5}}>učitavam...</span>}
           </div>
+          {makesError&&<p role="alert" style={{color:'#F97316',fontSize:13}}>{makesError}</p>}
           <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:6}}>
             {gridMakes.map(({make:mkName,count:mkCount})=>(
               <MakeTile key={mkName} makeName={mkName} count={mkCount} isSelected={filters.make===mkName}
@@ -823,7 +830,7 @@ export default function SearchPage() {
                     ))}
                   </div>
                 </>
-              ) : <p style={{fontSize:12,color:'var(--text3)',margin:0}}>Učitavam modele...</p>}
+              ) : <p role={modelsError?'alert':undefined} style={{fontSize:12,color:'var(--text3)',margin:0}}>{modelsError||(modelsLoading?'Učitavam modele...':'Nema dostupnih modela za ovu marku.')}</p>}
               <button onClick={()=>setFilter('make','')} style={{marginTop:8,background:'none',border:'none',color:'var(--text2)',fontSize:13,cursor:'pointer'}}>✕ Ukloni {filters.make}</button>
             </div>
           )}
@@ -861,8 +868,7 @@ export default function SearchPage() {
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
               <span style={{fontSize:15,fontWeight:600}}>
-                {loading?'...':`${results?.total?.toLocaleString()||0} vozila`}
-                {!loading&&results?.total>0&&<span style={{color:'var(--text3)',fontSize:13,marginLeft:8}}>analiziranih AI-om</span>}
+                {loading?'...':searchError?'Pretraga nije učitana':`${results?.total?.toLocaleString()||0} vozila`}
               </span>
               <select value={filters.sort_by} onChange={e=>setFilter('sort_by',e.target.value)}
                 style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 12px',color:'var(--text)',fontSize:13,outline:'none',cursor:'pointer'}}>
@@ -894,6 +900,11 @@ export default function SearchPage() {
             {loading ? (
               <div className="rg" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:20}}>
                 {[...Array(6)].map((_,i)=><div key={i} className="skeleton" style={{height:520,borderRadius:16}} />)}
+              </div>
+            ) : searchError ? (
+              <div role="alert" style={{padding:24,background:'var(--bg2)',borderRadius:16,border:'1px solid var(--border)'}}>
+                <p>{searchError}</p>
+                <button onClick={()=>doSearch()} style={{padding:'10px 16px',borderRadius:8,border:'none',background:'var(--accent)',color:'#fff',cursor:'pointer'}}>Pokušaj ponovo</button>
               </div>
             ) : results?.results?.length ? (
               <>
@@ -1012,7 +1023,7 @@ function ListingCard({listing,onContact,onCompare,inCompare,onListingClick}:{lis
         </div>
       ):(
         <div style={{background:'rgba(99,102,241,.07)',borderBottom:'2px solid rgba(99,102,241,.2)',padding:'9px 16px'}}>
-          <span style={{color:'#818CF8',fontSize:12,fontWeight:700}}>🤖 AI ANALIZA U TOKU</span>
+          <span style={{color:'var(--text3)',fontSize:12,fontWeight:700}}>AI PROCENA NIJE URAĐENA</span>
         </div>
       )}
       <a href={`/listing/${listing.id}`} onClick={onListingClick} style={{display:'block',textDecoration:'none'}}>
@@ -1183,3 +1194,4 @@ const IS: React.CSSProperties = {
   flex:1,background:'var(--bg3)',border:'1px solid var(--border)',
   borderRadius:8,padding:'9px 11px',color:'var(--text)',fontSize:13,outline:'none',minWidth:0,
 }
+

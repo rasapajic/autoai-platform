@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:api": "node --test tests/api.test.mjs"
   },
   "dependencies": {
     "next": "14.2.35",
@@ -24,3 +25,4 @@
     "autoprefixer": "^10"
   }
 }
+
