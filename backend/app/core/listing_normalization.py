@@ -25,6 +25,12 @@ _MAKES = (
     "RAM", "Renault", "Rivian", "Rolls-Royce", "Rover", "Saab", "SEAT",
     "Škoda", "Smart", "SsangYong", "Subaru", "Suzuki", "Tesla", "Toyota",
     "Triumph", "Vanderhall", "Volkswagen", "Volvo", "XPENG",
+    # Readable manufacturer names in the primary AutoScout24 make catalog.
+    # These names do not provide a mapping for numeric source taxonomy codes.
+    "BAIC", "Bugatti", "Caterham", "Changan", "DAF", "DFSK", "Dongfeng",
+    "Donkervoort", "DR Automobiles", "GWM", "Haval", "Hongqi", "Ineos",
+    "JAC", "Jaecoo", "Jetour", "KGM", "Lynk & Co", "Maxus", "Omoda",
+    "Seres", "Skywell", "VinFast", "Zeekr", "Zhidou",
 )
 MAKE_ALIASES = {_words(make): make for make in _MAKES}
 MAKE_ALIASES.update({
@@ -45,6 +51,7 @@ _NUMERIC_MODELS = {
     "Peugeot": {"106", "107", "108", "205", "206", "207", "208", "301", "306", "307", "308", "309", "405", "406", "407", "408", "508", "605", "607", "806", "807", "1007", "2008", "3008", "4007", "4008", "5008"},
     "Volvo": {"240", "244", "245", "340", "360", "440", "460", "480", "740", "760", "850", "940", "960"},
     "Toyota": {"86"}, "Porsche": {"356", "718", "911", "924", "928", "944", "968"},
+    "Omoda": {"5", "7", "9"}, "Jaecoo": {"5", "7", "8"}, "Lynk & Co": {"01", "02", "08"},
 }
 
 

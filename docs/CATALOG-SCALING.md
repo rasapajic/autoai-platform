@@ -80,6 +80,12 @@ Further bounded diagnostics identified repeated `Chery Tiggo` headlines in the
 two Willhaben SUV partitions. Chery and the observed Tiggo 4/7/8/9 labels are
 recognized from readable names; the numeric source code 10057 alone still
 resolves to unknown. See the [manufacturer model range](https://chery.at/).
+As deeper SUV windows exposed Omoda headlines, additional readable manufacturer
+names were added from the primary AutoScout24 catalog. Numeric source IDs still
+carry no manufacturer meaning. Supported native numeric model names remain
+explicit (including Omoda 5/7/9, Jaecoo 5/7/8 and Lynk & Co 01/02/08).
+Model references: [Omoda/Jaecoo Austria](https://www.omodajaecoo.at/)
+and [Lynk & Co Austria](https://www.lynkco.com/de-at).
 
 Manufacturer references: [AutoScout24 catalog](https://admin.autoscout24.com/)
 and [Ligier manufacturer history](https://www.ligier.fr/ligier-group/notre-histoire/).
