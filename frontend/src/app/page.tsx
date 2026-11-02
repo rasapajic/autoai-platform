@@ -1,10 +1,13 @@
 import { Suspense } from 'react'
-import HomePageClient from './page-client'
+import SearchPageClient from './search/page-client'
+
+export const dynamic = 'force-dynamic'
 
 export default function Page() {
   return (
     <Suspense fallback={null}>
-      <HomePageClient />
+      <SearchPageClient />
     </Suspense>
   )
 }
+

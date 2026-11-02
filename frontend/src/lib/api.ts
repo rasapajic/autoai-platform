@@ -2,12 +2,12 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
 
 async function api(path: string, opts?: RequestInit) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('autoai_token') : null
+  const headers = new Headers(opts?.headers)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
   const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
     ...opts,
+    headers,
   })
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Greška pri komunikaciji sa serverom' }))
@@ -46,6 +46,9 @@ export const removeFavorite = (id: string) => api(`/listings/${id}/favorite`, { 
 export const parseQuery = (query: string) =>
   api('/ai/parse-query', { method: 'POST', body: JSON.stringify({ query }) })
 
+export const parseSearch = (text: string) =>
+  api('/ai/parse-search/', { method: 'POST', body: JSON.stringify({ text }) })
+
 export const estimatePrice = (data: any) =>
   api('/ai/estimate-price', { method: 'POST', body: JSON.stringify(data) })
 
@@ -66,6 +69,8 @@ export const getFavorites = () => api('/users/me/favorites')
 
 // ── Alertovi ──────────────────────────────────────────────────
 export const getAlerts = () => api('/alerts/')
+export const getInboxStats = () => api('/inbox/conversations/stats/summary')
 export const createAlert = (data: any) =>
   api('/alerts/', { method: 'POST', body: JSON.stringify(data) })
 export const deleteAlert = (id: string) => api(`/alerts/${id}`, { method: 'DELETE' })
+
