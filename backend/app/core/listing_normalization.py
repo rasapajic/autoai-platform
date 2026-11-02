@@ -19,9 +19,9 @@ _MAKES = (
     "Hummer", "Hyundai", "Infiniti", "Isuzu", "Iveco", "Jaguar", "Jeep",
     "Kia", "KTM", "Lada", "Lamborghini", "Lancia", "Land Rover", "Leapmotor",
     "Lexus", "Ligier", "Lincoln", "Lotus", "Lucid", "MAN", "Maserati",
-    "Maybach", "Mazda", "McLaren", "Mercedes-Benz", "MG", "Mini",
+    "Maybach", "Mazda", "McLaren", "Mercedes-Benz", "MG", "Microcar", "Mini",
     "Mitsubishi", "Morgan", "NIO", "Nissan", "Oldsmobile", "Opel", "ORA",
-    "Pagani", "Peugeot", "Piaggio", "Polestar", "Pontiac", "Porsche", "Puch",
+    "Pagani", "Panther Westwinds", "Peugeot", "Piaggio", "Polestar", "Pontiac", "Porsche", "Puch",
     "RAM", "Renault", "Rivian", "Rolls-Royce", "Rover", "Saab", "SEAT",
     "Škoda", "Smart", "SsangYong", "Subaru", "Suzuki", "Tesla", "Toyota",
     "Triumph", "Vanderhall", "Volkswagen", "Volvo", "XPENG",
@@ -30,12 +30,13 @@ MAKE_ALIASES = {_words(make): make for make in _MAKES}
 MAKE_ALIASES.update({
     "vw": "Volkswagen", "mercedes": "Mercedes-Benz", "benz": "Mercedes-Benz",
     "landrover": "Land Rover", "alfa": "Alfa Romeo", "ds": "DS Automobiles",
+    "panther": "Panther Westwinds",
 })
 _PREFIXES = sorted(MAKE_ALIASES, key=len, reverse=True)
 _MULTIWORD_MODELS = (
     "range rover sport", "range rover evoque", "range rover velar", "range rover",
     "grand cherokee", "grand scenic", "land cruiser", "model 3", "model s",
-    "model x", "model y", "mustang mach e", "mx 5", "cx 5", "cx 3", "c hr",
+    "model x", "model y", "mustang mach e", "mx 5", "cx 5", "cx 3", "c hr", "m go",
 )
 _NUMERIC_MODELS = {
     "Audi": {"50", "80", "90", "100", "200"},
@@ -51,7 +52,7 @@ def canonical_make(value) -> str | None:
 
 
 def _display_model(value: str) -> str:
-    display = {"mx 5": "MX-5", "cx 3": "CX-3", "cx 5": "CX-5", "c hr": "C-HR"}
+    display = {"mx 5": "MX-5", "cx 3": "CX-3", "cx 5": "CX-5", "c hr": "C-HR", "m go": "M.Go"}
     if value in display:
         return display[value]
     if re.fullmatch(r"[a-z]\d{1,3}|\d[a-z]", value):

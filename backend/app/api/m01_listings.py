@@ -133,7 +133,7 @@ async def _fetch_source_batch(
     prepared, skipped = _prepare_source_batch(source, raw_listings, now)
     unresolved_ids = {row["external_id"] for row in prepared if row.get("make") is None}
     samples = {}
-    for row in raw_listings:
+    for row in reversed(raw_listings):
         external_id = str(row.get("external_id") or "").strip()
         if external_id in unresolved_ids and external_id not in samples:
             samples[external_id] = {

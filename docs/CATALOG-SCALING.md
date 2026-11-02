@@ -66,6 +66,22 @@ listing is a usable comparable.
 
 ## Comparison quality
 
+### M0.5 — observed mixed-category cards
+
+Production diagnostics found AutoScout24 NL cards headed `Trucks-Lkw`,
+`Caravans-Wohnm` and `Oldtimer` among a car search. Explicit truck, motorhome
+and trailer category prefixes are excluded before parsing; `Oldtimer` may
+precede a recognized manufacturer and is not itself a make. This is a narrow
+source-label correction, not a claim that every body type is now classified.
+Microcar and Panther Westwinds are recognized readable manufacturer names;
+unknown names remain unknown and the 10% identity guard is retained.
+
+Manufacturer references: [AutoScout24 catalog](https://admin.autoscout24.com/)
+and [Ligier manufacturer history](https://www.ligier.fr/ligier-group/notre-histoire/).
+Regression tests use the observed public search headlines. Diagnostic samples
+are bounded to five records with truncated fields and are only in the guarded
+internal report/logs.
+
 Build cohorts by make, model generation, engine, transmission, year, mileage and
 market. Report the number of usable independent comparables and uncertainty.
 A large total catalog alone is not evidence that a particular vehicle has a
