@@ -18,20 +18,22 @@ Platforma je dostupna na: **http://localhost:3000**
 
 ---
 
-## M0.4 Resumable Internal Catalog
+## M0.8 Fast Resumable Internal Catalog
 
 The guarded internal pipeline covers Willhaben, AutoScout24, Marktplaats,
 2dehands and Kleinanzeigen. Public/commercial ingestion remains disabled.
 The approved compact interface is unchanged.
 
-The Railway cron service `appealing-communication` runs at 02:00, 08:00, 14:00
-and 20:00 UTC. With `AUTOAI_CATALOG_CURSORS_ENABLED=true`, it calls the secret-protected
+The Railway cron service `appealing-communication` runs every 15 minutes (UTC). With `AUTOAI_CATALOG_CURSORS_ENABLED=true`, it calls the secret-protected
 `POST /api/v1/internal/m01/collect-window` for each of 16 fixed partitions,
-with at most three pages per partition. The 02:00 UTC run refreshes the first
-pages; the other three runs advance durable page cursors. Rows and their cursor
+with at most three pages per partition. The 02:00 UTC slot refreshes the first
+pages once daily; the other slots advance durable page cursors. Rows and their cursor
 commit together. A failed partition keeps its checkpoint while other partitions
-continue. The cron explicitly reports partial failures and fails if an entire
-source has no valid observations.
+continue. The cron explicitly reports failures and persisted pauses. Source refusals and
+rate limits pause that source for 24 hours; transient fetch errors pause it for
+30 minutes. Empty/out-of-range windows pause their partition for 24 hours and
+identity-quality failures pause it for one hour. A source transaction lock
+prevents concurrent requests to different partitions of the same source.
 
 Vehicle names are normalized from readable source labels, titles or URL slugs.
 Unknown taxonomy codes remain unknown; numeric models such as 208, 500 and 911
@@ -39,7 +41,7 @@ are preserved. Existing listings update in place and unseen rows remain stored;
 absence from a search sample does not prove removal. Identity or price changes
 clear stale valuation fields. Automated AI valuation remains disabled.
 
-Growth pauses above 250 MiB of database size. This does not replace monitoring
+All collection modes pause above 250 MiB of database size. This does not replace monitoring
 of the 500 MB volume and PostgreSQL WAL. Accepted rows, unresolved makes,
 active totals and next-page checkpoints are logged. Without the feature flag,
 the existing all-source bounded scheduled refresh remains the fallback.

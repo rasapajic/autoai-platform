@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import hashlib
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -13,19 +14,28 @@ from app.core.source_policy import SOURCE_REGISTRY
 
 @pytest.fixture
 def collection(monkeypatch):
-    state = {"cursor": None, "rows": [], "sessions": [], "fetches": [], "locked": True, "database_bytes": 1000, "commit_fails": False}
+    state = {"cursor": None, "pauses": {}, "rows": [], "sessions": [], "fetches": [], "locked": True, "source_locked": True, "database_bytes": 1000, "commit_fails": False}
 
     class Session:
         def __init__(self):
             self.cursor = copy.deepcopy(state["cursor"])
+            self.pauses = copy.deepcopy(state["pauses"])
             self.rows = []
             self.closed = self.rolled_back = False
             state["sessions"].append(self)
 
         def execute(self, statement, *_args, **_kwargs):
+            if getattr(getattr(statement, "table", None), "name", None) == "catalog_collection_pauses":
+                params = statement.compile().params
+                self.pauses[params["pause_key"]] = SimpleNamespace(pause_key=params["pause_key"], reason=params["reason"], retry_after=params["retry_after"])
+                return None
+            if "3705" in str(statement):
+                return SimpleNamespace(scalar=lambda: state["source_locked"])
             return SimpleNamespace(scalar=lambda: state["database_bytes"] if "pg_database_size" in str(statement) else state["locked"])
 
-        def get(self, *_):
+        def get(self, model, key):
+            if model is catalog.CatalogCollectionPause:
+                return self.pauses.get(key)
             return self.cursor
 
         def add(self, row):
@@ -35,10 +45,14 @@ def collection(monkeypatch):
             if state["commit_fails"]:
                 raise RuntimeError("commit failed")
             state["cursor"] = copy.deepcopy(self.cursor)
+            state["pauses"] = copy.deepcopy(self.pauses)
             state["rows"].extend(self.rows)
 
         def rollback(self):
             self.rolled_back = True
+            self.cursor = copy.deepcopy(state["cursor"])
+            self.pauses = copy.deepcopy(state["pauses"])
+            self.rows = []
 
         def close(self):
             self.closed = True
@@ -176,3 +190,66 @@ def test_wrong_secret_cannot_open_a_collection_session(collection):
         asyncio.run(catalog.collect_window(partition_key="marktplaats:all", confirm="COLLECT_INTERNAL_CATALOG_WINDOW", scan_mode="growth", max_pages=3, x_autoai_admin_secret="wrong"))
     assert error.value.status_code == 403
     assert not collection["sessions"]
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_source_refusal_persists_pause_across_sessions_and_partitions(collection, monkeypatch, status):
+    run_window()
+    async def refused(*_args, **_kwargs):
+        collection["fetches"].append("refused")
+        raise RuntimeError(f"source_http_{status}")
+    monkeypatch.setattr(catalog, "_fetch_source_batch", refused)
+    with pytest.raises(RuntimeError):
+        run_window()
+    count = len(collection["fetches"])
+    result = run_window(partition="willhaben:type:10")
+    assert result["status"] == "paused"
+    assert result["reason"] == f"source_http_{status}"
+    assert len(collection["fetches"]) == count
+    assert collection["cursor"].next_page == 4
+    assert len(collection["rows"]) == 1
+    assert collection["pauses"]["source:willhaben"].retry_after > datetime.now(timezone.utc) + timedelta(hours=23)
+
+
+def test_expired_source_pause_allows_saved_page_to_resume(collection):
+    run_window()
+    collection["pauses"]["source:willhaben"] = SimpleNamespace(reason="source_http_429", retry_after=datetime.now(timezone.utc) - timedelta(seconds=1))
+    result = run_window()
+    assert result["status"] == "ok"
+    assert (result["start_page"], result["next_page"]) == (4, 7)
+
+
+def test_quality_pause_does_not_block_head_refresh(collection, monkeypatch):
+    original = catalog._fetch_source_batch
+    async def unknown(*_args, **_kwargs):
+        return [{"external_id": "unknown"}], {"accepted": 1, "unresolved_make": 1}
+    monkeypatch.setattr(catalog, "_fetch_source_batch", unknown)
+    with pytest.raises(HTTPException):
+        run_window()
+    monkeypatch.setattr(catalog, "_fetch_source_batch", original)
+    assert run_window()["status"] == "paused"
+    assert run_window("head")["status"] == "ok"
+
+
+def test_source_lock_rejects_overlapping_partitions_before_fetch(collection):
+    collection["source_locked"] = False
+    with pytest.raises(HTTPException) as error:
+        run_window()
+    assert error.value.detail == "collection_source_busy"
+    assert not collection["fetches"]
+    assert not collection["pauses"]
+
+
+def test_storage_guard_also_stops_head_inserts(collection):
+    collection["database_bytes"] = 251 * 1024 * 1024
+    with pytest.raises(HTTPException) as error:
+        run_window("head")
+    assert error.value.status_code == 507
+    assert not collection["fetches"]
+
+
+def test_out_of_range_page_does_not_pause_other_partitions_of_source(collection):
+    scope, reason, delay = catalog._collection_pause_spec(RuntimeError("source_http_404"), "autoscout24", "autoscout24:A", "growth", True)
+    assert scope == "partition:growth:autoscout24:A"
+    assert reason == "source_http_404"
+    assert delay == timedelta(hours=24)

@@ -83,3 +83,14 @@ supersedes the earlier twice-daily schedule while retaining all source,
 per-partition page, identity, locking and storage safeguards. Bounded manual
 growth runs are also authorized within those limits. This does not enable
 public/commercial ingestion, AI valuation or changes to the approved interface.
+
+
+## M0.8 fast initial filling
+
+On 2026-11-03 the owner explicitly requested faster collection than four daily
+runs. The existing internal cron runs every 15 minutes, superseding M0.6's
+cadence. Page limits and approved sources remain unchanged. Durable source and
+partition pauses prevent repeatedly requesting a refusing/rate-limited source,
+an invalid window or a low-quality batch on each scheduled occurrence. The
+storage guard applies to all collection modes. The approved interface and
+public/commercial restrictions remain unchanged.
