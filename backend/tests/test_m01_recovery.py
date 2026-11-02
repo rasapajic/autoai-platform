@@ -53,6 +53,25 @@ def test_willhaben_prefers_readable_source_labels_over_taxonomy_ids():
     assert row["model"] == "Golf"
 
 
+def test_identity_diagnostics_are_bounded_and_exclude_resolved_rows(monkeypatch):
+    import app.api.m01_listings as recovery
+    rows = [{"external_id": f"wh_{i}", "url": f"https://example.test/{i}", "price": 10000,
+             "make": "1036", "description": "Unrecognized " + "x" * 300} for i in range(10)]
+    rows.append({"external_id": "wh_known", "url": "https://example.test/known", "price": 10000, "make": "VW"})
+
+    class Scraper:
+        async def scrape_listings(self, *_args, **_kwargs):
+            return rows
+
+    monkeypatch.setattr(recovery, "_load_scraper", lambda _source: Scraper())
+    batch, report = asyncio.run(recovery._fetch_source_batch(SOURCE_REGISTRY["willhaben"], 1, datetime.now(timezone.utc)))
+    assert len(batch) == 11
+    assert report["unresolved_make"] == 10
+    assert len(report["identity_samples"]) == 5
+    assert all(len(sample["headline"]) <= 140 and sample["raw_make"] == "1036" for sample in report["identity_samples"])
+    assert "wh_known" not in {sample["external_id"] for sample in report["identity_samples"]}
+
+
 def test_registry_matches_sources_that_populated_the_legacy_database():
     assert {
         key: (source.storage_source, source.default_country)

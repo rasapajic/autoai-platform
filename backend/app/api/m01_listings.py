@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import hashlib
+import json
 import logging
 import math
 import secrets
@@ -130,12 +131,25 @@ async def _fetch_source_batch(
         raise last_error
 
     prepared, skipped = _prepare_source_batch(source, raw_listings, now)
+    unresolved_ids = {row["external_id"] for row in prepared if row.get("make") is None}
+    samples = {}
+    for row in raw_listings:
+        external_id = str(row.get("external_id") or "").strip()
+        if external_id in unresolved_ids and external_id not in samples:
+            samples[external_id] = {
+                "external_id": external_id[:100],
+                "raw_make": str(row.get("make") or "")[:80],
+                "headline": str(row.get("title") or row.get("description") or "")[:140],
+            }
+        if len(samples) == 5:
+            break
     return prepared, {
         "found": len(raw_listings),
         "accepted": len(prepared),
         "skipped": skipped,
         "unresolved_make": sum(row.get("make") is None for row in prepared),
         "unresolved_model": sum(row.get("model") is None for row in prepared),
+        "identity_samples": list(samples.values()),
     }
 
 
@@ -335,6 +349,7 @@ async def collect_window(
         if not batch:
             raise HTTPException(502, "collection_window_has_no_valid_rows")
         if report["unresolved_make"] * 10 > report["accepted"]:
+            logger.warning("M0.5 identity_rejected partition=%s accepted=%s unresolved_make=%s samples=%s", partition_key, report["accepted"], report["unresolved_make"], json.dumps(report.get("identity_samples", []), ensure_ascii=True))
             raise HTTPException(422, "collection_vehicle_identity_quality_low")
         fingerprint = hashlib.sha256("\n".join(sorted(row["external_id"] for row in batch)).encode()).hexdigest()
         if scan_mode == "growth" and start_page > 1 and fingerprint == cursor.last_fingerprint:
