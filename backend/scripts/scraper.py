@@ -69,6 +69,14 @@ def main() -> int:
             + (f"; invalid sources: {','.join(missing)}" if missing else "")
         )
 
+    for source in REQUIRED_SOURCES:
+        details = accepted[source]
+        logger.info(
+            "Source %s: found=%s accepted=%s unresolved_make=%s unresolved_model=%s",
+            source, details.get("found", "unknown"), details["accepted"],
+            details.get("unresolved_make", "unknown"), details.get("unresolved_model", "unknown"),
+        )
+
     logger.info(
         "Internal catalog refresh complete: active=%s new=%s updated=%s inactive=%s",
         result["active_after"],

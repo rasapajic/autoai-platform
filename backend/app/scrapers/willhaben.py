@@ -188,8 +188,8 @@ def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown
             return _get_attr(attrs, name)
 
         ad_id        = str(ad.get("id", ""))
-        make         = g("CAR_MODEL/MAKE")
-        model        = g("CAR_MODEL/MODEL")
+        make         = g("CAR_MODEL/MAKE_RESOLVED") or g("CAR_MODEL/MAKE")
+        model        = g("CAR_MODEL/MODEL_RESOLVED") or g("CAR_MODEL/MODEL")
         variant      = g("CAR_MODEL/MODEL_SPECIFICATION")
         year_str     = g("YEAR_MODEL") or g("YEAR")
         price_str    = g("PRICE") or g("PRICE_FOR_DISPLAY")
@@ -249,7 +249,7 @@ def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown
         else:
             url = f"https://www.willhaben.at/iad/gebrauchtwagen/d/auto/{ad_id}"
 
-        if not ad_id or not make:
+        if not ad_id:
             return None
 
         return {
