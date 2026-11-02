@@ -5,11 +5,12 @@ import json
 import logging
 import math
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from sqlalchemy import func, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -21,7 +22,7 @@ from app.core.source_policy import (
     configured_source_keys,
     get_enabled_source,
 )
-from app.models import Listing, CatalogScanCursor
+from app.models import Listing, CatalogScanCursor, CatalogCollectionPause
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -299,6 +300,27 @@ def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]], db=None) -> 
     }
 
 
+def _collection_pause_spec(exc, source_key, partition_key, mode, fetch_failed):
+    partition_scope = f"partition:{mode}:{partition_key}"
+    detail = exc.detail if isinstance(exc, HTTPException) else ""
+    if detail == "collection_vehicle_identity_quality_low":
+        return partition_scope, "identity_quality", timedelta(hours=1)
+    if detail == "source_pagination_did_not_advance":
+        return partition_scope, "pagination_stalled", timedelta(hours=24)
+    if detail == "collection_window_has_no_valid_rows":
+        return partition_scope, "empty_window", timedelta(hours=24)
+    if not fetch_failed:
+        return None
+    message = str(exc)
+    if message in {"source_http_401", "source_http_402", "source_http_403", "source_http_429", "source_http_451"}:
+        return f"source:{source_key}", message, timedelta(hours=24)
+    if message in {"source_http_400", "source_http_404", "source_http_410", "source_http_416"}:
+        return partition_scope, message, timedelta(hours=24)
+    if "empty" in message or message == "source_page_has_no_unique_valid_rows":
+        return partition_scope, "empty_or_unrecognized_window", timedelta(hours=24)
+    return f"source:{source_key}", "source_fetch_failed", timedelta(minutes=30)
+
+
 @router.post("/collect-window")
 async def collect_window(
     partition_key: str = Query(...),
@@ -322,22 +344,32 @@ async def collect_window(
         raise HTTPException(400, "invalid_collection_window")
 
     db = SessionLocal()
+    fetch_started = fetch_complete = False
     try:
         lock_id = list(PARTITION_BY_KEY).index(partition_key) + 1
         locked = db.execute(text("SELECT pg_try_advisory_xact_lock(3704, :key)"), {"key": lock_id}).scalar()
         if not locked:
             raise HTTPException(409, "collection_partition_busy")
+        source_lock_id = list(SOURCE_REGISTRY).index(source.key) + 1
+        if not db.execute(text("SELECT pg_try_advisory_xact_lock(3705, :key)"), {"key": source_lock_id}).scalar():
+            raise HTTPException(409, "collection_source_busy")
+        now = datetime.now(timezone.utc)
+        for pause_key in (f"source:{source.key}", f"partition:{scan_mode}:{partition_key}"):
+            pause = db.get(CatalogCollectionPause, pause_key)
+            if pause is not None and pause.retry_after > now:
+                return {"status": "paused", "partition": partition_key, "reason": pause.reason,
+                        "retry_after": pause.retry_after.isoformat()}
         database_bytes = db.execute(text("SELECT pg_database_size(current_database())")).scalar()
-        if scan_mode == "growth" and database_bytes > 250 * 1024 * 1024:
+        if database_bytes > 250 * 1024 * 1024:
             raise HTTPException(507, "collection_database_size_guard_250mb")
         cursor = db.get(CatalogScanCursor, partition_key)
         if cursor is None:
             cursor = CatalogScanCursor(partition_key=partition_key, next_page=1)
             db.add(cursor)
         start_page = cursor.next_page if scan_mode == "growth" else 1
-        now = datetime.now(timezone.utc)
         filters = {**partition.filters, "start_page": start_page, "strict_window": True}
         effective_pages = max_pages
+        fetch_started = True
         try:
             batch, report = await asyncio.wait_for(_fetch_source_batch(source, max_pages, now, filters), timeout=240)
         except RuntimeError as exc:
@@ -346,6 +378,7 @@ async def collect_window(
             # A short last page must not make us skip the preceding observations.
             effective_pages = 1
             batch, report = await asyncio.wait_for(_fetch_source_batch(source, 1, now, filters), timeout=240)
+        fetch_complete = True
         if not batch:
             raise HTTPException(502, "collection_window_has_no_valid_rows")
         if report["unresolved_make"] * 10 > report["accepted"]:
@@ -369,8 +402,17 @@ async def collect_window(
             "start_page": start_page, "end_page": start_page + effective_pages - 1,
             "next_page": next_page, "by_source": {source.key: report}, **counts,
         }
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        pause_spec = _collection_pause_spec(exc, source.key, partition_key, scan_mode, fetch_started and not fetch_complete)
+        if pause_spec:
+            pause_key, reason, delay = pause_spec
+            retry_after = datetime.now(timezone.utc) + delay
+            statement = pg_insert(CatalogCollectionPause).values(pause_key=pause_key, retry_after=retry_after, reason=reason)
+            statement = statement.on_conflict_do_update(index_elements=["pause_key"], set_={"retry_after": retry_after, "reason": reason})
+            db.execute(statement)
+            db.commit()
+            logger.warning("Catalog collection paused: key=%s reason=%s retry_after=%s", pause_key, reason, retry_after.isoformat())
         raise
     finally:
         db.close()
@@ -381,7 +423,10 @@ def collection_status(x_autoai_admin_secret: Optional[str] = Header(default=None
     require_admin_secret(x_autoai_admin_secret)
     db = SessionLocal()
     try:
-        return {"status": "ok", "database_bytes": db.execute(text("SELECT pg_database_size(current_database())")).scalar(), "partitions": [
+        return {"status": "ok", "pauses": [
+            {"key": row.pause_key, "reason": row.reason, "retry_after": row.retry_after}
+            for row in db.query(CatalogCollectionPause).all()
+        ], "database_bytes": db.execute(text("SELECT pg_database_size(current_database())")).scalar(), "partitions": [
             {"key": row.partition_key, "next_page": row.next_page,
              "last_scan_at": row.last_scan_at, "last_growth_at": row.last_growth_at}
             for row in db.query(CatalogScanCursor).all()

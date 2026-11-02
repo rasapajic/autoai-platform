@@ -20,6 +20,14 @@ class CatalogScanCursor(Base):
     last_growth_at = Column(DateTime(timezone=True))
 
 
+class CatalogCollectionPause(Base):
+    __tablename__ = "catalog_collection_pauses"
+
+    pause_key = Column(String(160), primary_key=True)
+    retry_after = Column(DateTime(timezone=True), nullable=False)
+    reason = Column(String(80), nullable=False)
+
+
 class User(Base):
     __tablename__ = "users"
 

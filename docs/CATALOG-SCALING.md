@@ -30,8 +30,8 @@ page cursor commits in the same transaction as the catalog rows. Failed requests
 retain their previous checkpoint. An ambiguous client timeout requires checking
 `GET /api/v1/internal/m01/collection-status` before a manual retry.
 
-The 02:00 UTC run refreshes the first pages; 08:00, 14:00 and 20:00 UTC advance
-saved cursors (M0.6 unattended cadence). `AUTOAI_CATALOG_SCAN_MODE` accepts
+The 02:00 UTC slot refreshes the first pages; other quarter-hour slots advance
+saved cursors (M0.8 fast collection). `AUTOAI_CATALOG_SCAN_MODE` accepts
 `auto` (default), `head` or `growth`.
 The feature flag is off by default and removing it restores the existing bounded
 refresh. No public/commercial ingestion or valuation flag is enabled.
@@ -42,7 +42,7 @@ the same checkpoint. Repeated identical batches and more than 10% unresolved
 makes also prevent advancement. Other partitions continue, with partial failures
 listed explicitly; a completely failed source makes the cron fail.
 
-Growth stops above 250 MiB of database size, leaving room on the existing
+All collection modes stop above 250 MiB of database size, leaving room on the existing
 500 MB volume. This is a conservative database guard, not a measurement of free
 volume space or WAL growth; storage monitoring remains necessary.
 
@@ -97,3 +97,27 @@ Build cohorts by make, model generation, engine, transmission, year, mileage and
 market. Report the number of usable independent comparables and uncertainty.
 A large total catalog alone is not evidence that a particular vehicle has a
 reliable market-price estimate.
+
+
+## M0.8 — fast cadence and durable pauses
+
+The owner requested faster initial filling on 2026-11-03. The cron schedule is
+`*/15 * * * *`, retaining the same bounded per-partition page count. Auto mode
+uses head only for the 02:00–02:14 UTC slot and growth otherwise. The runtime
+skips cron occurrences while its previous execution remains active; source and
+partition transaction locks also reject overlapping endpoint requests.
+
+A new additive `catalog_collection_pauses` table persists retry deadlines across
+process restarts. Refusals/rate limits (401/402/403/429/451) pause the whole source
+for 24 hours. Other fetch failures pause it for 30 minutes. Empty, unrecognized,
+out-of-range or repeated pagination windows pause only that mode/partition for
+24 hours, leaving other markets and the head refresh available. Identity-quality
+rejection pauses that mode/partition for one hour. Rows and cursors roll back
+before the independent pause transaction is committed. Database write failures
+are not classified as source refusals. Expired deadlines allow the saved page to
+resume. Paused responses perform no upstream fetch and are reported explicitly;
+they are not counted as valid observations or successful coverage.
+
+The database-size guard now applies to head mode too, because head refresh can
+insert new rows. This faster schedule does not establish source coverage or a
+specific daily yield. Volume, freshness and independent-comparable gates remain.
