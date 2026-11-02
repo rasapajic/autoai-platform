@@ -142,6 +142,7 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
 export default function SearchPage() {
   const searchParams  = useSearchParams()
   const [results,     setResults]     = useState<any>(null)
+  const [searchError, setSearchError] = useState('')
   const [loading,     setLoading]     = useState(true)
   const [aiQuery,     setAiQuery]     = useState(searchParams.get('q') || '')
   const [aiLoading,   setAiLoading]   = useState(false)
@@ -149,6 +150,7 @@ export default function SearchPage() {
   const [customMake,  setCustomMake]  = useState(false)
   const [makeOptions, setMakeOptions] = useState<Array<{ make: string; count: number }>>([])
   const [makesLoading, setMakesLoading] = useState(true)
+  const [makesError, setMakesError] = useState('')
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '',
@@ -167,8 +169,9 @@ export default function SearchPage() {
 
   const doSearch = useCallback(async (f = filters) => {
     setLoading(true)
+    setSearchError('')
     try   { const data = await searchListings(f); setResults(data) }
-    catch { setResults(null) }
+    catch { setResults(null); setSearchError('Oglasi nisu učitani. Proveri vezu ili se ponovo prijavi.') }
     finally { setLoading(false) }
   }, [filters])
 
@@ -177,8 +180,11 @@ export default function SearchPage() {
   useEffect(() => {
     let active = true
     getMakes(1)
-      .then(data => { if (active) setMakeOptions(Array.isArray(data) ? data : []) })
-      .catch(() => { if (active) setMakeOptions([]) })
+      .then(data => {
+        if (!Array.isArray(data)) throw new Error('Neispravan odgovor za marke')
+        if (active) setMakeOptions(data.filter(({ make }) => typeof make === 'string' && KNOWN_MAKES.has(makeKey(make))))
+      })
+      .catch(() => { if (active) setMakesError('Marke nisu učitane. Osveži stranicu i pokušaj ponovo.') })
       .finally(() => { if (active) setMakesLoading(false) })
     return () => { active = false }
   }, [])
@@ -207,7 +213,11 @@ export default function SearchPage() {
 
   const isCustomMakeActive = filters.make && !POPULAR_MAKES.includes(filters.make)
   const popularMakeKeys = new Set(POPULAR_MAKES.map(makeKey))
-  const makeCountByKey = new Map(makeOptions.map(({ make, count }) => [makeKey(make), count]))
+  const makeCountByKey = new Map<string, number>()
+  for (const { make, count } of makeOptions) {
+    const key = makeKey(make)
+    makeCountByKey.set(key, (makeCountByKey.get(key) || 0) + count)
+  }
   const otherMakes = makeOptions
     .filter(({ make }) => KNOWN_MAKES.has(makeKey(make)) && !popularMakeKeys.has(makeKey(make)))
     .sort((a, b) => a.make.localeCompare(b.make, 'sr', { sensitivity: 'base' }))
@@ -297,6 +307,7 @@ export default function SearchPage() {
           <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.08em', fontWeight: 600, marginBottom: 10 }}>
             BRZI IZBOR MARKE
           </div>
+          {makesError && <p role="alert" style={{ color: '#F97316', fontSize: 13 }}>{makesError}</p>}
           <div className="mkgrid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 }}>
             {POPULAR_MAKES.map(make => {
               const count = makeCountByKey.get(makeKey(make)) || 0
@@ -313,7 +324,7 @@ export default function SearchPage() {
                     gap: 7, whiteSpace: 'nowrap', overflow: 'hidden',
                   }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-                  {!makesLoading && (
+                  {!makesLoading && !makesError && (
                     <span aria-label={`${count} vozila`} style={{
                       flexShrink: 0, minWidth: 22, padding: '1px 6px', borderRadius: 999,
                       background: filters.make === make ? 'rgba(255,107,0,.18)' : 'var(--bg3)',
@@ -428,11 +439,8 @@ export default function SearchPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
               <div>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>
-                  {loading ? '...' : `${results?.total?.toLocaleString() || 0} vozila`}
+                  {loading ? '...' : searchError ? 'Pretraga nije učitana' : `${results?.total?.toLocaleString() || 0} vozila`}
                 </span>
-                {!loading && results?.total > 0 && (
-                  <span style={{ color: 'var(--text3)', fontSize: 13, marginLeft: 8 }}>analiziranih AI-om</span>
-                )}
               </div>
               <select value={filters.sort_by} onChange={e => setFilter('sort_by', e.target.value)}
                 style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: 'var(--text)', fontSize: 13, outline: 'none', cursor: 'pointer' }}>
@@ -447,6 +455,11 @@ export default function SearchPage() {
             {loading ? (
               <div className="rg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 20 }}>
                 {[...Array(8)].map((_,i) => <div key={i} className="skeleton" style={{ height: 420, borderRadius: 16 }} />)}
+              </div>
+            ) : searchError ? (
+              <div role="alert" style={{ padding: 24, background: 'var(--bg2)', borderRadius: 16, border: '1px solid var(--border)' }}>
+                <p>{searchError}</p>
+                <button onClick={() => doSearch()} style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Pokušaj ponovo</button>
               </div>
             ) : results?.results?.length ? (
               <>
@@ -513,7 +526,7 @@ function ListingCard({ listing }: { listing: any }) {
         </div>
       ) : (
         <div style={{ background: 'rgba(99,102,241,.07)', borderBottom: '2px solid rgba(99,102,241,.2)', padding: '9px 16px' }}>
-          <span style={{ color: '#818CF8', fontSize: 12, fontWeight: 700 }}>🤖 AI ANALIZA U TOKU</span>
+          <span style={{ color: 'var(--text3)', fontSize: 12, fontWeight: 700 }}>AI PROCENA NIJE URAĐENA</span>
         </div>
       )}
 
