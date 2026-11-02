@@ -4,6 +4,14 @@ from app.core.listing_normalization import normalize_vehicle_fields
 
 
 class VehicleNormalizationTests(unittest.TestCase):
+    def test_observed_chery_taxonomy_code_requires_named_evidence(self):
+        for model in ("4", "7", "8", "9"):
+            with self.subTest(model=model):
+                self.assertEqual(normalize_vehicle_fields({
+                    "make": "10057", "description": f"Chery Tiggo {model} PHEV Unique AWD",
+                }), {"make": "Chery", "model": f"Tiggo {model}"})
+        self.assertEqual(normalize_vehicle_fields({"make": "10057"}), {"make": None, "model": None})
+
     def test_make_aliases_and_decorations(self):
         for raw, expected in [("VW", "Volkswagen"), ("‼ TOYOTA", "Toyota"), ("⭐VW", "Volkswagen"), ("SKODA", "Škoda"), ("Mercedes Benz", "Mercedes-Benz"), ("DS", "DS Automobiles")]:
             with self.subTest(raw=raw):
