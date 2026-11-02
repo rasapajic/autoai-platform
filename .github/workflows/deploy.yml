@@ -43,8 +43,9 @@ jobs:
       - name: Validate isolated cron image
         run: |
           docker build -f backend/scripts/Dockerfile -t autoai-cron-ci backend
+          start_command=$(python -c 'import tomllib; print(tomllib.load(open("backend/scripts/railway.toml", "rb"))["deploy"]["startCommand"])')
           set +e
-          output=$(docker run --rm --network none autoai-cron-ci 2>&1)
+          output=$(docker run --rm --network none autoai-cron-ci sh -c "$start_command" 2>&1)
           status=$?
           set -e
           printf '%s\n' "$output"

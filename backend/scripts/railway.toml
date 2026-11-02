@@ -1,2 +1,4 @@
 [deploy]
-startCommand = "python scraper.py"
+startCommand = "python /app/scripts/scraper.py"
+restartPolicyType = "NEVER"
+cronSchedule = "0 2,14 * * *"
