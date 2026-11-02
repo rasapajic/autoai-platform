@@ -24,11 +24,11 @@ The guarded internal pipeline covers Willhaben, AutoScout24, Marktplaats,
 2dehands and Kleinanzeigen. Public/commercial ingestion remains disabled.
 The approved compact interface is unchanged.
 
-The Railway cron service `appealing-communication` keeps its 02:00 and 14:00 UTC
-schedule. With `AUTOAI_CATALOG_CURSORS_ENABLED=true`, it calls the secret-protected
+The Railway cron service `appealing-communication` runs at 02:00, 08:00, 14:00
+and 20:00 UTC. With `AUTOAI_CATALOG_CURSORS_ENABLED=true`, it calls the secret-protected
 `POST /api/v1/internal/m01/collect-window` for each of 16 fixed partitions,
-with at most three pages per partition. The morning run refreshes the first
-pages; the afternoon run advances durable page cursors. Rows and their cursor
+with at most three pages per partition. The 02:00 UTC run refreshes the first
+pages; the other three runs advance durable page cursors. Rows and their cursor
 commit together. A failed partition keeps its checkpoint while other partitions
 continue. The cron explicitly reports partial failures and fails if an entire
 source has no valid observations.

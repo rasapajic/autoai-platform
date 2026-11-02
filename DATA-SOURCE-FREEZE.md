@@ -72,3 +72,14 @@ do not advance a cursor. Partial failures are explicitly logged and retried
 at their saved checkpoint. Unseen catalog rows are neither deleted nor marked
 inactive. Public/commercial ingestion and automated valuation remain disabled.
 Removing the cursor feature flag restores the existing M0.2/M0.3 refresh.
+
+## M0.6 unattended collection cadence
+
+On 2026-11-02 the owner explicitly authorized continuing internal collection
+without requesting permission for routine runs. The existing cron now runs
+at 02:00, 08:00, 14:00 and 20:00 UTC. In cursor auto mode only 02:00 refreshes
+the first pages; the other three runs advance committed checkpoints. This
+supersedes the earlier twice-daily schedule while retaining all source,
+per-partition page, identity, locking and storage safeguards. Bounded manual
+growth runs are also authorized within those limits. This does not enable
+public/commercial ingestion, AI valuation or changes to the approved interface.

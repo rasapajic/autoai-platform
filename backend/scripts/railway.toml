@@ -1,4 +1,4 @@
 [deploy]
 startCommand = "python /app/scripts/scraper.py"
 restartPolicyType = "NEVER"
-cronSchedule = "0 2,14 * * *"
+cronSchedule = "0 2,8,14,20 * * *"

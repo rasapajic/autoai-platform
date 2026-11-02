@@ -30,8 +30,9 @@ page cursor commits in the same transaction as the catalog rows. Failed requests
 retain their previous checkpoint. An ambiguous client timeout requires checking
 `GET /api/v1/internal/m01/collection-status` before a manual retry.
 
-The unchanged 02:00 UTC run refreshes the first pages; 14:00 UTC advances saved
-cursors. `AUTOAI_CATALOG_SCAN_MODE` accepts `auto` (default), `head` or `growth`.
+The 02:00 UTC run refreshes the first pages; 08:00, 14:00 and 20:00 UTC advance
+saved cursors (M0.6 unattended cadence). `AUTOAI_CATALOG_SCAN_MODE` accepts
+`auto` (default), `head` or `growth`.
 The feature flag is off by default and removing it restores the existing bounded
 refresh. No public/commercial ingestion or valuation flag is enabled.
 
