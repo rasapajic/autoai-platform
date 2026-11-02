@@ -51,3 +51,24 @@ storage, attribution, translation, derived valuation, contact handling,
 monetization, retention and deletion.
 
 Default public/commercial policy remains: **deny unless explicitly approved**.
+
+
+## M0.4 internal collection-window exception
+
+The owner-approved catalog growth work extends the existing internal exception
+with resumable collection. When `AUTOAI_CATALOG_CURSORS_ENABLED=true`, the same
+cron calls the guarded `/collect-window` endpoint instead of the all-source
+refresh. This specifically supersedes M0.2 conditions 4–6: at most three pages
+are fetched **per fixed partition**, and each successful partition commits
+independently with its saved page cursor. There are 16 allowlisted partitions:
+eight Willhaben category/body-type partitions, five AutoScout24 countries
+(A, D, NL, I, B), and one each for Marktplaats, 2dehands and Kleinanzeigen.
+No arbitrary source, URL or filter can be supplied through this endpoint.
+
+The existing schedule, source allowlist, internal enable flag and admin secret
+remain required. Growth requests respect the database-size guard and strict
+page validation. Empty, blocked, unrecognized or low-identity-quality windows
+do not advance a cursor. Partial failures are explicitly logged and retried
+at their saved checkpoint. Unseen catalog rows are neither deleted nor marked
+inactive. Public/commercial ingestion and automated valuation remain disabled.
+Removing the cursor feature flag restores the existing M0.2/M0.3 refresh.

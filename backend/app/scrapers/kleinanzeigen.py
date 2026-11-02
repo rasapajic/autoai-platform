@@ -2,6 +2,7 @@ import asyncio
 import re
 
 import aiohttp
+from app.core.catalog_plan import page_window
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.kleinanzeigen.de/s-autos"
@@ -128,21 +129,28 @@ class KleinanzeigenScraper:
     async def scrape_listings(self, filters: dict, max_pages: int = 10) -> list[dict]:
         all_listings: list[dict] = []
         seen_ids: set[str] = set()
+        strict = bool(filters.get("strict_window"))
         timeout = aiohttp.ClientTimeout(total=35)
 
         async with aiohttp.ClientSession(headers=HEADERS, timeout=timeout, trust_env=True) as session:
-            for page in range(1, max_pages + 1):
+            for page in page_window(filters, max_pages):
                 url = f"{BASE_URL}/c216" if page == 1 else f"{BASE_URL}/seite:{page}/c216"
                 try:
                     async with session.get(url) as response:
                         if response.status != 200:
+                            if strict:
+                                raise RuntimeError(f"source_http_{response.status}")
                             break
                         html = await response.text(encoding="utf-8", errors="replace")
                 except Exception:
+                    if strict:
+                        raise
                     break
 
                 items = _parse_listings_from_html(html)
                 if not items:
+                    if strict:
+                        raise RuntimeError("source_empty_or_unrecognized_page")
                     break
                 for item in items:
                     if item["external_id"] not in seen_ids:

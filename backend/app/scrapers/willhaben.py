@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import aiohttp
+from app.core.catalog_plan import page_window
 
 CATEGORIES = ["limousine", "suv-gelaendewagen", "cabrio-roadster"]
 CAR_TYPES = ["4", "5", "6", "9", "10"]  # kombi, kleinwagen, coupe, van, pickup
@@ -280,7 +281,7 @@ def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown
         return None
 
 
-async def _scrape_page(session, url, params, category_name, all_listings, seen_ids):
+async def _scrape_page(session, url, params, category_name, all_listings, seen_ids, strict=False):
     """Scrape one current search-result page.
 
     The listing page already carries the fields and image references needed by
@@ -290,13 +291,19 @@ async def _scrape_page(session, url, params, category_name, all_listings, seen_i
     try:
         async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=20)) as resp:
             if resp.status != 200:
+                if strict:
+                    raise RuntimeError(f"source_http_{resp.status}")
                 return False
             html = await resp.text()
             next_data = _extract_next_data(html)
             if not next_data:
+                if strict:
+                    raise RuntimeError("source_markup_unrecognized")
                 return False
             adverts = _extract_listings_from_next_data(next_data)
             if not adverts:
+                if strict:
+                    raise RuntimeError("source_empty_window")
                 return False
 
             before = len(all_listings)
@@ -307,11 +314,15 @@ async def _scrape_page(session, url, params, category_name, all_listings, seen_i
                     all_listings.append(parsed)
 
             added = len(all_listings) - before
+            if strict and added == 0:
+                raise RuntimeError("source_page_has_no_unique_valid_rows")
             print(f"[Willhaben] {category_name}: +{added} | Ukupno: {len(all_listings)}")
             return len(adverts) >= 10
 
     except Exception as e:
         print(f"[Willhaben] Greška {category_name}: {e}")
+        if strict:
+            raise
         return False
 
 
@@ -319,14 +330,18 @@ class WillhabenScraper:
     async def scrape_listings(self, filters: dict, max_pages: int = 5) -> list:
         all_listings = []
         seen_ids = set()
+        window = page_window(filters, max_pages)
+        strict = bool(filters.get("strict_window"))
+        categories = [filters["category"]] if filters.get("category") else ([] if filters.get("car_type") else CATEGORIES)
+        car_types = [filters["car_type"]] if filters.get("car_type") else ([] if filters.get("category") else CAR_TYPES)
 
         async with aiohttp.ClientSession(headers=HEADERS, trust_env=True) as session:
 
             # ── Kategorije ──────────────────────────────────────────
-            for category in CATEGORIES:
+            for category in categories:
                 url = f"{BASE_URL}/{category}"
                 print(f"[Willhaben] Kategorija: {category}")
-                for page in range(1, max_pages + 1):
+                for page in window:
                     params = {}
                     if page > 1:
                         params["page"] = page
@@ -340,15 +355,17 @@ class WillhabenScraper:
                         params["YEAR_TO"] = filters["max_year"]
                     if filters.get("max_km"):
                         params["MILEAGE_TO"] = filters["max_km"]
-                    has_more = await _scrape_page(session, url, params, f"{category} str.{page}", all_listings, seen_ids)
+                    has_more = await _scrape_page(session, url, params, f"{category} str.{page}", all_listings, seen_ids, strict)
                     if not has_more:
+                        if strict and page < window.stop - 1:
+                            raise RuntimeError("source_window_incomplete")
                         break
                     await asyncio.sleep(1.5)
 
             # ── CAR_TYPE stranice ───────────────────────────────────
-            for car_type in CAR_TYPES:
+            for car_type in car_types:
                 print(f"[Willhaben] CAR_TYPE: {car_type}")
-                for page in range(1, max_pages + 1):
+                for page in window:
                     params = {"CAR_TYPE": car_type}
                     if page > 1:
                         params["page"] = page
@@ -362,8 +379,10 @@ class WillhabenScraper:
                         params["YEAR_TO"] = filters["max_year"]
                     if filters.get("max_km"):
                         params["MILEAGE_TO"] = filters["max_km"]
-                    has_more = await _scrape_page(session, BASE_URL_TYPES, params, f"CAR_TYPE={car_type} str.{page}", all_listings, seen_ids)
+                    has_more = await _scrape_page(session, BASE_URL_TYPES, params, f"CAR_TYPE={car_type} str.{page}", all_listings, seen_ids, strict)
                     if not has_more:
+                        if strict and page < window.stop - 1:
+                            raise RuntimeError("source_window_incomplete")
                         break
                     await asyncio.sleep(1.5)
 

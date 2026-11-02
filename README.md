@@ -18,32 +18,35 @@ Platforma je dostupna na: **http://localhost:3000**
 
 ---
 
-## M0.3 Normalized Incremental Internal Catalog
+## M0.4 Resumable Internal Catalog
 
-The guarded internal pipeline covers the five sources that populated the legacy
-production catalog: Willhaben, AutoScout24, Marktplaats, 2dehands, and
-Kleinanzeigen. Public/commercial external listing use remains disabled.
+The guarded internal pipeline covers Willhaben, AutoScout24, Marktplaats,
+2dehands and Kleinanzeigen. Public/commercial ingestion remains disabled.
+The approved compact interface is unchanged.
 
-The Railway cron service `appealing-communication` runs at 02:00 and 14:00 UTC.
-It calls the secret-protected `POST /api/v1/internal/m01/scheduled-refresh`
-endpoint with at most three pages per source.
+The Railway cron service `appealing-communication` keeps its 02:00 and 14:00 UTC
+schedule. With `AUTOAI_CATALOG_CURSORS_ENABLED=true`, it calls the secret-protected
+`POST /api/v1/internal/m01/collect-window` for each of 16 fixed partitions,
+with at most three pages per partition. The morning run refreshes the first
+pages; the afternoon run advances durable page cursors. Rows and their cursor
+commit together. A failed partition keeps its checkpoint while other partitions
+continue. The cron explicitly reports partial failures and fails if an entire
+source has no valid observations.
 
-Each cycle stages a valid, non-empty batch from every source before opening a
-database transaction. Vehicle names are normalized from readable source labels,
-title prefixes or readable URL slugs. Unresolved taxonomy codes become unknown
-fields; numeric models such as 208, 500 and 911 remain valid.
+Vehicle names are normalized from readable source labels, titles or URL slugs.
+Unknown taxonomy codes remain unknown; numeric models such as 208, 500 and 911
+are preserved. Existing listings update in place and unseen rows remain stored;
+absence from a search sample does not prove removal. Identity or price changes
+clear stale valuation fields. Automated AI valuation remains disabled.
 
-Existing listings are fetched in one batch, updated in place and new listings
-are inserted. Listings absent from this partial sample remain unchanged.
-Absence from a few search pages does not prove that a vehicle was removed.
-Favorites, price history and conversations remain linked. A source or database
-failure rolls back the complete cycle. Identity or price changes clear stale
-valuation fields; automated valuation remains disabled.
+Growth pauses above 250 MiB of database size. This does not replace monitoring
+of the 500 MB volume and PostgreSQL WAL. Accepted rows, unresolved makes,
+active totals and next-page checkpoints are logged. Without the feature flag,
+the existing all-source bounded scheduled refresh remains the fallback.
 
-The cron logs accepted rows and unresolved make/model counts per source.
-The target is 10,000 → 50,000 → 200,000+ current listings. Persistent page
-cursors, complete coverage/freshness checks and larger-volume collection are
-the next gate, not features claimed by this bounded normalization release.
+The target is 10,000 → 50,000 → 200,000+ current listings. Resumable collection
+is the current milestone; full source coverage, freshness checks, physical
+vehicle deduplication and sufficiently populated comparison cohorts remain.
 See [catalog scaling](docs/CATALOG-SCALING.md).
 
 Required backend variables:
@@ -60,6 +63,8 @@ Required cron variables:
 AUTOAI_ADMIN_SECRET=<same backend secret>
 AUTOAI_BACKEND_URL=https://autoai-platform-production.up.railway.app
 AUTOAI_CRON_MAX_PAGES=3
+AUTOAI_CATALOG_CURSORS_ENABLED=true
+AUTOAI_CATALOG_SCAN_MODE=auto
 ```
 
 `POST /api/v1/internal/m01/probe-all` remains available for read-only source

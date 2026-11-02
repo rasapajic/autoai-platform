@@ -10,6 +10,16 @@ from app.core.db import Base
 import uuid
 
 
+class CatalogScanCursor(Base):
+    __tablename__ = "catalog_scan_cursors"
+
+    partition_key = Column(String(120), primary_key=True)
+    next_page = Column(Integer, nullable=False, default=1)
+    last_fingerprint = Column(String(64))
+    last_scan_at = Column(DateTime(timezone=True))
+    last_growth_at = Column(DateTime(timezone=True))
+
+
 class User(Base):
     __tablename__ = "users"
 

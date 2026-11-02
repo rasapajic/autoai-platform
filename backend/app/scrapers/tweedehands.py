@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import aiohttp
+from app.core.catalog_plan import page_window
 
 API_URL = "https://www.2dehands.be/lrp/api/search"
 
@@ -201,10 +202,12 @@ class TweedehandsScraper:
         all_listings = []
         seen_ids = set()
         limit = 30
+        window = page_window(filters, max_pages)
+        strict = bool(filters.get("strict_window"))
         first_run = True
 
         async with aiohttp.ClientSession(headers=HEADERS, trust_env=True) as session:
-            for page_num in range(max_pages):
+            for page_num in range(window.start - 1, window.stop - 1):
                 offset = page_num * limit
                 params = {
                     "l1CategoryId": 91,
@@ -226,6 +229,8 @@ class TweedehandsScraper:
                                            timeout=aiohttp.ClientTimeout(total=20)) as resp:
                         print(f"[2dehands] Status: {resp.status}")
                         if resp.status != 200:
+                            if strict:
+                                raise RuntimeError(f"source_http_{resp.status}")
                             break
 
                         text = await resp.text()
@@ -238,6 +243,8 @@ class TweedehandsScraper:
                         print(f"[2dehands] listings={len(regular)}, topBlock={len(top)}, total={data.get('totalResultCount', 0)}")
 
                         if not all_items:
+                            if strict:
+                                raise RuntimeError("source_empty_window")
                             break
 
                         if first_run and all_items:
@@ -256,16 +263,22 @@ class TweedehandsScraper:
                                 all_listings.append(parsed)
 
                         added = len(all_listings) - before
+                        if strict and added == 0:
+                            raise RuntimeError("source_page_has_no_unique_valid_rows")
                         print(f"[2dehands] Str.{page_num+1}: +{added} | Ukupno: {len(all_listings)}")
 
                         total = data.get("totalResultCount", 0)
                         if offset + limit >= total or len(all_items) < limit:
+                            if strict and page_num + 1 < window.stop - 1:
+                                raise RuntimeError("source_window_incomplete")
                             break
 
                         await asyncio.sleep(1.5)
 
                 except Exception as e:
                     print(f"[2dehands] Greška str.{page_num+1}: {e}")
+                    if strict:
+                        raise
                     break
 
         print(f"[2dehands] Završeno — {len(all_listings)} oglasa")

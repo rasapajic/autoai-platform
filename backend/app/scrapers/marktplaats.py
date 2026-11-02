@@ -1,6 +1,7 @@
 import json
 import re
 import aiohttp
+from app.core.catalog_plan import page_window
 
 API_URL = "https://www.marktplaats.nl/lrp/api/search"
 
@@ -201,9 +202,11 @@ class MarktplaatsScraper:
         all_listings = []
         seen_ids = set()
         limit = 30
+        window = page_window(filters, max_pages)
+        strict = bool(filters.get("strict_window"))
 
         async with aiohttp.ClientSession(headers=HEADERS, trust_env=True) as session:
-            for page_num in range(max_pages):
+            for page_num in range(window.start - 1, window.stop - 1):
                 offset = page_num * limit
                 params = {
                     "l1CategoryId": 91,
@@ -225,6 +228,8 @@ class MarktplaatsScraper:
                                            timeout=aiohttp.ClientTimeout(total=20)) as resp:
                         print(f"[Marktplaats] Status: {resp.status}")
                         if resp.status != 200:
+                            if strict:
+                                raise RuntimeError(f"source_http_{resp.status}")
                             break
 
                         text = await resp.text()
@@ -237,6 +242,8 @@ class MarktplaatsScraper:
                         print(f"[Marktplaats] listings={len(regular)}, topBlock={len(top)}, total={data.get('totalResultCount',0)}")
 
                         if not all_items:
+                            if strict:
+                                raise RuntimeError("source_empty_window")
                             break
 
                         before = len(all_listings)
@@ -247,14 +254,20 @@ class MarktplaatsScraper:
                                 all_listings.append(parsed)
 
                         added = len(all_listings) - before
+                        if strict and added == 0:
+                            raise RuntimeError("source_page_has_no_unique_valid_rows")
                         print(f"[Marktplaats] Str.{page_num+1}: +{added} | Ukupno: {len(all_listings)}")
 
                         total = data.get("totalResultCount", 0)
                         if offset + limit >= total or len(all_items) < limit:
+                            if strict and page_num + 1 < window.stop - 1:
+                                raise RuntimeError("source_window_incomplete")
                             break
 
                 except Exception as e:
                     print(f"[Marktplaats] Greška str.{page_num+1}: {e}")
+                    if strict:
+                        raise
                     break
 
         print(f"[Marktplaats] Završeno — {len(all_listings)} oglasa")
