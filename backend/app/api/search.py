@@ -250,12 +250,16 @@ def get_makes(db: Session = Depends(get_db), min_count: int = 3):
         .all()
     )
 
-    # ✅ Grupiši po kanonskoj formi
+    return _group_make_counts(raw)
+
+
+def _group_make_counts(raw) -> list[dict]:
+    """Keep external numeric taxonomy identifiers out of make selectors."""
     grouped: dict[str, int] = {}
     for make, count in raw:
-        if not make or not make.strip():
+        if not make or not any(character.isalpha() for character in make):
             continue
-        canonical = get_canonical_make(make)
+        canonical = get_canonical_make(make.strip())
         grouped[canonical] = grouped.get(canonical, 0) + count
 
     # Sortiraj abecedno

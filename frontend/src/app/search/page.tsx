@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import SearchPageClient from './page-client'
+import SearchPageClient from '../page-client'
 
 export const dynamic = 'force-dynamic'
 
