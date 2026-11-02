@@ -4,6 +4,23 @@ from app.core.listing_normalization import normalize_vehicle_fields
 
 
 class VehicleNormalizationTests(unittest.TestCase):
+    def test_readable_manufacturers_from_primary_catalog_do_not_need_id_guesses(self):
+        cases = [("Omoda 5 HEV Comfort Line", "Omoda", "5"),
+                 ("Omoda 9 PHEV Premium Line", "Omoda", "9"),
+                 ("Jaecoo 7 PHEV", "Jaecoo", "7"),
+                 ("KGM Torres 1.5", "KGM", "Torres"),
+                 ("Lynk & Co 01 PHEV", "Lynk & Co", "01"),
+                 ("Donkervoort D8 GTO", "Donkervoort", "D8")]
+        for title, make, model in cases:
+            with self.subTest(title=title):
+                self.assertEqual(normalize_vehicle_fields({"make": "10053", "description": title}), {"make": make, "model": model})
+        self.assertEqual(normalize_vehicle_fields({"make": "10053"}), {"make": None, "model": None})
+
+    def test_named_numeric_models_are_kept_without_a_title(self):
+        for make, model in [("Omoda", "5"), ("Omoda", "7"), ("Omoda", "9"), ("Jaecoo", "5"), ("Jaecoo", "7"), ("Jaecoo", "8"), ("Lynk & Co", "02"), ("Lynk & Co", "08")]:
+            with self.subTest(make=make, model=model):
+                self.assertEqual(normalize_vehicle_fields({"make": make, "model": model}), {"make": make, "model": model})
+
     def test_observed_chery_taxonomy_code_requires_named_evidence(self):
         for model in ("4", "7", "8", "9"):
             with self.subTest(model=model):
