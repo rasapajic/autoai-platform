@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import aiohttp
 from bs4 import BeautifulSoup
 from app.core.catalog_plan import page_window
+from app.core.listing_normalization import normalize_vehicle_fields
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,6 @@ HEADERS = {
     "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
 }
 
-KNOWN_MAKES = [
-    "Alfa Romeo", "Aston Martin", "Audi", "BMW", "Bentley", "Bugatti",
-    "Citroën", "Citroen", "Dacia", "Ferrari", "Fiat", "Ford", "Honda",
-    "Hyundai", "Jaguar", "Jeep", "Kia", "Lamborghini", "Land Rover",
-    "Lexus", "Maserati", "Mazda", "Mercedes-Benz", "Mini", "Mitsubishi",
-    "Nissan", "Opel", "Peugeot", "Porsche", "Renault", "Rolls-Royce",
-    "Seat", "Skoda", "Smart", "Subaru", "Suzuki", "Tesla", "Toyota",
-    "Volkswagen", "Volvo",
-]
-
-
 def _parse_int(value) -> int | None:
     if value is None:
         return None
@@ -54,15 +44,11 @@ def _parse_price(value) -> float | None:
 
 
 def _extract_make_model(title: str) -> tuple[str | None, str | None]:
-    for make in sorted(KNOWN_MAKES, key=len, reverse=True):
-        if title.lower().startswith(make.lower()):
-            rest = title[len(make):].strip().split()
-            return make, " ".join(rest[:2]) or None
-    words = title.split()
-    return (
-        words[0] if words else None,
-        " ".join(words[1:3]) if len(words) > 1 else None,
-    )
+    # AutoScout's Oldtimer category may precede the actual manufacturer.
+    # Only a recognized manufacturer in the remaining headline can resolve it.
+    headline = re.sub(r"^Oldtimer\s+", "", title, flags=re.I)
+    identity = normalize_vehicle_fields({"title": headline})
+    return identity["make"], identity["model"]
 
 
 def _normalize_fuel(value: str) -> str | None:
@@ -110,6 +96,10 @@ def _parse_card(article) -> dict | None:
 
     title_node = article.select_one("h2, h3")
     title = title_node.get_text(" ", strip=True) if title_node else ""
+    # Observed source taxonomy labels, not manufacturers. Mixed search cards
+    # can include these even when atype=C was requested. Keep them out of cars.
+    if re.match(r"^(?:Trucks-Lkw|Caravans-Wohnm|Trailer-Anhänger)(?:\s|$)", title, flags=re.I):
+        return None
     make, model = _extract_make_model(title)
 
     price_node = article.select_one('[data-testid="regular-price"]')
