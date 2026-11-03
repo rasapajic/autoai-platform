@@ -19,6 +19,38 @@ The approved compact interface is preserved during this work.
 Automated AI valuation remains disabled. An observed listing is not necessarily
 an eligible independent comparable.
 
+## Explainable offer recommendation (owner-requested listing detail addition)
+
+The detail response now includes a structured recommendation with a concrete
+reason, the next action and explicit uncertainty. It does not use the existing
+completeness score as evidence of a good purchase. The compact search interface,
+image handling and collection schedules are unchanged.
+
+A read-only query examines at most 200 recent observations for the selected
+vehicle. The target and candidates must have known make, exact model, year,
+mileage, fuel, transmission, power, body and country, and must have been collected
+in the last seven days. EUR asking prices are compared only within one country,
+with year ±1, mileage ±20% (minimum ±5,000 km), power ±5% (minimum ±2 kW), and
+matching known trim, displacement, condition and accident-history fields.
+Stale, inactive, mismatched and obvious repeated observations are excluded.
+This is conservative heuristic duplicate suppression, not proven VIN identity.
+
+At least ten retained observations and an interquartile spread no wider than
+25% of the median are required. The output calls this an indicative comparison
+of asking prices, with limited confidence; it does not assert realized sale
+prices, a verified generation/trim match, current availability or vehicle safety.
+Price deviations above 5% suggest negotiation, above 20% suggest skipping at the
+current price, and below -20% require explaining the low price. Otherwise the
+recommendation is to contact the seller and inspect the vehicle, not to buy
+without checks. Missing evidence and query failures return a clear verify state.
+
+Explicit damage or absent service-history claims take precedence over a good
+price. Newly obtained VIN discrepancies and high existing fraud-analysis risk
+override the price recommendation in both mobile and desktop views. VIN decoding
+alone does not verify mileage, ownership or accident history. No new paid model
+calls, bulk valuations, stored price estimates, data migrations or import-law
+inferences are introduced. The existing bulk valuation flag remains disabled.
+
 ## M0.4 — persistent collection windows
 
 The feature flag `AUTOAI_CATALOG_CURSORS_ENABLED=true` on the cron service

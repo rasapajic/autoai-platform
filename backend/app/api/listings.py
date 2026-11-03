@@ -5,9 +5,10 @@ from uuid import UUID
 
 from app.core.db import get_db
 from app.core.listing_date_refresh import refresh_missing_modified
+from app.core.recommendation_query import listing_recommendation
 from app.core.auth import get_current_user, get_optional_user
 from app.models import Listing, PriceHistory, Favorite
-from app.api.schemas import ListingDetail, PriceHistoryPoint, MessageResponse
+from app.api.schemas import ListingDetail, ListingRecommendation, PriceHistoryPoint, MessageResponse
 
 router = APIRouter()
 
@@ -30,7 +31,9 @@ async def get_listing(
         await refresh_missing_modified(db, listing)
     except Exception:
         db.rollback()  # Optional source metadata must not break listing reads.
-    return ListingDetail.model_validate(listing)
+    detail = ListingDetail.model_validate(listing)
+    detail.recommendation = ListingRecommendation.model_validate(listing_recommendation(db, listing))
+    return detail
 
 
 @router.get("/{listing_id}/price-history", response_model=list[PriceHistoryPoint])

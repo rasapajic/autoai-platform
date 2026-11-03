@@ -169,6 +169,55 @@ test('country selection combines with existing filters and all countries removes
   }
 })
 
+let recommendationTools
+try {
+  const ts = require('typescript')
+  const source = readFileSync(new URL('../src/lib/listing-recommendation.ts', import.meta.url), 'utf8')
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } })
+  recommendationTools = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND' || Number(process.versions.node.split('.')[0]) < 24) throw error
+  recommendationTools = await import('../src/lib/listing-recommendation.ts')
+}
+
+const priceRecommendation = {
+  status: 'consider', title: 'Vredi kontaktirati prodavca', reason: 'Cena je 10% ispod medijane 10 sličnih oglasa.',
+  next_step: 'Zatraži VIN i pregled.', confidence: 'limited', cautions: ['Stanje zahteva proveru.'],
+  comparison: { available: true, sample_size: 10, reference_price: 20000, delta_pct: -10, freshness_days: 7, reason: 'Uporediva vozila.' },
+}
+
+test('recommendation retains its concrete reason and never treats an AI score as buying evidence', () => {
+  const result = recommendationTools.resolveRecommendation({ recommendation: priceRecommendation })
+  assert.deepEqual(result, priceRecommendation)
+  const unknown = recommendationTools.resolveRecommendation({ ai_score: 100, price_estimated: 30000, price_delta_pct: -50 })
+  assert.equal(unknown.status, 'verify')
+  assert.equal(unknown.confidence, 'insufficient')
+  assert.match(unknown.reason, /Nema dovoljno podataka/)
+})
+
+test('critical and warning VIN mismatches override an attractive price and include the actual conflict', () => {
+  for (const [severity, status] of [['critical', 'avoid'], ['warning', 'verify']]) {
+    const result = recommendationTools.resolveRecommendation({ recommendation: priceRecommendation }, {
+      mismatches: [{ severity, field: 'Gorivo', message: 'VIN navodi dizel, oglas benzin.' }],
+    })
+    assert.equal(result.status, status)
+    assert.match(result.reason, /VIN navodi dizel, oglas benzin/)
+    assert.equal(result.comparison.sample_size, 10)
+    assert.match(result.next_step, /pre bilo kakve uplate/)
+  }
+})
+
+test('high safety risk prevents a positive recommendation and VIN decode alone does not upgrade one', () => {
+  const result = recommendationTools.resolveRecommendation({ recommendation: priceRecommendation }, null, {
+    risk_level: 'high', red_flags: ['Sumnjiv način plaćanja'],
+  })
+  assert.equal(result.status, 'verify')
+  assert.match(result.reason, /Sumnjiv način plaćanja/)
+  assert.equal(recommendationTools.resolveRecommendation({}, { success: true, match_status: 'ok' }).status, 'verify')
+  const avoided = { ...priceRecommendation, status: 'avoid', title: 'Preskoči po ovoj ceni' }
+  assert.equal(recommendationTools.resolveRecommendation({ recommendation: avoided }, { match_status: 'ok' }).status, 'avoid')
+})
+
 let dateTools
 try {
   const ts = require('typescript')

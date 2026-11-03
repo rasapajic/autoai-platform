@@ -5,6 +5,7 @@ import ContactModal from '@/components/ContactModal'
 import VinChecker from '@/components/VinChecker'
 import ModelChecklist from '@/components/ModelChecklist'
 import ListingDates from '@/components/ListingDates'
+import ListingRecommendation from '@/components/ListingRecommendation'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 const ELIGIBILITY_COLORS: Record<string, string> = { eligible:'#22C55E', needs_check:'#F97316', not_recommended:'#EF4444', oldtimer:'#A855F7' }
@@ -162,7 +163,7 @@ export default function ListingPage({params}:{params:{id:string}}){
   const [fraud,setFraud]=useState<any>(null)
   const [activeImg,setActiveImg]=useState(0)
   const [favorited,setFavorited]=useState(false)
-  const [vinResult,setVinResult]=useState<any>(null)
+  const [vinEvidence,setVinEvidence]=useState<any>(null)
   const [loading,setLoading]=useState(true)
   const [showContact,setShowContact]=useState(false)
   const [showBd,setShowBd]=useState(false)
@@ -177,12 +178,16 @@ export default function ListingPage({params}:{params:{id:string}}){
 
   useEffect(()=>{const p=sessionStorage.getItem('autoai_search_url');if(p)setBackUrl(p)},[])
   useEffect(()=>{
+    let active=true
+    setLoading(true);setListing(null);setSimilar([]);setFraud(null);setVinEvidence(null)
     Promise.allSettled([getListing(params.id),getSimilar(params.id),fraudCheck(params.id)])
       .then(([l,s,f])=>{
+        if(!active)return
         if(l.status==='fulfilled'){const d=l.value;setListing(d);if(d?.url&&(!d.year||!d.mileage))autoEnrich(d.url)}
         if(s.status==='fulfilled')setSimilar(s.value)
         if(f.status==='fulfilled')setFraud(f.value)
-      }).finally(()=>setLoading(false))
+      }).finally(()=>{if(active)setLoading(false)})
+    return()=>{active=false}
   },[params.id])
 
   const startScan=()=>{let i=0;setScanMsg(AI_SCAN_MESSAGES[0]);scanInterval.current=setInterval(()=>{i=(i+1)%AI_SCAN_MESSAGES.length;setScanMsg(AI_SCAN_MESSAGES[i])},1800)}
@@ -194,7 +199,7 @@ export default function ListingPage({params}:{params:{id:string}}){
     try{
       const res=await fetch(`${API_BASE}/analyze/`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})})
       const data=await res.json()
-      if(data.scrape_success){setListing((prev:any)=>({...prev,year:data.year||prev.year,mileage:data.mileage||prev.mileage,fuel_type:data.fuel_type||prev.fuel_type,engine_power_kw:data.engine_power_kw||prev.engine_power_kw,country:data.country||prev.country,city:data.city||prev.city,transmission:data.transmission||prev.transmission,images:(data.images?.length||0)>(prev.images?.length||0)?data.images:prev.images}));setEnriched(true)}
+      if(data.scrape_success){setListing((prev:any)=>prev?.id===params.id?({...prev,recommendation:null,year:data.year||prev.year,mileage:data.mileage||prev.mileage,fuel_type:data.fuel_type||prev.fuel_type,engine_power_kw:data.engine_power_kw||prev.engine_power_kw,country:data.country||prev.country,city:data.city||prev.city,transmission:data.transmission||prev.transmission,images:(data.images?.length||0)>(prev.images?.length||0)?data.images:prev.images}):prev);setEnriched(true)}
     }catch{}
     stopScan();setEnriching(false)
   }
@@ -202,6 +207,8 @@ export default function ListingPage({params}:{params:{id:string}}){
   if(loading)return <PageSkeleton/>
   if(!listing)return <div style={{textAlign:'center',padding:'80px 0',color:'var(--text3)'}}>Oglas nije pronađen.</div>
 
+  const vinResult=vinEvidence?.listingId===listing.id?vinEvidence.result:null
+  const setVinResult=(result:any)=>setVinEvidence({listingId:listing.id,result})
   const images=listing.images||[]
   const elig=getSerbiaEligibility(listing)
   const eligColor=ELIGIBILITY_COLORS[elig.status]||'#F97316'
@@ -315,6 +322,7 @@ export default function ListingPage({params}:{params:{id:string}}){
               <div style={{fontSize:44,fontWeight:800,color:'var(--text)',lineHeight:1,letterSpacing:'-1px'}}>{price?`${fmt(price)} €`:'Na upit'}</div>
               {listing.price_delta_pct&&<div style={{fontSize:13,marginTop:6,display:'flex',alignItems:'center',gap:6}}><span style={{color:'var(--text3)'}}>AI procena:</span><span style={{fontWeight:700,color:deltaGood?'#22C55E':'#F97316'}}>{deltaGood?'Ispod tržišta':Math.abs(Number(listing.price_delta_pct))<=10?'Fer cena':'Iznad tržišta'} {deltaGood?'↓':'↑'}{Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%</span></div>}
               {listing.price_estimated&&<div style={{fontSize:12,color:'var(--text3)',marginTop:3}}>Tržišna vrednost: <span style={{color:'var(--text2)',fontWeight:600}}>{fmt(listing.price_estimated)} €</span> <span style={{opacity:.6,cursor:'help'}} title="Izračunato iz sličnih oglasa, kilometraže, godišta i opreme.">ⓘ</span></div>}
+              <ListingRecommendation listing={listing} vinResult={vinResult} fraud={fraud}/>
             </div>
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,padding:'0 16px 16px'}}>
@@ -419,6 +427,7 @@ export default function ListingPage({params}:{params:{id:string}}){
               <h1 style={{fontSize:16,marginBottom:4,fontFamily:'Syne,sans-serif',fontWeight:700}}>{listing.make} {listing.model}</h1>
               {listing.year&&<div style={{color:'var(--text3)',fontSize:12,marginBottom:8}}>{listing.year} · {fmtKm(listing.mileage)||'—'}</div>}
               <div style={{fontSize:26,fontWeight:800,color:'var(--text)',lineHeight:1,marginBottom:8}}>{price?`${fmt(price)} €`:'Na upit'}</div>
+              <ListingRecommendation listing={listing} vinResult={vinResult} fraud={fraud}/>
               {listing.price_estimated&&<div style={{background:deltaGood?'rgba(34,197,94,.08)':'rgba(120,113,108,.08)',border:`1px solid ${deltaGood?'rgba(34,197,94,.25)':'rgba(120,113,108,.25)'}`,borderRadius:10,padding:'10px 12px',marginBottom:12}}>
                 <div style={{fontSize:11,color:'var(--text3)',marginBottom:3}}>AI procena tržišne vrednosti <span style={{opacity:.6,cursor:'help'}} title="Izračunato iz sličnih oglasa, kilometraže, godišta i opreme.">ⓘ</span></div>
                 <div style={{fontWeight:700,fontSize:14}}>{fmt(listing.price_estimated)} €</div>
