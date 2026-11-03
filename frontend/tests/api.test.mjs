@@ -144,4 +144,6 @@ test('AI parsing keeps its partial search behavior and cannot retain another mak
   assert.equal(modelTools.mergeParsedFilters(selected, { make: 'BMW' }).model, '')
   assert.equal(modelTools.mergeParsedFilters(selected, { model: 'XF' }).model_exact, false)
   assert.equal(modelTools.mergeParsedFilters(selected, { max_price: '15000' }).model_exact, true)
+  const partial = modelTools.mergeParsedFilters(selected, { model: 'F' })
+  assert.equal(modelTools.changeListingFilter(partial, 'model', 'F').model_exact, true)
 })

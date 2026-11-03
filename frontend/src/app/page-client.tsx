@@ -235,6 +235,7 @@ export default function SearchPage() {
     filters.fuel_type, filters.price_rating,
   ].filter(Boolean).length
 
+  const selectedModelKey = filters.model_exact ? filters.model.toLowerCase() : ''
   const isCustomMakeActive = filters.make && !POPULAR_MAKES.includes(filters.make)
   const popularMakeKeys = new Set(POPULAR_MAKES.map(makeKey))
   const makeCountByKey = new Map<string, number>()
@@ -444,9 +445,9 @@ export default function SearchPage() {
               ) : modelData.options.length ? (
                 <div className="model-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
                   {modelData.options.map(({ model, count }) => (
-                    <button key={model} className="mkbtn cb" aria-pressed={filters.model.toLowerCase() === model.toLowerCase()}
-                      onClick={() => setFilter('model', filters.model.toLowerCase() === model.toLowerCase() ? '' : model)}
-                      style={{ minWidth: 0, padding: '8px 9px', borderRadius: 9, background: filters.model.toLowerCase() === model.toLowerCase() ? 'rgba(255,107,0,.12)' : 'var(--bg3)', border: `1px solid ${filters.model.toLowerCase() === model.toLowerCase() ? 'var(--accent)' : 'var(--border)'}`, color: filters.model.toLowerCase() === model.toLowerCase() ? 'var(--accent)' : 'var(--text2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 11 }}>
+                    <button key={model} className="mkbtn cb" aria-pressed={selectedModelKey === model.toLowerCase()}
+                      onClick={() => setFilter('model', selectedModelKey === model.toLowerCase() ? '' : model)}
+                      style={{ minWidth: 0, padding: '8px 9px', borderRadius: 9, background: selectedModelKey === model.toLowerCase() ? 'rgba(255,107,0,.12)' : 'var(--bg3)', border: `1px solid ${selectedModelKey === model.toLowerCase() ? 'var(--accent)' : 'var(--border)'}`, color: selectedModelKey === model.toLowerCase() ? 'var(--accent)' : 'var(--text2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 11 }}>
                       <span title={model} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{model}</span>
                       <span style={{ flexShrink: 0, minWidth: 22, padding: '1px 5px', borderRadius: 999, background: 'var(--bg2)', color: 'var(--text3)', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>{count.toLocaleString('sr-RS')}</span>
                     </button>
