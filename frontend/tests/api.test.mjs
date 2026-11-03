@@ -147,3 +147,24 @@ test('AI parsing keeps its partial search behavior and cannot retain another mak
   const partial = modelTools.mergeParsedFilters(selected, { model: 'F' })
   assert.equal(modelTools.changeListingFilter(partial, 'model', 'F').model_exact, true)
 })
+
+test('country selection combines with existing filters and all countries removes the restriction', async () => {
+  const previous = { make: 'Jaguar', model: 'F-Pace', model_exact: true, country: '', max_price: '20000', page: 4 }
+  for (const country of ['AT', 'BE', 'NL', 'IT', 'DE']) {
+    const selected = modelTools.changeListingFilter(previous, 'country', country)
+    assert.deepEqual(selected, { ...previous, country, page: 1 })
+    await api.searchListings(selected)
+    const params = new URL(calls.at(-1).url).searchParams
+    assert.equal(params.get('country'), country)
+    assert.equal(params.get('make'), 'Jaguar')
+    assert.equal(params.get('model'), 'F-Pace')
+    assert.equal(params.get('model_exact'), 'true')
+    assert.equal(params.get('max_price'), '20000')
+    assert.equal(params.get('page'), '1')
+    const cleared = modelTools.changeListingFilter({ ...selected, page: 3 }, 'country', '')
+    await api.searchListings(cleared)
+    assert.equal(new URL(calls.at(-1).url).searchParams.has('country'), false)
+    assert.equal(cleared.model_exact, true)
+    assert.equal(cleared.page, 1)
+  }
+})
