@@ -94,3 +94,22 @@ partition pauses prevent repeatedly requesting a refusing/rate-limited source,
 an invalid window or a low-quality batch on each scheduled occurrence. The
 storage guard applies to all collection modes. The approved interface and
 public/commercial restrictions remain unchanged.
+
+## M0.9 German growth priority
+
+On 2026-11-03 the owner approved stronger German collection and repair of
+Kleinanzeigen headline parsing. In growth mode, the existing AutoScout24 Germany
+partition may be visited up to eight times sequentially per cron execution,
+reusing its committed cursor. This supersedes the prior single visit per fixed
+partition for that German growth partition only. Each request still fetches at
+most three pages; there are at most 23 windows over the same 16 fixed partitions.
+All other partitions retain their one window, and head mode remains one visit
+per partition. Failed/paused German windows prevent further attempts in that
+execution. Existing durable retry deadlines are not cleared early.
+
+The same five-source allowlist, internal access gate, 15-minute schedule,
+source/partition locks, identity threshold and database-size guard remain in
+force. Unknown vehicle identities are not guessed, and wanted/buying ads are
+excluded from newly collected sales offers. This exception does not enable
+public/commercial ingestion or valuation, change the interface, add a source,
+or authorize mass deletion/deactivation of stored records.

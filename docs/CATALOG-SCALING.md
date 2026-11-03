@@ -121,3 +121,26 @@ they are not counted as valid observations or successful coverage.
 The database-size guard now applies to head mode too, because head refresh can
 insert new rows. This faster schedule does not establish source coverage or a
 specific daily yield. Volume, freshness and independent-comparable gates remain.
+
+## M0.9 — German coverage and classified-ad identity
+
+On 2026-11-03 the owner requested stronger German coverage after observing an
+Austria-heavy catalog. Growth mode now plans 23 sequential windows across the
+same 16 fixed partitions: AutoScout24 Germany gets eight windows (up to three
+pages each), and every other partition keeps its one window. Germany is visited
+first; its seven extra windows reuse the existing backend checkpoint and run
+after the other partitions. Head mode still visits each partition once.
+
+A failed or paused partition is not requested again in the same run. Extra
+German windows are deferred in that case, with completed/deferred window counts
+logged separately from accepted rows and unique failed/paused partitions. The
+backend remains responsible for atomic cursor commits, quality checks, storage
+guards and durable pauses. Neither schedule nor source allowlist changes.
+
+Kleinanzeigen identity parsing now uses the linked vehicle heading before other
+headings, removes narrow observed sales wrappers and recognizes the observed
+`chervolet` misspelling as Chevrolet. Explicit wanted/buying headlines are
+excluded; unknown model-only headlines are not assigned a guessed manufacturer.
+The original heading precedes the remaining source text in stored descriptions.
+Existing records are not mass-deleted or deactivated. These changes do not prove
+all German inventory is covered or that cross-source duplicates are resolved.

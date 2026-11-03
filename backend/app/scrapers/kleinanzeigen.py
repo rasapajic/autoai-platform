@@ -3,6 +3,7 @@ import re
 
 import aiohttp
 from app.core.catalog_plan import page_window
+from app.core.listing_normalization import normalize_vehicle_fields
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.kleinanzeigen.de/s-autos"
@@ -16,16 +17,6 @@ HEADERS = {
     "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
     "Referer": "https://www.kleinanzeigen.de/",
 }
-
-KNOWN_MAKES = [
-    "Alfa Romeo", "Audi", "BMW", "BYD", "Citroën", "Citroen", "Cupra",
-    "Dacia", "Fiat", "Ford", "Honda", "Hyundai", "Jaguar", "Jeep", "Kia",
-    "Land Rover", "Lexus", "Mazda", "Mercedes-Benz", "Mercedes", "Mini",
-    "Mitsubishi", "Nissan", "Opel", "Peugeot", "Polestar", "Porsche",
-    "Renault", "Seat", "Skoda", "Smart", "Subaru", "Suzuki", "Tesla",
-    "Toyota", "Volkswagen", "Volvo", "VW", "Xpeng",
-]
-
 
 def _parse_int(value) -> int | None:
     if value is None:
@@ -47,15 +38,18 @@ def _parse_price(value: str) -> float | None:
 
 
 def _extract_make_model(title: str) -> tuple[str | None, str | None]:
-    for make in sorted(KNOWN_MAKES, key=len, reverse=True):
-        if title.lower().startswith(make.lower()):
-            rest = title[len(make):].strip().split()
-            return make, " ".join(rest[:2]) or None
-    words = title.split()
-    return (
-        words[0] if words else None,
-        " ".join(words[1:3]) if len(words) > 1 else None,
-    )
+    # Observed sales wrappers are not manufacturer names. Do not search arbitrary
+    # prose for a brand or infer a manufacturer from a model such as "CLS 350".
+    headline = re.sub(r"^(?:(?:ich\s+)?verkaufe|verkauf|biete|zum\s+verkauf(?:\s+steht)?)\b[\s:\-]*", "", title.strip(), flags=re.I)
+    headline = re.sub(r"^(?:(?:hier|ein(?:e|en)?|mein(?:e|en)?)\s+)+", "", headline, flags=re.I)
+    # Exact spelling observed in the rejected public search cards.
+    headline = re.sub(r"^chervolet\b", "Chevrolet", headline, flags=re.I)
+    identity = normalize_vehicle_fields({"title": headline})
+    return identity["make"], identity["model"]
+
+
+def _is_wanted(title: str) -> bool:
+    return bool(re.search(r"^(?:(?:ich|wir)\s+)?(?:suche|suchen|gesuch|ankauf|kaufe|kaufen)\b|\bgesucht\b", title.strip(), re.I))
 
 
 def _extract_location(article) -> tuple[str | None, str | None]:
@@ -73,8 +67,12 @@ def _parse_article(article) -> dict | None:
     if not item_id or "-216-" not in href:
         return None
 
-    title_node = article.select_one("h3, h2")
+    title_node = article.select_one("h2 a[href], h3 a[href]")
+    if title_node is None:
+        title_node = article.select_one("h2, h3")
     title = title_node.get_text(" ", strip=True) if title_node else ""
+    if _is_wanted(title):
+        return None
     text = re.sub(r"\s+", " ", article.get_text(" ", strip=True))
     price = _parse_price(text)
     if not price:
@@ -109,7 +107,7 @@ def _parse_article(article) -> dict | None:
         "country": "DE",
         "city": city,
         "postal_code": postal_code,
-        "description": text[:1000] or title or None,
+        "description": (title + "\n" + text).strip()[:1000] or None,
         "images": images[:6],
         "url": url,
     }
