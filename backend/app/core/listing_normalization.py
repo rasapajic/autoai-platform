@@ -70,11 +70,63 @@ def _display_model(value: str) -> str:
     return value.title()
 
 
+_JAGUAR_FAMILIES = {
+    "f pace": "F-Pace", "f type": "F-Type", "e pace": "E-Pace",
+    "e type": "E-Type", "i pace": "I-Pace", "s type": "S-Type",
+    "x type": "X-Type", "c type": "C-Type", "d type": "D-Type",
+    "xe": "XE", "xf": "XF", "xj": "XJ", "xj6": "XJ6",
+    "xj12": "XJ12", "xjs": "XJS", "xjsc": "XJSC", "xjr": "XJR",
+    "xk": "XK", "xk8": "XK8", "xkr": "XKR", "xk120": "XK120",
+    "xk140": "XK140", "xk150": "XK150", "xj220": "XJ220",
+}
+
+
+def _jaguar_family(value: str) -> str | None:
+    words = _words(value)
+    return next((label for name, label in _JAGUAR_FAMILIES.items()
+                 if words == name or words.startswith(name + " ")), None)
+
+
+def evidenced_jaguar_model(data: dict) -> str | None:
+    """Resolve known families, never expand a lone letter without named evidence.
+
+    All readable headline/URL evidence must agree. Historic names outside this
+    small repair vocabulary are left to the existing normalizer unchanged.
+    """
+    if canonical_make(data.get("make")) != "Jaguar":
+        return None
+    raw = _words(str(data.get("model") or ""))
+    raw_family = _jaguar_family(raw)
+    path = unquote(urlparse(str(data.get("url") or "")).path)
+    candidates = [data.get("title"), data.get("description")]
+    candidates.extend(part for part in path.split("/") if part)
+    evidence = set()
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        words = _words(candidate)
+        if words.startswith("jaguar "):
+            family = _jaguar_family(words[len("jaguar "):])
+            if family:
+                evidence.add(family)
+    if len(evidence) > 1 or (raw_family and evidence and raw_family not in evidence):
+        return None
+    if raw_family:
+        return raw_family
+    if len(evidence) == 1:
+        family = next(iter(evidence))
+        if not raw or (raw.isdigit() and len(raw) >= 5) or raw == "jaguar" or raw == _words(family).split()[0]:
+            return family
+    return None
+
+
 def _title_identity(value: str) -> tuple[str | None, str | None]:
     text = _words(value)
     for prefix in _PREFIXES:
         if text == prefix or text.startswith(prefix + " "):
             tail = text[len(prefix):].strip()
+            if MAKE_ALIASES[prefix] == "Jaguar" and (family := _jaguar_family(tail)):
+                return "Jaguar", family
             model = next((model for model in _MULTIWORD_MODELS if tail == model or tail.startswith(model + " ")), None)
             if not model and tail:
                 model = tail.split()[0]
@@ -101,6 +153,13 @@ def normalize_vehicle_fields(data: dict) -> dict:
             if candidate_model:
                 break
     make = make or inferred_make
+
+    if make == "Jaguar":
+        family = evidenced_jaguar_model({**data, "make": make})
+        if family:
+            return {"make": make, "model": family}
+        if inferred_model in _JAGUAR_FAMILIES.values():
+            inferred_model = None
 
     raw_model = str(data.get("model") or "").strip()
     model = None

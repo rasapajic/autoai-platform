@@ -1,9 +1,55 @@
 import unittest
 
-from app.core.listing_normalization import normalize_vehicle_fields
+from app.core.listing_normalization import normalize_vehicle_fields, evidenced_jaguar_model
 
 
 class VehicleNormalizationTests(unittest.TestCase):
+    def test_jaguar_families_need_full_named_evidence(self):
+        for raw, headline, expected in [
+            ("F", "Jaguar F-Type 3.0 Coupe", "F-Type"),
+            ("F", "Jaguar F-Pace 2.0 AWD", "F-Pace"),
+            ("E", "Jaguar E-Pace D180", "E-Pace"),
+            ("E", "Jaguar E-Type Cabrio", "E-Type"),
+            ("I", "Jaguar I-Pace HSE", "I-Pace"),
+            ("S", "Jaguar S-Type Sedan", "S-Type"),
+            ("C", "Jaguar C-Type", "C-Type"),
+            ("10004", "Jaguar F-Type", "F-Type"),
+        ]:
+            with self.subTest(headline=headline):
+                self.assertEqual(normalize_vehicle_fields({"make": "Jaguar", "model": raw,
+                                                          "description": headline})["model"], expected)
+
+    def test_jaguar_known_raw_aliases_are_consistent(self):
+        for raw, expected in [("F Pace", "F-Pace"), ("F Type", "F-Type"),
+                              ("I Pace Hse", "I-Pace"), ("Xf Sportbrake", "XF"),
+                              ("Xe", "XE"), ("Xj6", "XJ6")]:
+            with self.subTest(raw=raw):
+                data = {"make": "Jaguar", "model": raw}
+                normalized = normalize_vehicle_fields(data)
+                self.assertEqual(normalized["model"], expected)
+                self.assertEqual(normalize_vehicle_fields(normalized), normalized)
+
+    def test_jaguar_ambiguous_and_conflicting_evidence_is_not_repaired(self):
+        for data in [
+            {"make": "Jaguar", "model": "F"},
+            {"make": "Jaguar", "model": "E"},
+            {"make": "Jaguar", "model": "S", "description": "Mercedes-Benz S-Class"},
+            {"make": "Jaguar", "model": "F", "description": "Jaguar F-Type",
+             "url": "https://example.test/jaguar-f-pace-123/"},
+            {"make": "Jaguar", "model": "F-Type", "description": "Jaguar F-Pace"},
+            {"make": "Jaguar", "model": "420", "description": "Jaguar F-Type"},
+            {"make": "Ford", "model": "F", "description": "Jaguar F-Type"},
+        ]:
+            with self.subTest(data=data):
+                self.assertIsNone(evidenced_jaguar_model(data))
+        self.assertIsNone(normalize_vehicle_fields({"make": "Jaguar", "description": "Jaguar F-Type",
+                          "url": "https://example.test/jaguar-f-pace-123/"})["model"])
+
+    def test_jaguar_slug_and_unknown_make_can_supply_full_model(self):
+        self.assertEqual(normalize_vehicle_fields({"make": "10004", "model": "50042",
+            "url": "https://example.test/auto/jaguar-s-type-sedan-123456/"}),
+            {"make": "Jaguar", "model": "S-Type"})
+
     def test_readable_manufacturers_from_primary_catalog_do_not_need_id_guesses(self):
         cases = [("Omoda 5 HEV Comfort Line", "Omoda", "5"),
                  ("Omoda 9 PHEV Premium Line", "Omoda", "9"),

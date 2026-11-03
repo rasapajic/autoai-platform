@@ -153,5 +153,32 @@ def test_cursor_flag_uses_collection_plan_without_legacy_full_refresh(monkeypatc
     monkeypatch.setenv("AUTOAI_ADMIN_SECRET", "test-secret")
     monkeypatch.setenv("AUTOAI_CATALOG_CURSORS_ENABLED", "true")
     monkeypatch.setattr(scraper, "_collect_windows", lambda base, secret, pages: 0)
+    monkeypatch.setattr(scraper, "_repair_jaguar_models", lambda base, secret: None)
     monkeypatch.setattr(scraper.requests, "post", lambda *_args, **_kwargs: pytest.fail("legacy refresh should not run"))
     assert scraper.main() == 0
+
+
+def test_model_repair_walks_bounded_keyset_batches(monkeypatch):
+    seen = []
+    def post(url, **kwargs):
+        assert url.endswith("/repair-jaguar-models")
+        assert kwargs["params"]["dry_run"] == "false"
+        assert kwargs["headers"] == {"X-AutoAI-Admin-Secret": "test-secret"}
+        seen.append(kwargs["params"].get("after_id"))
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {
+            "status": "ok", "dry_run": False, "scanned": 500, "changed": 1,
+            "next_after_id": "next-id" if len(seen) == 1 else None})
+    monkeypatch.setattr(scraper.requests, "post", post)
+    scraper._repair_jaguar_models("https://backend.example.test", "test-secret")
+    assert seen == [None, "next-id"]
+
+
+def test_model_repair_failure_does_not_stop_collection(monkeypatch):
+    monkeypatch.setenv("AUTOAI_BACKEND_URL", "https://backend.example.test")
+    monkeypatch.setenv("AUTOAI_ADMIN_SECRET", "test-secret")
+    monkeypatch.setenv("AUTOAI_CATALOG_CURSORS_ENABLED", "true")
+    monkeypatch.setattr(scraper, "_repair_jaguar_models", lambda *_: (_ for _ in ()).throw(RuntimeError("maintenance failed")))
+    calls = []
+    monkeypatch.setattr(scraper, "_collect_windows", lambda *args: calls.append(args) or 0)
+    assert scraper.main() == 0
+    assert len(calls) == 1

@@ -49,6 +49,11 @@ def main() -> int:
     admin_secret = _required_env("AUTOAI_ADMIN_SECRET")
     max_pages = _max_pages()
     if os.getenv("AUTOAI_CATALOG_CURSORS_ENABLED", "").strip().lower() in {"true", "1", "yes"}:
+        # Bounded local-data maintenance; a failure must not stop collection.
+        try:
+            _repair_jaguar_models(backend_url, admin_secret)
+        except Exception as exc:
+            logger.error("Jaguar model repair failed (%s); collection continues", type(exc).__name__)
         return _collect_windows(backend_url, admin_secret, min(max_pages, 3))
     refresh_url = urljoin(f"{backend_url.rstrip('/')}/", REFRESH_PATH.lstrip("/"))
 
@@ -93,6 +98,29 @@ def main() -> int:
         result.get("inactive_after", 0),
     )
     return 0
+
+
+def _repair_jaguar_models(backend_url: str, admin_secret: str) -> None:
+    url = urljoin(f"{backend_url.rstrip('/')}/", "api/v1/internal/m01/repair-jaguar-models")
+    after_id = None
+    for _batch in range(10):
+        params = {"confirm": "REPAIR_EVIDENCED_JAGUAR_MODELS", "dry_run": "false"}
+        if after_id:
+            params["after_id"] = after_id
+        response = requests.post(url, params=params,
+                                 headers={"X-AutoAI-Admin-Secret": admin_secret}, timeout=(30, 60))
+        response.raise_for_status()
+        result = response.json()
+        if result.get("status") != "ok" or result.get("dry_run") is not False:
+            raise RuntimeError("invalid_model_repair_response")
+        logger.info("Jaguar model repair: scanned=%s changed=%s changes=%s", result.get("scanned"), result.get("changed"), result.get("changes"))
+        following = result.get("next_after_id")
+        if not following:
+            return
+        if following == after_id:
+            raise RuntimeError("model_repair_cursor_stalled")
+        after_id = following
+    logger.warning("Jaguar model repair reached its 5000-row run limit")
 
 
 def _collect_windows(backend_url: str, admin_secret: str, max_pages: int) -> int:
