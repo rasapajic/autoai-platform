@@ -167,7 +167,7 @@ def _collect_windows(backend_url: str, admin_secret: str, max_pages: int) -> int
             total_updated += result.get("updated", 0)
             active_after = result.get("active_after", active_after)
             database_bytes = result.get("database_bytes_before", database_bytes)
-            logger.info("Partition %s: pages=%s-%s next=%s accepted=%s new=%s updated=%s unresolved_make=%s", partition.key, result["start_page"], result["end_page"], result["next_page"], details["accepted"], result.get("new", 0), result.get("updated", 0), details.get("unresolved_make", "unknown"))
+            logger.info("Partition %s: pages=%s-%s next=%s accepted=%s new=%s updated=%s unresolved_make=%s source_published_dates=%s source_modified_dates=%s", partition.key, result["start_page"], result["end_page"], result["next_page"], details["accepted"], result.get("new", 0), result.get("updated", 0), details.get("unresolved_make", "unknown"), details.get("source_published_dates", "unknown"), details.get("source_modified_dates", "unknown"))
         except Exception as exc:
             unavailable.add(partition.key)
             failed.append(partition.key)

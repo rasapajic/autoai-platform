@@ -7,6 +7,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 from app.core.catalog_plan import page_window
 from app.core.listing_normalization import normalize_vehicle_fields
+from app.core.source_dates import structured_card_dates
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ def _parse_card(article) -> dict | None:
     return {
         "external_id": f"as24_{external_id}",
         "source": "autoscout24",
+        "source_dates": structured_card_dates(article),
         "make": make,
         "model": model,
         "year": year,

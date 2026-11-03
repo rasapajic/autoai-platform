@@ -99,6 +99,7 @@ class Listing(Base):
     first_seen_at      = Column(DateTime(timezone=True), server_default=func.now())
     last_seen_at       = Column(DateTime(timezone=True), server_default=func.now())
     scraped_at         = Column(DateTime(timezone=True), server_default=func.now())
+    source_dates       = Column(JSONB, nullable=True)
 
     # AI
     # Kontakt

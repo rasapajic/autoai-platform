@@ -3,6 +3,7 @@ import json
 import re
 import aiohttp
 from app.core.catalog_plan import page_window
+from app.core.source_dates import source_date
 
 CATEGORIES = ["limousine", "suv-gelaendewagen", "cabrio-roadster"]
 CAR_TYPES = ["4", "5", "6", "9", "10"]  # kombi, kleinwagen, coupe, van, pickup
@@ -253,9 +254,20 @@ def _parse_ad(ad: dict, detail_images: list = None, contact_type: str = "unknown
         if not ad_id:
             return None
 
+        dates = {}
+        for key, field, semantics in (("published", "PUBLISHED", "published_or_renewed"), ("modified", "CHANGED", "modified")):
+            # Only epoch fields: the source's *_String variants may encode
+            # local wall time with a misleading trailing Z.
+            raw = g(field)
+            if re.fullmatch(r"\d{10}|\d{13}", str(raw or "")):
+                entry = source_date(raw, field=field, semantics=semantics)
+                if entry:
+                    dates[key] = entry
+
         return {
             "external_id":     f"wh_{ad_id}",
             "source":          "willhaben",
+            "source_dates":    dates,
             "make":            make,
             "model":           model,
             "variant":         variant,

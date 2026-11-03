@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.core.source_dates import clean_source_dates, merge_source_dates
 from app.core.listing_normalization import normalize_vehicle_fields, evidenced_jaguar_model
 from app.core.catalog_plan import PARTITION_BY_KEY
 from app.core.source_policy import (
@@ -55,6 +56,10 @@ def _safe_listing_payload(data: dict, now: datetime) -> dict:
     payload["is_active"] = True
     payload["last_seen_at"] = now
     payload["scraped_at"] = now
+    payload.pop("source_dates", None)
+    dates = clean_source_dates(data.get("source_dates"), now)
+    if dates:
+        payload["source_dates"] = dates
     return payload
 
 
@@ -151,6 +156,8 @@ async def _fetch_source_batch(
         "skipped": skipped,
         "unresolved_make": sum(row.get("make") is None for row in prepared),
         "unresolved_model": sum(row.get("model") is None for row in prepared),
+        "source_published_dates": sum(bool(row.get("source_dates", {}).get("published")) for row in prepared),
+        "source_modified_dates": sum(bool(row.get("source_dates", {}).get("modified")) for row in prepared),
         "identity_samples": list(samples.values()),
     }
 
@@ -259,6 +266,8 @@ def _apply_scheduled_catalog_refresh(staged: dict[str, list[dict]], db=None) -> 
                         for key in ("price_estimated", "price_delta_pct", "price_rating", "embedding"):
                             setattr(existing, key, None)
                     for key, value in payload.items():
+                        if key == "source_dates":
+                            value = merge_source_dates(getattr(existing, key, None), value)
                         if key in {"external_id", "first_seen_at"}:
                             continue
                         setattr(existing, key, value)
@@ -690,6 +699,8 @@ async def ingest_source(
             existing = db.query(Listing).filter(Listing.external_id == external_id).first()
             if existing:
                 for key, value in payload.items():
+                    if key == "source_dates":
+                        value = merge_source_dates(getattr(existing, key, None), value)
                     if key in {"external_id", "first_seen_at"}:
                         continue
                     setattr(existing, key, value)

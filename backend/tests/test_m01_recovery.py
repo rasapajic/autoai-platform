@@ -277,9 +277,11 @@ def test_scheduled_refresh_updates_in_place_and_never_deletes(monkeypatch):
         price_rating = "great"
 
     existing = ExistingListing()
+    existing.source_dates = {"published": {"value": "2025-01-01", "precision": "date"}}
     staged = {
         "willhaben": [{
             "external_id": "wh_existing",
+            "source_dates": {"modified": {"value": "2025-02-01", "precision": "date"}},
             "source": "willhaben",
             "url": "https://example.test/current",
             "price": 12500,
@@ -364,6 +366,8 @@ def test_scheduled_refresh_updates_in_place_and_never_deletes(monkeypatch):
     assert existing.url == "https://example.test/current"
     assert existing.is_active is True
     assert existing.first_seen_at == preserved_first_seen
+    assert existing.source_dates["published"]["value"] == "2025-01-01"
+    assert existing.source_dates["modified"]["value"] == "2025-02-01"
     assert existing.price_rating is None
     assert [row.external_id for row in fake_db.added] == ["as24_new"]
     assert result == {

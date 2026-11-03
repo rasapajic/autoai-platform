@@ -165,3 +165,31 @@ queries plus the original other 15); head still visits the original 16 only.
 The broad German query is retained for head and diagnostics, and excluded from
 growth. This supersedes M0.9's repeated broad-query windows. Country/source
 coverage and finer partitioning remain subject to observed result limits.
+
+## Source dates and AutoAI observations
+
+Listing details now keep source date evidence in nullable `source_dates` JSONB,
+separate from `first_seen_at`, `last_seen_at` and `scraped_at`. Each known source
+date records its value, date/minute/second precision, source field, semantics and
+when it was observed. Missing new values preserve previously captured evidence.
+Legacy rows are not backfilled with observation times. Normal ingestion fills
+the evidence on subsequent encounters; the detail page displays unknown fields
+as unavailable. Search-card layout and collection cadence are unchanged.
+
+Willhaben uses only the numeric `PUBLISHED` and `CHANGED` epoch attributes. A
+publish time may represent publication/renewal, so it is labeled accordingly;
+it is never substituted for `CHANGED`. The ambiguous `*_String` values are not
+treated as UTC timestamps. Kleinanzeigen reads its publication label before the
+vehicle heading, not dates in seller descriptions or vehicle registration data.
+Explicit listing-scoped `datePublished`/`dateModified` time/meta elements are
+supported when present on AutoScout24/Kleinanzeigen cards. Other missing source
+dates remain unknown; additional detail-page fetching is not introduced.
+
+Date-only source values remain date-only. Relative German publication labels use
+Europe/Berlin, with ambiguous/nonexistent daylight-saving hours rejected. Future
+or timezone-naive timestamps are rejected. Detail timestamps display in Vienna
+time; AutoAI's last check means the last observation, not seller modification.
+
+The additive migration uses a five-second lock timeout and nullable JSONB with
+no historical rewrite. CI validates repeatability, preservation and rollback on
+an isolated PostgreSQL 16 instance. No production credentials are used by CI.
