@@ -183,7 +183,7 @@ treated as UTC timestamps. Kleinanzeigen reads its publication label before the
 vehicle heading, not dates in seller descriptions or vehicle registration data.
 Explicit listing-scoped `datePublished`/`dateModified` time/meta elements are
 supported when present on AutoScout24/Kleinanzeigen cards. Other missing source
-dates remain unknown; additional detail-page fetching is not introduced.
+dates remain unknown. Search collection uses only dates in existing responses.
 
 Date-only source values remain date-only. Relative German publication labels use
 Europe/Berlin, with ambiguous/nonexistent daylight-saving hours rejected. Future
@@ -193,3 +193,15 @@ time; AutoAI's last check means the last observation, not seller modification.
 The additive migration uses a five-second lock timeout and nullable JSONB with
 no historical rewrite. CI validates repeatability, preservation and rollback on
 an isolated PostgreSQL 16 instance. No production credentials are used by CI.
+
+Production observation: Willhaben search cards supplied `PUBLISHED` but no
+`CHANGED`. On an authenticated Willhaben listing view, missing/stale modification
+evidence is therefore checked against the visible `Zuletzt geändert` label on
+that exact saved vehicle URL. Values are cached for six hours; one date-detail
+fetch runs at a time with a five-second source cooldown, 15-second total timeout,
+5 MB response limit and at most two same-host/same-listing redirects. Other URLs
+are rejected. Current source pauses and internal source enablement are honored;
+refusals/rate limits persist the normal 24-hour source pause. Unavailable values
+remain unknown and do not break the listing read. A successful detail check is
+shown separately from the source edit time, without changing catalog cursors or
+the last full collection timestamp.

@@ -4,6 +4,7 @@ from sqlalchemy import text
 from uuid import UUID
 
 from app.core.db import get_db
+from app.core.listing_date_refresh import refresh_missing_modified
 from app.core.auth import get_current_user, get_optional_user
 from app.models import Listing, PriceHistory, Favorite
 from app.api.schemas import ListingDetail, PriceHistoryPoint, MessageResponse
@@ -12,7 +13,7 @@ router = APIRouter()
 
 
 @router.get("/{listing_id}", response_model=ListingDetail)
-def get_listing(
+async def get_listing(
     listing_id: UUID,
     db: Session = Depends(get_db),
 ):
@@ -25,6 +26,10 @@ def get_listing(
     if not listing:
         raise HTTPException(status_code=404, detail="Oglas nije pronađen")
 
+    try:
+        await refresh_missing_modified(db, listing)
+    except Exception:
+        db.rollback()  # Optional source metadata must not break listing reads.
     return ListingDetail.model_validate(listing)
 
 
@@ -187,3 +192,4 @@ def fix_invalid_mileage(db: Session = Depends(get_db)):
     )
     db.commit()
     return {"fixed": result.rowcount}
+
