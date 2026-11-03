@@ -99,8 +99,12 @@ def get_make_search_variants(make: str) -> list[str]:
     return [make]
 
 
+def _model_filter_condition(model: str, exact: bool = False):
+    return func.lower(Listing.model) == model.lower() if exact else Listing.model.ilike(f"%{model}%")
+
+
 @router.get("/", response_model=SearchResponse)
-def search(filters: SearchFilters = Depends(), countries: str = '', db: Session = Depends(get_db)):
+def search(filters: SearchFilters = Depends(), countries: str = '', model_exact: bool = False, db: Session = Depends(get_db)):
     q = db.query(Listing).filter(
         Listing.is_active == True,
         Listing.price != None,
@@ -113,7 +117,7 @@ def search(filters: SearchFilters = Depends(), countries: str = '', db: Session 
         q = q.filter(or_(*[Listing.make.ilike(v) for v in variants]))
 
     if filters.model:
-        q = q.filter(Listing.model.ilike(f"%{filters.model}%"))
+        q = q.filter(_model_filter_condition(filters.model, model_exact))
 
     if filters.min_price is not None:
         q = q.filter(Listing.price >= filters.min_price)
