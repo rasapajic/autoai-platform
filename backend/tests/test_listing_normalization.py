@@ -50,6 +50,18 @@ class VehicleNormalizationTests(unittest.TestCase):
             "url": "https://example.test/auto/jaguar-s-type-sedan-123456/"}),
             {"make": "Jaguar", "model": "S-Type"})
 
+    def test_classic_jaguar_numbers_are_part_of_the_model_name(self):
+        for raw, expected in [("XK 120", "XK120"), ("XK 140", "XK140"),
+                              ("XK 150", "XK150"), ("XJ 220", "XJ220"),
+                              ("XJ 6", "XJ6"), ("XJ 12", "XJ12"), ("XK 8", "XK8")]:
+            with self.subTest(raw=raw):
+                self.assertEqual(normalize_vehicle_fields({"make": "Jaguar", "model": raw})["model"], expected)
+        data = {"make": "Jaguar", "model": "XK", "description": "Jaguar XK 120 OTS",
+                "url": "https://example.test/jaguar-xk-roadster-123"}
+        self.assertEqual(evidenced_jaguar_model(data), "XK120")
+        data["url"] = "https://example.test/jaguar-xk140-123"
+        self.assertIsNone(evidenced_jaguar_model(data))
+
     def test_readable_manufacturers_from_primary_catalog_do_not_need_id_guesses(self):
         cases = [("Omoda 5 HEV Comfort Line", "Omoda", "5"),
                  ("Omoda 9 PHEV Premium Line", "Omoda", "9"),
