@@ -101,3 +101,49 @@ test('missing sessions never send a fabricated bearer token', async () => {
   await api.getMakes()
   assert.equal(new Headers(calls[0].options.headers).get('Authorization'), null)
 })
+
+let modelTools
+try {
+  const ts = require('typescript')
+  const source = readFileSync(new URL('../src/lib/model-options.ts', import.meta.url), 'utf8')
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } })
+  modelTools = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND' || Number(process.versions.node.split('.')[0]) < 24) throw error
+  modelTools = await import('../src/lib/model-options.ts')
+}
+
+test('model overview groups case variants, sorts names and retains numeric models', () => {
+  const rows = modelTools.prepareModelOptions([
+    { model: 'XF', count: 4 }, { model: 'F-Pace', count: 3 }, { model: 'f-pace', count: 2 },
+    { model: '208', count: 8 }, { model: '', count: 5 }, { model: 'XJ', count: -1 },
+  ])
+  assert.deepEqual(rows, [{ model: '208', count: 8 }, { model: 'F-Pace', count: 5 }, { model: 'XF', count: 4 }])
+  assert.throws(() => modelTools.prepareModelOptions({ error: 'Unavailable' }))
+})
+
+test('switching or removing a make clears the prior model and resets pagination', () => {
+  const selected = { make: 'Jaguar', model: 'F', model_exact: true, page: 4, max_price: '20000' }
+  for (const make of ['BMW', '']) {
+    assert.deepEqual(modelTools.changeListingFilter(selected, 'make', make), { ...selected, make, model: '', model_exact: false, page: 1 })
+  }
+})
+
+test('model selection is exact and survives other filter and page changes', () => {
+  const initial = { make: 'Jaguar', model: '', model_exact: false, page: 4, max_price: '' }
+  const selected = modelTools.changeListingFilter(initial, 'model', 'F')
+  assert.equal(selected.model_exact, true)
+  assert.equal(selected.page, 1)
+  assert.equal(modelTools.changeListingFilter(selected, 'max_price', '15000').model, 'F')
+  assert.equal(modelTools.changeListingFilter(selected, 'page', 2).model_exact, true)
+  assert.equal(modelTools.changeListingFilter(selected, 'model', '').model_exact, false)
+})
+
+test('AI parsing keeps its partial search behavior and cannot retain another make model', () => {
+  const selected = { make: 'Jaguar', model: 'F', model_exact: true, page: 3, max_price: '' }
+  assert.equal(modelTools.mergeParsedFilters(selected, { make: 'BMW' }).model, '')
+  assert.equal(modelTools.mergeParsedFilters(selected, { model: 'XF' }).model_exact, false)
+  assert.equal(modelTools.mergeParsedFilters(selected, { max_price: '15000' }).model_exact, true)
+  const partial = modelTools.mergeParsedFilters(selected, { model: 'F' })
+  assert.equal(modelTools.changeListingFilter(partial, 'model', 'F').model_exact, true)
+})

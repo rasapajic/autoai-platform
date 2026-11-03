@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { searchListings, parseQuery, getMakes } from '@/lib/api'
+import { searchListings, parseQuery, getMakes, getModels } from '@/lib/api'
+import { prepareModelOptions, changeListingFilter, mergeParsedFilters, type ModelOption } from '@/lib/model-options'
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni',
@@ -151,10 +152,13 @@ export default function SearchPage() {
   const [makeOptions, setMakeOptions] = useState<Array<{ make: string; count: number }>>([])
   const [makesLoading, setMakesLoading] = useState(true)
   const [makesError, setMakesError] = useState('')
+  const [modelData, setModelData] = useState<{ make: string; options: ModelOption[]; loading: boolean; error: string }>({ make: '', options: [], loading: false, error: '' })
+  const searchRequest = useRef(0)
 
   const [filters, setFilters] = useState({
     make: searchParams.get('make') || '',
     model: searchParams.get('model') || '',
+    model_exact: searchParams.get('model_exact') === 'true',
     min_price: searchParams.get('min_price') || '',
     max_price: searchParams.get('max_price') || '',
     min_year: searchParams.get('min_year') || '',
@@ -168,11 +172,12 @@ export default function SearchPage() {
   })
 
   const doSearch = useCallback(async (f = filters) => {
+    const request = ++searchRequest.current
     setLoading(true)
     setSearchError('')
-    try   { const data = await searchListings(f); setResults(data) }
-    catch { setResults(null); setSearchError('Oglasi nisu učitani. Proveri vezu ili se ponovo prijavi.') }
-    finally { setLoading(false) }
+    try   { const data = await searchListings(f); if (request === searchRequest.current) setResults(data) }
+    catch { if (request === searchRequest.current) { setResults(null); setSearchError('Oglasi nisu učitani. Proveri vezu ili se ponovo prijavi.') } }
+    finally { if (request === searchRequest.current) setLoading(false) }
   }, [filters])
 
   useEffect(() => { doSearch() }, [])
@@ -189,8 +194,27 @@ export default function SearchPage() {
     return () => { active = false }
   }, [])
 
+  useEffect(() => {
+    let active = true
+    const make = filters.make
+    if (!make) {
+      setModelData({ make: '', options: [], loading: false, error: '' })
+      return () => { active = false }
+    }
+    setModelData({ make, options: [], loading: true, error: '' })
+    getModels(make)
+      .then(data => {
+        const options = prepareModelOptions(data)
+        if (active) setModelData({ make, options, loading: false, error: '' })
+      })
+      .catch(() => {
+        if (active) setModelData({ make, options: [], loading: false, error: 'Modeli nisu učitani. Osveži stranicu i pokušaj ponovo.' })
+      })
+    return () => { active = false }
+  }, [filters.make])
+
   const setFilter = (key: string, val: any) => {
-    const next = { ...filters, [key]: val, page: key === 'page' ? val : 1 }
+    const next = changeListingFilter(filters, key, val)
     setFilters(next); doSearch(next)
   }
 
@@ -200,7 +224,7 @@ export default function SearchPage() {
     setAiLoading(true)
     try {
       const { filters: parsed } = await parseQuery(aiQuery)
-      const next = { ...filters, ...parsed, page: 1 }
+      const next = mergeParsedFilters(filters, parsed)
       setFilters(next); doSearch(next)
     } finally { setAiLoading(false) }
   }
@@ -211,6 +235,7 @@ export default function SearchPage() {
     filters.fuel_type, filters.price_rating,
   ].filter(Boolean).length
 
+  const selectedModelKey = filters.model_exact ? filters.model.toLowerCase() : ''
   const isCustomMakeActive = filters.make && !POPULAR_MAKES.includes(filters.make)
   const popularMakeKeys = new Set(POPULAR_MAKES.map(makeKey))
   const makeCountByKey = new Map<string, number>()
@@ -234,6 +259,7 @@ export default function SearchPage() {
           .hbadges{display:none!important}
           .mkgrid{grid-template-columns:repeat(3,1fr)!important}
           .other-makes-grid{grid-template-columns:repeat(2,1fr)!important}
+          .model-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
         }
         @media(min-width:769px){
           .mfb{display:none!important}
@@ -405,6 +431,33 @@ export default function SearchPage() {
               <button onClick={() => setFilter('make', '')} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', fontSize: 12 }}>✕ Ukloni</button>
             </div>
           )}
+          {filters.make && !customMake && (
+            <section aria-label={`Modeli za ${filters.make}`} style={{ marginTop: 14, padding: 14, borderRadius: 12, background: 'var(--bg2)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '.06em', fontWeight: 600 }}>MODELI — {filters.make}</span>
+                <button className="cb" onClick={() => setFilter('model', '')} aria-pressed={!filters.model}
+                  style={{ padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'none', color: !filters.model ? 'var(--accent)' : 'var(--text3)', fontSize: 11, cursor: 'pointer' }}>Svi modeli</button>
+              </div>
+              {modelData.make !== filters.make || modelData.loading ? (
+                <div role="status" style={{ color: 'var(--text3)', fontSize: 12 }}>Učitavam modele...</div>
+              ) : modelData.error ? (
+                <p role="alert" style={{ color: 'var(--accent)', fontSize: 12, margin: 0 }}>{modelData.error}</p>
+              ) : modelData.options.length ? (
+                <div className="model-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,minmax(0,1fr))', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+                  {modelData.options.map(({ model, count }) => (
+                    <button key={model} className="mkbtn cb" aria-pressed={selectedModelKey === model.toLowerCase()}
+                      onClick={() => setFilter('model', selectedModelKey === model.toLowerCase() ? '' : model)}
+                      style={{ minWidth: 0, padding: '8px 9px', borderRadius: 9, background: selectedModelKey === model.toLowerCase() ? 'rgba(255,107,0,.12)' : 'var(--bg3)', border: `1px solid ${selectedModelKey === model.toLowerCase() ? 'var(--accent)' : 'var(--border)'}`, color: selectedModelKey === model.toLowerCase() ? 'var(--accent)' : 'var(--text2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 11 }}>
+                      <span title={model} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{model}</span>
+                      <span style={{ flexShrink: 0, minWidth: 22, padding: '1px 5px', borderRadius: 999, background: 'var(--bg2)', color: 'var(--text3)', fontSize: 10, fontWeight: 700, textAlign: 'center' }}>{count.toLocaleString('sr-RS')}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: 'var(--text3)', fontSize: 12 }}>Modeli trenutno nisu dostupni za ovu marku.</div>
+              )}
+            </section>
+          )}
         </div>
 
         {/* Mobile filter btn */}
@@ -421,7 +474,7 @@ export default function SearchPage() {
 
           <aside className="sd" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, position: 'sticky', top: 80 }}>
             <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
-              const r = { make:'',model:'',min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
+              const r = { make:'',model:'',model_exact:false,min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
               setFilters(r); doSearch(r)
             }} />
           </aside>
@@ -429,7 +482,7 @@ export default function SearchPage() {
           {sidebarOpen && (
             <div className="sm" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16, gridColumn: '1/-1' }}>
               <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
-                const r = { make:'',model:'',min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
+                const r = { make:'',model:'',model_exact:false,min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
                 setFilters(r); doSearch(r)
               }} />
             </div>
