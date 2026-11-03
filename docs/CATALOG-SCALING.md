@@ -144,3 +144,24 @@ excluded; unknown model-only headlines are not assigned a guessed manufacturer.
 The original heading precedes the remaining source text in stored descriptions.
 Existing records are not mass-deleted or deactivated. These changes do not prove
 all German inventory is covered or that cross-source duplicates are resolved.
+
+### M0.10 — independent German price queries
+
+The first M0.9 production cycle advanced the broad German query from page 184
+through 198, then received an empty/unrecognized response at the window starting
+199. This is not confirmed exhaustion or evidence of a specific source page cap.
+Its saved cursor and 24-hour partition pause are retained without retrying it.
+
+Growth instead uses eight fixed German integer-EUR price queries: 500–4,999,
+5,000–9,999, 10,000–14,999, 15,000–19,999, 20,000–29,999, 30,000–49,999,
+50,000–99,999 and 100,000–2,000,000. Source price parameters are also checked
+against parsed card prices; out-of-band cards cannot fill a partition. Each
+query owns its checkpoint, fingerprint and partition pause. Source-level
+refusals still block every query for that source. No pause is deleted/reset.
+
+The allowlist now has 24 fixed keys, appended after the original 16 to preserve
+advisory-lock IDs. A growth run visits 23 distinct queries (eight German price
+queries plus the original other 15); head still visits the original 16 only.
+The broad German query is retained for head and diagnostics, and excluded from
+growth. This supersedes M0.9's repeated broad-query windows. Country/source
+coverage and finer partitioning remain subject to observed result limits.

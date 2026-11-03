@@ -140,7 +140,7 @@ def _collect_windows(backend_url: str, admin_secret: str, max_pages: int) -> int
     active_after = database_bytes = None
     unavailable = set()
     completed_windows = deferred_windows = 0
-    logger.info("Starting bounded catalog collection: mode=%s partitions=%s planned_windows=%s max_pages=%s", mode, len(COLLECTION_PLAN), len(windows), max_pages)
+    logger.info("Starting bounded catalog collection: mode=%s partitions=%s planned_windows=%s max_pages=%s", mode, len({part.key for part in windows}), len(windows), max_pages)
     for partition in windows:
         if partition.key in unavailable:
             deferred_windows += 1
@@ -173,7 +173,7 @@ def _collect_windows(backend_url: str, admin_secret: str, max_pages: int) -> int
             failed.append(partition.key)
             logger.error("Partition %s request failed (%s); inspect its saved checkpoint before retry", partition.key, type(exc).__name__)
     logger.info("Catalog collection finished: status=%s active=%s new=%s updated=%s database_bytes=%s accepted_by_source=%s failed_partitions=%s paused_partitions=%s completed_windows=%s deferred_windows=%s", "partial" if failed or paused else "ok", active_after, total_new, total_updated, database_bytes, accepted, failed, paused, completed_windows, deferred_windows)
-    missing = [source for source in REQUIRED_SOURCES if accepted.get(source, 0) <= 0 and paused_counts.get(source, 0) != sum(part.source == source for part in COLLECTION_PLAN)]
+    missing = [source for source in REQUIRED_SOURCES if accepted.get(source, 0) <= 0 and paused_counts.get(source, 0) != sum(part.source == source for part in windows)]
     if missing:
         raise RuntimeError(f"collection incomplete; failed_partitions={','.join(failed)}; invalid sources={','.join(missing)}")
     return 0

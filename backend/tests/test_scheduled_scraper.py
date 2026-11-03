@@ -32,7 +32,7 @@ def test_cron_recognizes_persisted_pauses_without_requiring_new_rows(monkeypatch
         return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"status": "paused", "reason": "source_http_429", "retry_after": "tomorrow"})
     monkeypatch.setattr(scraper.requests, "post", post)
     assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
-    assert len(seen) == 16
+    assert len(seen) == 23
 
 
 def test_cron_requires_backend_url(monkeypatch):
@@ -139,23 +139,25 @@ def test_collection_cron_runs_every_bounded_partition_and_continues_after_one_fa
     monkeypatch.setattr(scraper.requests, "post", post)
     assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
     assert len(seen) == 23
-    assert len(set(seen)) == 16
-    assert seen[0] == "autoscout24:D"
-    assert seen.count("autoscout24:D") == 8
+    assert len(set(seen)) == 23
+    assert seen[0].startswith("autoscout24:D:price:")
+    assert sum(key.startswith("autoscout24:D:price:") for key in seen) == 8
+    assert "autoscout24:D" not in seen
 
 
 @pytest.mark.parametrize("outcome", ["paused", "failed"])
-def test_german_extra_windows_stop_after_pause_or_failure(monkeypatch, outcome):
+def test_german_price_band_is_not_retried_after_pause_or_failure(monkeypatch, outcome):
     monkeypatch.setenv("AUTOAI_CATALOG_SCAN_MODE", "growth")
     seen = []
+    first_band = "autoscout24:D:price:500-4999"
     def post(_url, **kwargs):
         key = kwargs["params"]["partition_key"]
         seen.append(key)
         def check():
-            if key == "autoscout24:D" and outcome == "failed":
+            if key == first_band and outcome == "failed":
                 raise RuntimeError("source error")
         def result():
-            if key == "autoscout24:D":
+            if key == first_band:
                 return {"status": "paused", "reason": "identity_quality"}
             source = next(part.source for part in scraper.COLLECTION_PLAN if part.key == key)
             return {"status": "ok", "start_page": 4, "end_page": 6, "next_page": 7,
@@ -163,29 +165,27 @@ def test_german_extra_windows_stop_after_pause_or_failure(monkeypatch, outcome):
         return SimpleNamespace(raise_for_status=check, json=result)
     monkeypatch.setattr(scraper.requests, "post", post)
     assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
-    assert seen.count("autoscout24:D") == 1
-    assert len(seen) == 16
+    assert seen.count(first_band) == 1
+    assert len(seen) == 23
 
 
-def test_german_windows_reuse_the_backend_cursor_and_reach_next_pages(monkeypatch):
+def test_german_bands_leave_independent_checkpoints_to_the_backend(monkeypatch):
     monkeypatch.setenv("AUTOAI_CATALOG_SCAN_MODE", "growth")
-    starts = []
+    bands = []
     def post(_url, **kwargs):
         params = kwargs["params"]
         assert "start_page" not in params  # Only the backend owns the checkpoint.
         key = params["partition_key"]
         source = next(part.source for part in scraper.COLLECTION_PLAN if part.key == key)
-        if key == "autoscout24:D":
-            start = 184 + len(starts) * 3
-            starts.append(start)
-        else:
-            start = 1
+        if key.startswith("autoscout24:D:price:"):
+            bands.append(key)
+        start = 4
         return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {
             "status": "ok", "start_page": start, "end_page": start + 2, "next_page": start + 3,
             "by_source": {source: {"accepted": 60}}})
     monkeypatch.setattr(scraper.requests, "post", post)
     assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
-    assert starts == [184, 187, 190, 193, 196, 199, 202, 205]
+    assert len(bands) == len(set(bands)) == 8
 
 
 def test_collection_cron_rejects_invalid_mode_before_any_request(monkeypatch):
