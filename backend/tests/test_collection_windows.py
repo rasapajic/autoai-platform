@@ -170,11 +170,30 @@ def test_unknown_partition_never_opens_a_session(collection):
 
 
 def test_plan_is_bounded_and_partitions_are_distinct():
-    assert len(PARTITION_BY_KEY) == 16
+    assert len(PARTITION_BY_KEY) == 24
     assert set(part.source for part in PARTITION_BY_KEY.values()) == set(SOURCE_REGISTRY)
     assert list(page_window({"start_page": 7}, 3)) == [7, 8, 9]
     with pytest.raises(ValueError):
         page_window({"start_page": 0}, 3)
+
+
+def test_german_price_partition_keeps_broad_query_pause_and_uses_fixed_filters(collection):
+    pause_key = "partition:growth:autoscout24:D"
+    collection["pauses"][pause_key] = SimpleNamespace(reason="empty_or_unrecognized_window",
+        retry_after=datetime.now(timezone.utc) + timedelta(days=1))
+    result = run_window(partition="autoscout24:D:price:5000-9999")
+    assert result["status"] == "ok"
+    assert pause_key in collection["pauses"]
+    assert collection["fetches"] == [(3, {"country": "D", "min_price": 5000, "max_price": 9999,
+                                           "start_page": 1, "strict_window": True})]
+
+
+def test_source_refusal_still_blocks_german_price_partitions(collection):
+    collection["pauses"]["source:autoscout24"] = SimpleNamespace(reason="source_http_429",
+        retry_after=datetime.now(timezone.utc) + timedelta(days=1))
+    result = run_window(partition="autoscout24:D:price:5000-9999")
+    assert result["status"] == "paused" and result["reason"] == "source_http_429"
+    assert not collection["fetches"]
 
 
 def test_database_size_guard_stops_growth_before_fetching(collection):

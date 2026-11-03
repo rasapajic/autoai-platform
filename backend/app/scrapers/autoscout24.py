@@ -221,6 +221,11 @@ class AutoScout24Scraper:
                     added = 0
                     for card in cards:
                         parsed = _parse_card(card)
+                        if parsed and (
+                            (filters.get("min_price") is not None and parsed["price"] < filters["min_price"])
+                            or (filters.get("max_price") is not None and parsed["price"] > filters["max_price"])
+                        ):
+                            continue
                         if parsed and parsed["external_id"] not in seen_ids:
                             seen_ids.add(parsed["external_id"])
                             all_listings.append(parsed)

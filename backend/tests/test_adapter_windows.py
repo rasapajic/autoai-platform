@@ -50,6 +50,8 @@ def configure_adapter(monkeypatch, name, fail_page=None):
                 match = re.search(r"seite:(\d+)", url)
                 page = int(match.group(1)) if match else 1
             requested.append(page)
+            if params.get("pricefrom") is not None or params.get("priceto") is not None:
+                assert (params["cy"], params["pricefrom"], params["priceto"]) == ("D", 5000, 9999)
             return Response(page)
 
     async def no_wait(*_):
@@ -95,3 +97,18 @@ def test_failed_page_is_not_reported_as_a_complete_window(monkeypatch, name, cla
             "start_page": 4, "strict_window": True, "country": "D", "category": "limousine",
         }, max_pages=3))
     assert requested == [4, 5]
+
+
+def test_autoscout_price_band_is_sent_to_source_and_applied_to_cards(monkeypatch):
+    module, requested = configure_adapter(monkeypatch, "autoscout24")
+    def parse(card):
+        price = [4999, 5000, 9999, 10000][int(card["id"].split("_")[1]) % 4]
+        return {"external_id": card["id"], "price": price}
+    monkeypatch.setattr(module, "_parse_card", parse)
+    rows = asyncio.run(module.AutoScout24Scraper().scrape_listings({
+        "start_page": 4, "strict_window": True, "country": "D",
+        "min_price": 5000, "max_price": 9999,
+    }, max_pages=3))
+    assert requested == [4, 5, 6]
+    assert rows and all(5000 <= row["price"] <= 9999 for row in rows)
+    assert {row["price"] for row in rows} == {5000, 9999}

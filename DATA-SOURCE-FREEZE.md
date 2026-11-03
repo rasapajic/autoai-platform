@@ -113,3 +113,21 @@ force. Unknown vehicle identities are not guessed, and wanted/buying ads are
 excluded from newly collected sales offers. This exception does not enable
 public/commercial ingestion or valuation, change the interface, add a source,
 or authorize mass deletion/deactivation of stored records.
+
+### M0.10 German price-query refinement
+
+After the first live German priority cycle returned an empty/unrecognized
+broad-query window at its saved page 199, the same owner-approved German
+coverage work uses eight fixed price-filtered German queries instead. Their
+integer-EUR ranges are 500–4,999, 5,000–9,999, 10,000–14,999, 15,000–19,999,
+20,000–29,999, 30,000–49,999, 50,000–99,999 and 100,000–2,000,000.
+
+These eight allowlisted keys are appended to the original 16, preserving
+existing lock IDs. Growth visits those eight and the original other 15 queries
+(23 windows); head visits the original 16. Each request remains limited to
+three pages. This supersedes M0.9's repeated German broad-query visits, without
+increasing its per-run planned window count. Existing broad-query pauses and
+checkpoints are retained. Source-level refusals/rate limits block all filtered
+queries as well. Other access, quality, storage and public-use safeguards stay
+in force. This is ordinary source price filtering, not a claim of complete
+inventory coverage or permission to bypass source refusals.
