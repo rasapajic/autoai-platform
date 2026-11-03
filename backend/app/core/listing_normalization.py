@@ -78,12 +78,14 @@ _JAGUAR_FAMILIES = {
     "xj12": "XJ12", "xjs": "XJS", "xjsc": "XJSC", "xjr": "XJR",
     "xk": "XK", "xk8": "XK8", "xkr": "XKR", "xk120": "XK120",
     "xk140": "XK140", "xk150": "XK150", "xj220": "XJ220",
+    "xk 120": "XK120", "xk 140": "XK140", "xk 150": "XK150",
+    "xj 220": "XJ220", "xj 6": "XJ6", "xj 12": "XJ12", "xk 8": "XK8",
 }
 
 
 def _jaguar_family(value: str) -> str | None:
     words = _words(value)
-    return next((label for name, label in _JAGUAR_FAMILIES.items()
+    return next((_JAGUAR_FAMILIES[name] for name in sorted(_JAGUAR_FAMILIES, key=len, reverse=True)
                  if words == name or words.startswith(name + " ")), None)
 
 
@@ -109,6 +111,12 @@ def evidenced_jaguar_model(data: dict) -> str | None:
             family = _jaguar_family(words[len("jaguar "):])
             if family:
                 evidence.add(family)
+    classic_xk = {"XK120", "XK140", "XK150"}
+    if len(evidence & classic_xk) == 1:
+        # A generic XK slug does not contradict a fully named classic model.
+        evidence.discard("XK")
+    if raw == "xk" and len(evidence) == 1 and evidence <= classic_xk:
+        return next(iter(evidence))
     if len(evidence) > 1 or (raw_family and evidence and raw_family not in evidence):
         return None
     if raw_family:
