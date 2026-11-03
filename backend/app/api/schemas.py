@@ -49,6 +49,7 @@ class ListingCard(ListingBase):
 
 
 class ListingDetail(ListingCard):
+    source_dates:     Optional[dict] = None
     variant:          Optional[str] = None
     engine_cc:        Optional[int] = None
     doors:            Optional[int] = None
@@ -195,3 +196,4 @@ class StatsResponse(BaseModel):
     portals:         dict
     top_makes:       list[dict]
     avg_price_eur:   Optional[float] = None
+

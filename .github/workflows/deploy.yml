@@ -9,6 +9,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: autoai_ci
+          POSTGRES_USER: autoai_ci
+          POSTGRES_PASSWORD: autoai_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoai_ci -d autoai_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AUTOAI_TEST_DATABASE_URL: postgresql+psycopg2://autoai_ci:autoai_ci@localhost:5432/autoai_ci
     steps:
       - uses: actions/checkout@v4
 
@@ -71,4 +87,5 @@ jobs:
         run: |
           cd frontend
           npm run build
+
 

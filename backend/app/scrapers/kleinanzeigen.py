@@ -4,6 +4,7 @@ import re
 import aiohttp
 from app.core.catalog_plan import page_window
 from app.core.listing_normalization import normalize_vehicle_fields
+from app.core.source_dates import source_date, structured_card_dates
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.kleinanzeigen.de/s-autos"
@@ -61,6 +62,27 @@ def _extract_location(article) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _card_dates(article, title_node):
+    dates = structured_card_dates(article)
+    if "published" in dates:
+        return dates
+    candidates = []
+    # The publication label precedes the vehicle heading. Do not scan seller
+    # prose, registration/service dates or arbitrary numeric identifiers.
+    for node in article.descendants:
+        if node is title_node:
+            break
+        if isinstance(node, str):
+            raw = node.strip()
+            if re.fullmatch(r"(?:Heute|Gestern),?\s+\d{2}:\d{2}|\d{2}\.\d{2}\.\d{4}", raw, re.I):
+                entry = source_date(raw, field="card_publication_date", semantics="published", zone="Europe/Berlin")
+                if entry:
+                    candidates.append(entry)
+    if len(candidates) == 1:
+        dates["published"] = candidates[0]
+    return dates
+
+
 def _parse_article(article) -> dict | None:
     item_id = str(article.get("data-adid") or "").strip()
     href = str(article.get("data-href") or "").strip()
@@ -98,6 +120,7 @@ def _parse_article(article) -> dict | None:
     return {
         "external_id": f"ka_{item_id}",
         "source": "kleinanzeigen",
+        "source_dates": _card_dates(article, title_node),
         "make": make,
         "model": model,
         "year": year,

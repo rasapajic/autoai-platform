@@ -4,6 +4,7 @@ import { getListing, getPriceHistory, getSimilar, fraudCheck } from '@/lib/api'
 import ContactModal from '@/components/ContactModal'
 import VinChecker from '@/components/VinChecker'
 import ModelChecklist from '@/components/ModelChecklist'
+import ListingDates from '@/components/ListingDates'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 const ELIGIBILITY_COLORS: Record<string, string> = { eligible:'#22C55E', needs_check:'#F97316', not_recommended:'#EF4444', oldtimer:'#A855F7' }
@@ -339,6 +340,7 @@ export default function ListingPage({params}:{params:{id:string}}){
               </button>
             </div>
 
+            <div style={{padding:'0 16px'}}><ListingDates listing={listing}/></div>
             {listing.url&&<div style={{padding:'0 16px 16px'}}><a href={listing.url} target="_blank" rel="noopener" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,width:'100%',padding:'13px',borderRadius:12,background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:13,fontWeight:600,textDecoration:'none'}}>🔗 Pogledaj na {portalName} →</a></div>}
 
             <div style={{paddingLeft:16,paddingRight:16}}>
@@ -422,6 +424,7 @@ export default function ListingPage({params}:{params:{id:string}}){
                 <div style={{fontWeight:700,fontSize:14}}>{fmt(listing.price_estimated)} €</div>
                 <div style={{fontSize:12,color:deltaGood?'#22C55E':'#F87171',marginTop:2}}>{deltaGood?'✅ Ispod':'⚠️ Iznad'} proseka za {Math.abs(Number(listing.price_delta_pct)).toFixed(0)}%</div>
               </div>}
+              <ListingDates listing={listing}/>
               <a href={listing.url} target="_blank" rel="noopener" className="sdbtn" style={{display:'block',width:'100%',padding:'11px',textAlign:'center',background:'var(--accent)',color:'#fff',borderRadius:10,fontWeight:700,fontSize:14,marginBottom:8,textDecoration:'none'}}>🔗 Pogledaj na {portalName} →</a>
               <button onClick={()=>setShowContact(true)} className="sdbtn" style={{width:'100%',padding:'10px',background:'rgba(99,102,241,.1)',border:'1px solid rgba(99,102,241,.35)',color:'#818CF8',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',marginBottom:8}}>
                 🤖 Kontaktiraj prodavca
@@ -593,3 +596,4 @@ function PageSkeleton(){
     </div>
   )
 }
+

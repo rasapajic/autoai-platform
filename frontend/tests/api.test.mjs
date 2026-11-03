@@ -168,3 +168,26 @@ test('country selection combines with existing filters and all countries removes
     assert.equal(cleared.page, 1)
   }
 })
+
+let dateTools
+try {
+  const ts = require('typescript')
+  const source = readFileSync(new URL('../src/lib/listing-dates.ts', import.meta.url), 'utf8')
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } })
+  dateTools = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND' || Number(process.versions.node.split('.')[0]) < 24) throw error
+  dateTools = await import('../src/lib/listing-dates.ts')
+}
+
+test('source date display preserves date-only precision without inventing midnight', () => {
+  assert.equal(dateTools.formatListingDate('2025-11-01', 'date'), '1.11.2025.')
+  assert.equal(dateTools.formatListingDate('2025-02-30', 'date'), 'Nije dostupno')
+  assert.equal(dateTools.formatListingDate(undefined), 'Nije dostupno')
+  assert.equal(dateTools.formatListingDate('2025-11-01T12:00:00'), 'Nije dostupno')
+})
+
+test('timestamp display uses Vienna winter and summer time independently of browser timezone', () => {
+  assert.match(dateTools.formatListingDate('2025-11-01T12:00:00Z'), /13:00/)
+  assert.match(dateTools.formatListingDate('2025-07-01T12:00:00Z'), /14:00/)
+})

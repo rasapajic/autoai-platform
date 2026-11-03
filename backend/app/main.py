@@ -16,15 +16,11 @@ async def lifespan(app: FastAPI):
     print("✅ Baza podataka inicijalizovana")
 
     # Migracije — dodaj kolone ako ne postoje
-    from sqlalchemy import text
+    from app.core.listing_schema import migrate_listing_metadata
     with engine.connect() as conn:
-        conn.execute(text("""
-            ALTER TABLE listings
-                ADD COLUMN IF NOT EXISTS contact_type VARCHAR(20) DEFAULT 'unknown',
-                ADD COLUMN IF NOT EXISTS contact_url TEXT
-        """))
+        migrate_listing_metadata(conn)
         conn.commit()
-    print("✅ Migracija contact_type/contact_url primenjena")
+    print("✅ Migracija kontakt podataka i source_dates primenjena")
 
     if settings.AUTOAI_INTERNAL_LISTING_INGEST_ENABLED:
         print("🧪 AutoAI M0.2 internal scheduled listing refresh is ENABLED")
