@@ -7,6 +7,7 @@ import math
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from sqlalchemy import func, text
@@ -14,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
 from app.core.db import SessionLocal
-from app.core.listing_normalization import normalize_vehicle_fields
+from app.core.listing_normalization import normalize_vehicle_fields, evidenced_jaguar_model
 from app.core.catalog_plan import PARTITION_BY_KEY
 from app.core.source_policy import (
     SOURCE_REGISTRY,
@@ -413,6 +414,58 @@ async def collect_window(
             db.execute(statement)
             db.commit()
             logger.warning("Catalog collection paused: key=%s reason=%s retry_after=%s", pause_key, reason, retry_after.isoformat())
+        raise
+    finally:
+        db.close()
+
+
+def _repair_jaguar_rows(rows):
+    changes = {}
+    for row in rows:
+        model = evidenced_jaguar_model({key: getattr(row, key, None)
+                                       for key in ("make", "model", "description", "url")})
+        if not model or model == row.model:
+            continue
+        key = (row.model, model)
+        changes[key] = changes.get(key, 0) + 1
+        row.model = model
+        for field in ("price_estimated", "price_delta_pct", "price_rating", "embedding"):
+            setattr(row, field, None)
+    return [{"before": before, "after": after, "count": count}
+            for (before, after), count in changes.items()]
+
+
+@router.post("/repair-jaguar-models")
+def repair_jaguar_models(
+    confirm: str = Query(default=""),
+    after_id: Optional[UUID] = Query(default=None),
+    dry_run: bool = Query(default=True),
+    x_autoai_admin_secret: Optional[str] = Header(default=None),
+):
+    require_admin_secret(x_autoai_admin_secret)
+    if confirm != "REPAIR_EVIDENCED_JAGUAR_MODELS":
+        raise HTTPException(status_code=400, detail="confirmation_required")
+    db = SessionLocal()
+    try:
+        if not db.execute(text("SELECT pg_try_advisory_xact_lock(3706, 1)")).scalar():
+            raise HTTPException(status_code=409, detail="model_repair_already_running")
+        query = db.query(Listing).filter(func.lower(Listing.make) == "jaguar")
+        if after_id:
+            query = query.filter(Listing.id > after_id)
+        rows = query.order_by(Listing.id).limit(501).with_for_update().all()
+        batch = rows[:500]
+        changes = _repair_jaguar_rows(batch)
+        result = {"status": "ok", "scanned": len(batch), "dry_run": dry_run,
+                  "changed": sum(item["count"] for item in changes), "changes": changes,
+                  "next_after_id": str(batch[-1].id) if len(rows) > 500 else None}
+        if dry_run:
+            db.rollback()
+        else:
+            db.commit()
+            logger.info("Jaguar model repair: scanned=%s changed=%s changes=%s", result["scanned"], result["changed"], changes)
+        return result
+    except Exception:
+        db.rollback()
         raise
     finally:
         db.close()
