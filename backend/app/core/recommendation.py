@@ -163,7 +163,8 @@ def recommend_offer(listing, candidates=(), now=None, comparison_error=False):
         return result
     delta, count, reference = comparison["delta_pct"], comparison["sample_size"], comparison["reference_price"]
     relation = "ispod" if delta < 0 else "iznad"
-    price_reason = f"Tražena cena je {abs(delta):.1f}% {relation} medijane {count} sličnih oglasa ({reference:,.0f} €)."
+    formatted_reference = f"{reference:,.0f}".replace(",", ".")
+    price_reason = f"Tražena cena je {abs(delta):.1f}% {relation} medijane {count} sličnih oglasa ({formatted_reference} €)."
     result.update(confidence="limited", reason=price_reason)
     if delta < -20:
         result.update(title="Proveri razlog niske cene", next_step="Pre kontakta o uplati proveri VIN, oštećenja, dokumentaciju i prodavca; niska cena nije dokaz povoljne kupovine.")

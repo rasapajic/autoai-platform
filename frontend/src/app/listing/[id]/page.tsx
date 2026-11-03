@@ -163,7 +163,7 @@ export default function ListingPage({params}:{params:{id:string}}){
   const [fraud,setFraud]=useState<any>(null)
   const [activeImg,setActiveImg]=useState(0)
   const [favorited,setFavorited]=useState(false)
-  const [vinResult,setVinResult]=useState<any>(null)
+  const [vinEvidence,setVinEvidence]=useState<any>(null)
   const [loading,setLoading]=useState(true)
   const [showContact,setShowContact]=useState(false)
   const [showBd,setShowBd]=useState(false)
@@ -178,12 +178,16 @@ export default function ListingPage({params}:{params:{id:string}}){
 
   useEffect(()=>{const p=sessionStorage.getItem('autoai_search_url');if(p)setBackUrl(p)},[])
   useEffect(()=>{
+    let active=true
+    setLoading(true);setListing(null);setSimilar([]);setFraud(null);setVinEvidence(null)
     Promise.allSettled([getListing(params.id),getSimilar(params.id),fraudCheck(params.id)])
       .then(([l,s,f])=>{
+        if(!active)return
         if(l.status==='fulfilled'){const d=l.value;setListing(d);if(d?.url&&(!d.year||!d.mileage))autoEnrich(d.url)}
         if(s.status==='fulfilled')setSimilar(s.value)
         if(f.status==='fulfilled')setFraud(f.value)
-      }).finally(()=>setLoading(false))
+      }).finally(()=>{if(active)setLoading(false)})
+    return()=>{active=false}
   },[params.id])
 
   const startScan=()=>{let i=0;setScanMsg(AI_SCAN_MESSAGES[0]);scanInterval.current=setInterval(()=>{i=(i+1)%AI_SCAN_MESSAGES.length;setScanMsg(AI_SCAN_MESSAGES[i])},1800)}
@@ -195,7 +199,7 @@ export default function ListingPage({params}:{params:{id:string}}){
     try{
       const res=await fetch(`${API_BASE}/analyze/`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})})
       const data=await res.json()
-      if(data.scrape_success){setListing((prev:any)=>({...prev,recommendation:null,year:data.year||prev.year,mileage:data.mileage||prev.mileage,fuel_type:data.fuel_type||prev.fuel_type,engine_power_kw:data.engine_power_kw||prev.engine_power_kw,country:data.country||prev.country,city:data.city||prev.city,transmission:data.transmission||prev.transmission,images:(data.images?.length||0)>(prev.images?.length||0)?data.images:prev.images}));setEnriched(true)}
+      if(data.scrape_success){setListing((prev:any)=>prev?.id===params.id?({...prev,recommendation:null,year:data.year||prev.year,mileage:data.mileage||prev.mileage,fuel_type:data.fuel_type||prev.fuel_type,engine_power_kw:data.engine_power_kw||prev.engine_power_kw,country:data.country||prev.country,city:data.city||prev.city,transmission:data.transmission||prev.transmission,images:(data.images?.length||0)>(prev.images?.length||0)?data.images:prev.images}):prev);setEnriched(true)}
     }catch{}
     stopScan();setEnriching(false)
   }
@@ -203,6 +207,8 @@ export default function ListingPage({params}:{params:{id:string}}){
   if(loading)return <PageSkeleton/>
   if(!listing)return <div style={{textAlign:'center',padding:'80px 0',color:'var(--text3)'}}>Oglas nije pronađen.</div>
 
+  const vinResult=vinEvidence?.listingId===listing.id?vinEvidence.result:null
+  const setVinResult=(result:any)=>setVinEvidence({listingId:listing.id,result})
   const images=listing.images||[]
   const elig=getSerbiaEligibility(listing)
   const eligColor=ELIGIBILITY_COLORS[elig.status]||'#F97316'
