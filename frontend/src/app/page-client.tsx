@@ -8,6 +8,9 @@ const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni',
   hybrid: 'Hibrid', lpg: 'Plin',
 }
+const COUNTRY_LABELS: Record<string, string> = {
+  AT: 'Austrija', BE: 'Belgija', NL: 'Holandija', IT: 'Italija', DE: 'Nemačka',
+}
 const AI_BADGES: Record<string, { label: string; color: string; bg: string }> = {
   great:      { label: '🟢 DOBRA KUPOVINA',  color: '#22C55E', bg: 'rgba(34,197,94,.13)'   },
   good:       { label: '🟡 FER CENA',         color: '#EAB308', bg: 'rgba(234,179,8,.13)'   },
@@ -232,7 +235,7 @@ export default function SearchPage() {
   const activeCount = [
     filters.make, filters.model, filters.min_price, filters.max_price,
     filters.min_year, filters.max_year, filters.max_km,
-    filters.fuel_type, filters.price_rating,
+    filters.fuel_type, filters.country, filters.price_rating,
   ].filter(Boolean).length
 
   const selectedModelKey = filters.model_exact ? filters.model.toLowerCase() : ''
@@ -677,6 +680,15 @@ function Sidebar({ filters, setFilter, onReset }: any) {
   return (
     <>
       <h3 style={{ fontSize: 11, marginBottom: 20, color: 'var(--text3)', letterSpacing: '.1em', fontWeight: 600 }}>FILTERI</h3>
+      <FS label="Država">
+        <select aria-label="Država oglasa" value={filters.country}
+          onChange={e => setFilter('country', e.target.value)}
+          style={{ ...IS, width: '100%', boxSizing: 'border-box', cursor: 'pointer' }}>
+          <option value="">Sve države</option>
+          {filters.country && !COUNTRY_LABELS[filters.country] && <option value={filters.country}>{filters.country}</option>}
+          {Object.entries(COUNTRY_LABELS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}
+        </select>
+      </FS>
       <FS label="Cena (EUR)">
         <div style={{ display: 'flex', gap: 6 }}>
           <input type="number" placeholder="Od" value={filters.min_price} onChange={e => setFilter('min_price', e.target.value)} style={IS} />
