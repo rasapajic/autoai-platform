@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from uuid import UUID
 import re
@@ -48,7 +48,27 @@ class ListingCard(ListingBase):
     model_config = {"from_attributes": True}
 
 
+class RecommendationComparison(BaseModel):
+    available: bool
+    sample_size: int
+    reference_price: Optional[float] = None
+    delta_pct: Optional[float] = None
+    reason: str
+    freshness_days: int
+
+
+class ListingRecommendation(BaseModel):
+    status: Literal["consider", "negotiate", "verify", "avoid"]
+    title: str
+    reason: str
+    next_step: str
+    confidence: Literal["limited", "insufficient"]
+    cautions: list[str]
+    comparison: RecommendationComparison
+
+
 class ListingDetail(ListingCard):
+    recommendation: Optional[ListingRecommendation] = None
     source_dates:     Optional[dict] = None
     variant:          Optional[str] = None
     engine_cc:        Optional[int] = None
