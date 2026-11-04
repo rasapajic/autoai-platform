@@ -475,7 +475,7 @@ export default function SearchPage() {
 
         <div className="sg" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 24, alignItems: 'start' }}>
 
-          <aside className="sd" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, position: 'sticky', top: 80 }}>
+          <aside className="sd" tabIndex={0} aria-label="Filteri pretrage" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, position: 'sticky', top: 80, maxHeight: 'calc(100dvh - 96px)', overflowY: 'auto', overscrollBehaviorY: 'contain', boxSizing: 'border-box' }}>
             <Sidebar filters={filters} setFilter={setFilter} onReset={() => {
               const r = { make:'',model:'',model_exact:false,min_price:'',max_price:'',min_year:'',max_year:'',max_km:'',fuel_type:'',country:'',price_rating:'',sort_by:'date',page:1 }
               setFilters(r); doSearch(r)
