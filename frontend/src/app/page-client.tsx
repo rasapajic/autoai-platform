@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, usePathname } from 'next/navigation'
 import { searchListings, parseQuery, getMakes, getModels } from '@/lib/api'
 import { prepareModelOptions, changeListingFilter, mergeParsedFilters, type ModelOption } from '@/lib/model-options'
+import { searchFiltersFromParams, searchUrl, listingHref, rememberSearch, savedSearch, restoredScrollY, type SearchSnapshot } from '@/lib/search-navigation'
 
 const FUEL_LABELS: Record<string, string> = {
   diesel: 'Dizel', petrol: 'Benzin', electric: 'Električni',
@@ -145,6 +146,7 @@ const ELIGIBILITY_COLORS: Record<string, string> = {
 
 export default function SearchPage() {
   const searchParams  = useSearchParams()
+  const pathname = usePathname()
   const [results,     setResults]     = useState<any>(null)
   const [searchError, setSearchError] = useState('')
   const [loading,     setLoading]     = useState(true)
@@ -157,33 +159,57 @@ export default function SearchPage() {
   const [makesError, setMakesError] = useState('')
   const [modelData, setModelData] = useState<{ make: string; options: ModelOption[]; loading: boolean; error: string }>({ make: '', options: [], loading: false, error: '' })
   const searchRequest = useRef(0)
+  const pendingRestore = useRef<SearchSnapshot | null>(null)
 
-  const [filters, setFilters] = useState({
-    make: searchParams.get('make') || '',
-    model: searchParams.get('model') || '',
-    model_exact: searchParams.get('model_exact') === 'true',
-    min_price: searchParams.get('min_price') || '',
-    max_price: searchParams.get('max_price') || '',
-    min_year: searchParams.get('min_year') || '',
-    max_year: searchParams.get('max_year') || '',
-    max_km: searchParams.get('max_km') || '',
-    fuel_type: searchParams.get('fuel_type') || '',
-    country: searchParams.get('country') || '',
-    price_rating: searchParams.get('price_rating') || '',
-    sort_by: searchParams.get('sort_by') || 'date',
-    page: 1,
-  })
+  const [filters, setFilters] = useState(() => searchFiltersFromParams(searchParams))
+  const returnUrl = searchUrl(filters, aiQuery, pathname)
+
+  const rememberPosition = useCallback((listingId?: string) => {
+    if (pendingRestore.current) return
+    try {
+      window.history.replaceState(window.history.state, '', returnUrl)
+      const anchorId = listingId || savedSearch(sessionStorage, returnUrl)?.listingId
+      const card = anchorId ? Array.from(document.querySelectorAll<HTMLElement>('[data-listing-id]')).find(el => el.dataset.listingId === anchorId) : null
+      rememberSearch(sessionStorage, { url: returnUrl, y: window.scrollY,
+        filterY: document.querySelector<HTMLElement>('.sd')?.scrollTop || 0,
+        modelY: document.querySelector<HTMLElement>('.model-grid')?.scrollTop || 0,
+        otherMakesOpen: customMake, mobileFiltersOpen: sidebarOpen,
+        ...(card ? { listingId: anchorId, listingOffset: card.getBoundingClientRect().top } : {}),
+      })
+    } catch {}
+  }, [returnUrl, customMake, sidebarOpen])
 
   const doSearch = useCallback(async (f = filters) => {
     const request = ++searchRequest.current
     setLoading(true)
     setSearchError('')
+    try {
+      const url = searchUrl(f, aiQuery, window.location.pathname)
+      window.history.replaceState(window.history.state, '', url)
+      sessionStorage.setItem('autoai_search_url', url)
+    } catch {}
     try   { const data = await searchListings(f); if (request === searchRequest.current) setResults(data) }
     catch { if (request === searchRequest.current) { setResults(null); setSearchError('Oglasi nisu učitani. Proveri vezu ili se ponovo prijavi.') } }
     finally { if (request === searchRequest.current) setLoading(false) }
-  }, [filters])
+  }, [filters, aiQuery])
 
+  useEffect(() => {
+    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    if (searchParams.get('restore') === '1' || navigation?.type === 'back_forward') {
+      try {
+        const saved = savedSearch(sessionStorage, returnUrl)
+        pendingRestore.current = saved
+        if (saved) { setCustomMake(saved.otherMakesOpen); setSidebarOpen(saved.mobileFiltersOpen) }
+      } catch {}
+    }
+  }, [])
   useEffect(() => { doSearch() }, [])
+
+  useEffect(() => {
+    const save = () => rememberPosition()
+    window.addEventListener('pagehide', save)
+    return () => window.removeEventListener('pagehide', save)
+  }, [rememberPosition])
 
   useEffect(() => {
     let active = true
@@ -215,6 +241,22 @@ export default function SearchPage() {
       })
     return () => { active = false }
   }, [filters.make])
+
+  useEffect(() => {
+    if (loading || !results || makesLoading || (filters.make && (modelData.make !== filters.make || modelData.loading))) return
+    const saved = pendingRestore.current
+    if (!saved) return
+    const frame = requestAnimationFrame(() => {
+      const anchor = saved.listingId ? Array.from(document.querySelectorAll<HTMLElement>('[data-listing-id]')).find(el => el.dataset.listingId === saved.listingId) : null
+      window.scrollTo({ top: restoredScrollY(saved, window.scrollY, anchor?.getBoundingClientRect().top), behavior: 'instant' as ScrollBehavior })
+      const panel = document.querySelector<HTMLElement>('.sd')
+      const models = document.querySelector<HTMLElement>('.model-grid')
+      if (panel) panel.scrollTop = saved.filterY
+      if (models) models.scrollTop = saved.modelY || 0
+      pendingRestore.current = null
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [loading, results, makesLoading, filters.make, modelData])
 
   const setFilter = (key: string, val: any) => {
     const next = changeListingFilter(filters, key, val)
@@ -530,7 +572,7 @@ export default function SearchPage() {
                 )}
 
                 <div className="rg" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 20 }}>
-                  {results.results.map((l: any) => <ListingCard key={l.id} listing={l} />)}
+                  {results.results.map((l: any) => <ListingCard key={l.id} listing={l} returnUrl={returnUrl} onOpen={() => rememberPosition(l.id)} />)}
                 </div>
 
                 {/* ✅ Paginacija dole */}
@@ -557,7 +599,7 @@ export default function SearchPage() {
   )
 }
 
-function ListingCard({ listing }: { listing: any }) {
+function ListingCard({ listing, returnUrl, onOpen }: { listing: any; returnUrl: string; onOpen: () => void }) {
   const badge       = AI_BADGES[listing.price_rating]
   const insight     = getInsight(listing)
   const img         = listing.images?.[0]
@@ -570,7 +612,7 @@ function ListingCard({ listing }: { listing: any }) {
   const [showBd,    setShowBd] = useState(false)
 
   return (
-    <div className="ch" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+    <div className="ch" data-listing-id={listing.id} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
       {badge ? (
         <div style={{ background: badge.bg, borderBottom: `2px solid ${badge.color}`, padding: '9px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: badge.color, fontSize: 13, fontWeight: 800, letterSpacing: '.03em' }}>{badge.label}</span>
@@ -586,7 +628,7 @@ function ListingCard({ listing }: { listing: any }) {
         </div>
       )}
 
-      <a href={`/listing/${listing.id}`} style={{ display: 'block', textDecoration: 'none' }}>
+      <a href={listingHref(listing.id, returnUrl)} onClick={onOpen} onAuxClick={onOpen} onContextMenu={onOpen} style={{ display: 'block', textDecoration: 'none' }}>
         <div style={{ height: 185, background: 'var(--bg3)', position: 'relative', overflow: 'hidden' }}>
           {img
             ? <img src={fullImg(img)} alt={`${listing.make} ${listing.model}`}

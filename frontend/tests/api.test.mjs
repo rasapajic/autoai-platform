@@ -186,6 +186,86 @@ const priceRecommendation = {
   comparison: { available: true, sample_size: 10, reference_price: 20000, delta_pct: -10, freshness_days: 7, reason: 'Uporediva vozila.' },
 }
 
+let navigationTools
+try {
+  const ts = require('typescript')
+  const source = readFileSync(new URL('../src/lib/search-navigation.ts', import.meta.url), 'utf8')
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } })
+  navigationTools = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND' || Number(process.versions.node.split('.')[0]) < 24) throw error
+  navigationTools = await import('../src/lib/search-navigation.ts')
+}
+
+test('return from a listing retains exact model, all filters, sorting, AI text and page seven', () => {
+  const initial = new URLSearchParams('make=Jaguar&model=F-Pace&model_exact=true&country=DE&min_price=8000&max_price=10000&min_year=2015&max_year=2023&max_km=150000&fuel_type=diesel&price_rating=good&sort_by=price_asc&page=7&transmission=automatic&body_type=suv')
+  const filters = navigationTools.searchFiltersFromParams(initial)
+  const url = navigationTools.searchUrl(filters, 'Jaguar do 10000€')
+  const href = navigationTools.listingHref('listing-123', url)
+  const returnTo = new URL(href, 'https://app.test').searchParams.get('returnTo')
+  const back = navigationTools.resolveReturnUrl(returnTo, '', 'https://app.test', href, '/search')
+  const restored = new URL(navigationTools.restoreSearchHref(back), 'https://app.test')
+  assert.deepEqual(navigationTools.searchFiltersFromParams(restored.searchParams), filters)
+  assert.equal(restored.searchParams.get('q'), 'Jaguar do 10000€')
+  assert.equal(restored.searchParams.get('restore'), '1')
+  assert.equal(filters.page, 7)
+})
+
+test('search URL parsing keeps zero values, exact-match state and valid page defaults', () => {
+  for (const page of ['', '-1', '0', '1.5', 'NaN', 'Infinity', '9007199254740992']) {
+    assert.equal(navigationTools.searchFiltersFromParams(new URLSearchParams({ page })).page, 1)
+  }
+  const url = navigationTools.searchUrl({ make: 'Citroën & DS', model: 'C_4%', model_exact: true, min_price: 0, page: 3 }, '', '/')
+  const parsed = navigationTools.searchFiltersFromParams(new URL(url, 'https://app.test').searchParams)
+  assert.equal(parsed.make, 'Citroën & DS')
+  assert.equal(parsed.model, 'C_4%')
+  assert.equal(parsed.model_exact, true)
+  assert.equal(parsed.min_price, '0')
+  assert.equal(parsed.page, 3)
+  assert.equal(navigationTools.searchUrl({ page: 1, sort_by: 'date', model_exact: false }), '/search')
+})
+
+test('back targets use the actual previous internal page and retain a safe new-tab fallback', () => {
+  const origin = 'https://app.test'
+  assert.equal(navigationTools.resolveReturnUrl('/search?page=7', origin+'/favorites', origin, '/listing/123', '/search'), '/favorites')
+  assert.equal(navigationTools.resolveReturnUrl('/search?page=7', origin+'/listing/previous', origin, '/listing/123', '/search'), '/listing/previous')
+  assert.equal(navigationTools.resolveReturnUrl('/search?page=7', 'https://external.test/', origin, '/listing/123', '/search'), '/search?page=7')
+  assert.equal(navigationTools.resolveReturnUrl('/search?page=7', origin+'/listing/123', origin, '/listing/123', '/search'), '/search?page=7')
+  assert.equal(navigationTools.resolveReturnUrl('/search?page=7', origin+'/', origin, '/listing/123', '/search'), '/search?page=7')
+  assert.equal(navigationTools.resolveReturnUrl(null, '', origin, '/listing/123', null), '/search')
+  assert.equal(navigationTools.restoreSearchHref('/favorites'), '/favorites')
+})
+
+test('return targets reject external, script, authentication, API and disguised redirect paths', () => {
+  for (const path of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)', '/login', '/api/v1/users/logout', '/%2f%2fevil.test', '/search\n?x=1']) {
+    assert.equal(navigationTools.safeReturnUrl(path), null, path)
+  }
+})
+
+test('return snapshots keep list position and independent filter scroll per search context', () => {
+  const values = new Map()
+  const storage = { getItem: k => values.get(k) || null, setItem: (k,v) => values.set(k,v) }
+  const snapshot = { url: '/search?country=DE&page=7', y: 1350, filterY: 220, modelY: 80, otherMakesOpen: true, mobileFiltersOpen: false, listingId: 'car-7', listingOffset: 140 }
+  navigationTools.rememberSearch(storage, snapshot)
+  navigationTools.rememberSearch(storage, { ...snapshot, url: '/search?country=AT&page=2', y: 300, filterY: 0 })
+  assert.deepEqual(navigationTools.savedSearch(storage, snapshot.url), snapshot)
+  assert.equal(navigationTools.restoredScrollY(snapshot, 0, 1630), 1490)
+  assert.equal(navigationTools.restoredScrollY(snapshot, 0), 1350)
+  assert.equal(navigationTools.restoredScrollY(snapshot, 0, 50), 0)
+})
+
+test('disabled or corrupt session storage does not prevent a return through the URL', () => {
+  const blocked = { getItem: () => { throw Error('blocked') }, setItem: () => { throw Error('full') } }
+  const snapshot = { url: '/search?page=7', y: 1350, filterY: 220, modelY: 0, otherMakesOpen: false, mobileFiltersOpen: false }
+  assert.doesNotThrow(() => navigationTools.rememberSearch(blocked, snapshot))
+  assert.equal(navigationTools.savedSearch(blocked, snapshot.url), null)
+  let value = 'invalid-json'
+  const corrupt = { getItem: () => value, setItem: (k,v) => { if (k === 'autoai_search_snapshots') value = v } }
+  assert.equal(navigationTools.savedSearch(corrupt, snapshot.url), null)
+  navigationTools.rememberSearch(corrupt, snapshot)
+  assert.deepEqual(navigationTools.savedSearch(corrupt, snapshot.url), snapshot)
+})
+
 test('recommendation retains its concrete reason and never treats an AI score as buying evidence', () => {
   const result = recommendationTools.resolveRecommendation({ recommendation: priceRecommendation })
   assert.deepEqual(result, priceRecommendation)

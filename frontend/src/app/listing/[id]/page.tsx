@@ -6,6 +6,7 @@ import VinChecker from '@/components/VinChecker'
 import ModelChecklist from '@/components/ModelChecklist'
 import ListingDates from '@/components/ListingDates'
 import ListingRecommendation from '@/components/ListingRecommendation'
+import { safeReturnUrl, resolveReturnUrl, listingHref, restoreSearchHref } from '@/lib/search-navigation'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://autoai-platform-production.up.railway.app/api/v1'
 const ELIGIBILITY_COLORS: Record<string, string> = { eligible:'#22C55E', needs_check:'#F97316', not_recommended:'#EF4444', oldtimer:'#A855F7' }
@@ -171,12 +172,20 @@ export default function ListingPage({params}:{params:{id:string}}){
   const [enriched,setEnriched]=useState(false)
   const [scanMsg,setScanMsg]=useState(AI_SCAN_MESSAGES[0])
   const [backUrl,setBackUrl]=useState('/search')
+  const [returnContext,setReturnContext]=useState('/search')
   const [showScoreSheet,setShowScoreSheet]=useState(false)
   const [showBdSheet,setShowBdSheet]=useState(false)
   const [showGallery,setShowGallery]=useState(false)
   const scanInterval=useRef<any>(null)
 
-  useEffect(()=>{const p=sessionStorage.getItem('autoai_search_url');if(p)setBackUrl(p)},[])
+  useEffect(()=>{
+    const explicit=new URLSearchParams(window.location.search).get('returnTo')
+    let saved:string|null=null
+    try{saved=sessionStorage.getItem('autoai_search_url')}catch{}
+    const previous=resolveReturnUrl(explicit,document.referrer,window.location.origin,window.location.pathname+window.location.search,saved)
+    setBackUrl(previous)
+    setReturnContext(safeReturnUrl(explicit)||previous)
+  },[params.id])
   useEffect(()=>{
     let active=true
     setLoading(true);setListing(null);setSimilar([]);setFraud(null);setVinEvidence(null)
@@ -282,7 +291,7 @@ export default function ListingPage({params}:{params:{id:string}}){
 
       <div className="container" style={{padding:'0 0 0'}}>
         <div style={{fontSize:14,color:'var(--text3)',marginBottom:10,display:'flex',alignItems:'center',gap:6,padding:'12px 16px 0'}}>
-          <a href={backUrl} style={{color:'var(--text3)',textDecoration:'none'}}>← Pretraga</a>
+          <a href={restoreSearchHref(backUrl)} style={{color:'var(--text3)',textDecoration:'none'}}>← Nazad</a>
           <span style={{opacity:.4}}>·</span>
           <span style={{color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{listing.make} {listing.model}</span>
         </div>
@@ -352,7 +361,7 @@ export default function ListingPage({params}:{params:{id:string}}){
             {listing.url&&<div style={{padding:'0 16px 16px'}}><a href={listing.url} target="_blank" rel="noopener" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,width:'100%',padding:'13px',borderRadius:12,background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--text2)',fontSize:13,fontWeight:600,textDecoration:'none'}}>🔗 Pogledaj na {portalName} →</a></div>}
 
             <div style={{paddingLeft:16,paddingRight:16}}>
-              <MobileTabs listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust} specs={specs} similar={similar} price={price} deltaGood={deltaGood} onContact={()=>setShowContact(true)} onShowScore={()=>setShowScoreSheet(true)} onShowBd={()=>setShowBdSheet(true)} enriching={enriching} enriched={enriched} scanMsg={scanMsg} onEnrich={()=>autoEnrich(listing.url)} fraud={fraud} onVinResult={setVinResult} vinResult={vinResult} kw={kw} ks={ks} portalName={portalName} saved={favorited} onSave={handleSave} firstYear={firstYear} fuelLabel={fuelLabel} images={images} onGallery={()=>setShowGallery(true)}/>
+              <MobileTabs returnContext={returnContext} listing={listing} elig={elig} eligColor={eligColor} bd={bd} trust={trust} specs={specs} similar={similar} price={price} deltaGood={deltaGood} onContact={()=>setShowContact(true)} onShowScore={()=>setShowScoreSheet(true)} onShowBd={()=>setShowBdSheet(true)} enriching={enriching} enriched={enriched} scanMsg={scanMsg} onEnrich={()=>autoEnrich(listing.url)} fraud={fraud} onVinResult={setVinResult} vinResult={vinResult} kw={kw} ks={ks} portalName={portalName} saved={favorited} onSave={handleSave} firstYear={firstYear} fuelLabel={fuelLabel} images={images} onGallery={()=>setShowGallery(true)}/>
             </div>
           </div>
 
@@ -416,7 +425,7 @@ export default function ListingPage({params}:{params:{id:string}}){
 
             {listing.description&&<div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:16,marginBottom:12}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:10}}>OPIS</div><p style={{color:'var(--text2)',lineHeight:1.8,fontSize:13,whiteSpace:'pre-line',margin:0}}>{listing.description}</p></div>}
             {listing.features?.length>0&&<div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:14,padding:16,marginBottom:12}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:10}}>OPREMA ({listing.features.length})</div><div style={{display:'flex',flexWrap:'wrap',gap:5}}>{listing.features.map((f:string)=><span key={f} style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:20,padding:'3px 10px',fontSize:11,color:'var(--text2)'}}>{f}</span>)}</div></div>}
-            {similar.length>0&&<div><div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:12}}>SLIČNI OGLASI</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>{similar.slice(0,4).map((s:any)=><a key={s.id} href={`/listing/${s.id}`} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',display:'block',textDecoration:'none'}}><div style={{height:100,background:'var(--bg3)',overflow:'hidden'}}>{s.images?.[0]?<img src={fullImg(s.images[0])} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>🚗</div>}</div><div style={{padding:9}}><div style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{s.year} {s.make} {s.model}</div><div style={{fontSize:13,color:'var(--accent)',fontWeight:700,marginTop:2}}>{s.price?`${fmt(s.price)} €`:'—'}</div></div></a>)}</div></div>}
+            {similar.length>0&&<div><div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.08em',marginBottom:12}}>SLIČNI OGLASI</div><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:10}}>{similar.slice(0,4).map((s:any)=><a key={s.id} href={listingHref(s.id,returnContext)} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,overflow:'hidden',display:'block',textDecoration:'none'}}><div style={{height:100,background:'var(--bg3)',overflow:'hidden'}}>{s.images?.[0]?<img src={fullImg(s.images[0])} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>🚗</div>}</div><div style={{padding:9}}><div style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{s.year} {s.make} {s.model}</div><div style={{fontSize:13,color:'var(--accent)',fontWeight:700,marginTop:2}}>{s.price?`${fmt(s.price)} €`:'—'}</div></div></a>)}</div></div>}
           </div>
 
           {/* DESKTOP SIDEBAR — 3 SEKCIJE */}
@@ -511,7 +520,7 @@ export default function ListingPage({params}:{params:{id:string}}){
   )
 }
 
-function MobileTabs({listing,elig,eligColor,bd,trust,specs,similar,price,deltaGood,onContact,onShowScore,onShowBd,enriching,enriched,scanMsg,onEnrich,fraud,onVinResult,vinResult,onSave,saved,portalName,firstYear,fuelLabel,kw,ks,images,onGallery}:any){
+function MobileTabs({returnContext,listing,elig,eligColor,bd,trust,specs,similar,price,deltaGood,onContact,onShowScore,onShowBd,enriching,enriched,scanMsg,onEnrich,fraud,onVinResult,vinResult,onSave,saved,portalName,firstYear,fuelLabel,kw,ks,images,onGallery}:any){
   const [tab,setTab]=useState(0)
   const TABS=[{icon:'🚗',label:'Vozilo',sub:'Specifikacije'},{icon:'🤖',label:'AI + Uvoz',sub:'Analiza'},{icon:'🔐',label:'VIN',sub:'Provera'}]
   const fmt=(n:any)=>Number(n).toLocaleString('de-DE')
@@ -539,7 +548,7 @@ function MobileTabs({listing,elig,eligColor,bd,trust,specs,similar,price,deltaGo
           {enriched?<div style={{display:'flex',alignItems:'center',gap:8,background:'rgba(34,197,94,.08)',border:'1px solid rgba(34,197,94,.2)',borderRadius:10,padding:'10px 14px'}}><span>✅</span><div style={{fontSize:13,fontWeight:600,color:'#22C55E'}}>Podaci provereni od AutoAI</div></div>
           :!enriching&&listing.url&&<button onClick={onEnrich} style={{width:'100%',padding:'11px 14px',background:'linear-gradient(135deg,rgba(99,102,241,.12),rgba(99,102,241,.06))',border:'1px solid rgba(99,102,241,.3)',color:'#818CF8',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer',textAlign:'left'}}>🔍 Proveri podatke oglasa<span style={{fontSize:12,color:'rgba(129,140,248,.6)',display:'block',marginTop:1}}>Godište · km · Euro norma</span></button>}
           {enriching&&<div style={{background:'rgba(99,102,241,.08)',border:'1px solid rgba(99,102,241,.25)',borderRadius:10,padding:'9px 14px',display:'flex',alignItems:'center',gap:8}}><div style={{width:7,height:7,borderRadius:'50%',background:'#818CF8',animation:'pulse 1s infinite',flexShrink:0}}/><span style={{fontSize:13,color:'#818CF8',fontWeight:600}}>{scanMsg}</span></div>}
-          {similar.length>0&&<div style={{marginTop:4}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.06em',marginBottom:8}}>SLIČNI OGLASI</div><div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4}}>{similar.slice(0,6).map((s:any)=><a key={s.id} href={`/listing/${s.id}`} style={{flexShrink:0,width:130,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',display:'block',textDecoration:'none'}}><div style={{height:75,background:'var(--bg3)',overflow:'hidden'}}>{s.images?.[0]?<img src={s.images[0]} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>🚗</div>}</div><div style={{padding:'7px 9px'}}><div style={{fontSize:11,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.year} {s.make} {s.model}</div><div style={{fontSize:12,color:'var(--accent)',fontWeight:700,marginTop:2}}>{s.price?`${fmt(s.price)} €`:'—'}</div></div></a>)}</div></div>}
+          {similar.length>0&&<div style={{marginTop:4}}><div style={{fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'.06em',marginBottom:8}}>SLIČNI OGLASI</div><div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4}}>{similar.slice(0,6).map((s:any)=><a key={s.id} href={listingHref(s.id,returnContext)} style={{flexShrink:0,width:130,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',display:'block',textDecoration:'none'}}><div style={{height:75,background:'var(--bg3)',overflow:'hidden'}}>{s.images?.[0]?<img src={s.images[0]} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>🚗</div>}</div><div style={{padding:'7px 9px'}}><div style={{fontSize:11,fontWeight:600,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.year} {s.make} {s.model}</div><div style={{fontSize:12,color:'var(--accent)',fontWeight:700,marginTop:2}}>{s.price?`${fmt(s.price)} €`:'—'}</div></div></a>)}</div></div>}
         </div>}
 
         {tab===1&&<div style={{display:'flex',flexDirection:'column',gap:8}}>
