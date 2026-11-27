@@ -171,10 +171,11 @@ def _collect_windows(backend_url: str, admin_secret: str, max_pages: int) -> int
         except Exception as exc:
             unavailable.add(partition.key)
             failed.append(partition.key)
-            logger.error("Partition %s request failed (%s); inspect its saved checkpoint before retry", partition.key, type(exc).__name__)
+            http_status = getattr(getattr(exc, "response", None), "status_code", None)
+            logger.error("Partition %s request failed (%s, http_status=%s); inspect its saved checkpoint before retry", partition.key, type(exc).__name__, http_status)
     logger.info("Catalog collection finished: status=%s active=%s new=%s updated=%s database_bytes=%s accepted_by_source=%s failed_partitions=%s paused_partitions=%s completed_windows=%s deferred_windows=%s", "partial" if failed or paused else "ok", active_after, total_new, total_updated, database_bytes, accepted, failed, paused, completed_windows, deferred_windows)
     missing = [source for source in REQUIRED_SOURCES if accepted.get(source, 0) <= 0 and paused_counts.get(source, 0) != sum(part.source == source for part in windows)]
-    if missing:
+    if failed or missing:
         raise RuntimeError(f"collection incomplete; failed_partitions={','.join(failed)}; invalid sources={','.join(missing)}")
     return 0
 

@@ -5,9 +5,12 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+import requests
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 import app.api.m01_listings as catalog
+from scripts import scraper
 from app.core.catalog_plan import PARTITION_BY_KEY, page_window
 from app.core.source_policy import SOURCE_REGISTRY
 
@@ -102,8 +105,8 @@ def test_failed_fetch_preserves_catalog_and_checkpoint(collection, monkeypatch):
     async def failed(*_args, **_kwargs):
         raise RuntimeError("source_http_403")
     monkeypatch.setattr(catalog, "_fetch_source_batch", failed)
-    with pytest.raises(RuntimeError, match="source_http_403"):
-        run_window()
+    result = run_window()
+    assert result["status"] == "paused" and result["reason"] == "source_http_403"
     assert collection["cursor"].next_page == 4
     assert len(collection["rows"]) == 1
     assert collection["sessions"][-1].rolled_back
@@ -133,9 +136,8 @@ def test_repeated_page_fingerprint_cannot_advance_checkpoint(collection, monkeyp
     async def repeated(*_args, **_kwargs):
         return [{"external_id": "wh_page_1", "source": "willhaben"}], {"accepted": 1, "unresolved_make": 0}
     monkeypatch.setattr(catalog, "_fetch_source_batch", repeated)
-    with pytest.raises(HTTPException) as error:
-        run_window()
-    assert error.value.detail == "source_pagination_did_not_advance"
+    result = run_window()
+    assert result["status"] == "paused" and result["reason"] == "pagination_stalled"
     assert collection["cursor"].last_fingerprint == fingerprint
     assert collection["cursor"].next_page == 4
 
@@ -144,9 +146,8 @@ def test_low_identity_quality_cannot_advance_checkpoint(collection, monkeypatch)
     async def unknown(*_args, **_kwargs):
         return [{"external_id": "wh_unknown"}], {"accepted": 1, "unresolved_make": 1}
     monkeypatch.setattr(catalog, "_fetch_source_batch", unknown)
-    with pytest.raises(HTTPException) as error:
-        run_window()
-    assert error.value.status_code == 422
+    result = run_window()
+    assert result["status"] == "paused" and result["reason"] == "identity_quality"
     assert collection["cursor"] is None
 
 
@@ -218,8 +219,8 @@ def test_source_refusal_persists_pause_across_sessions_and_partitions(collection
         collection["fetches"].append("refused")
         raise RuntimeError(f"source_http_{status}")
     monkeypatch.setattr(catalog, "_fetch_source_batch", refused)
-    with pytest.raises(RuntimeError):
-        run_window()
+    first = run_window()
+    assert first["status"] == "paused" and first["reason"] == f"source_http_{status}"
     count = len(collection["fetches"])
     result = run_window(partition="willhaben:type:10")
     assert result["status"] == "paused"
@@ -243,8 +244,7 @@ def test_quality_pause_does_not_block_head_refresh(collection, monkeypatch):
     async def unknown(*_args, **_kwargs):
         return [{"external_id": "unknown"}], {"accepted": 1, "unresolved_make": 1}
     monkeypatch.setattr(catalog, "_fetch_source_batch", unknown)
-    with pytest.raises(HTTPException):
-        run_window()
+    assert run_window()["reason"] == "identity_quality"
     monkeypatch.setattr(catalog, "_fetch_source_batch", original)
     assert run_window()["status"] == "paused"
     assert run_window("head")["status"] == "ok"
@@ -272,3 +272,117 @@ def test_out_of_range_page_does_not_pause_other_partitions_of_source(collection)
     assert scope == "partition:growth:autoscout24:A"
     assert reason == "source_http_404"
     assert delay == timedelta(hours=24)
+
+
+@pytest.mark.parametrize("message,reason,scope", [
+    ("source_empty_or_unrecognized_page", "empty_or_unrecognized_window", "partition:growth:willhaben:category:limousine"),
+    ("source_http_404", "source_http_404", "partition:growth:willhaben:category:limousine"),
+    ("source_http_429", "source_http_429", "source:willhaben"),
+    ("source_http_503", "source_fetch_failed", "source:willhaben"),
+])
+def test_first_rejection_returns_committed_pause_without_changing_saved_rows_or_cursor(collection, monkeypatch, message, reason, scope):
+    run_window()
+    saved_cursor = copy.deepcopy(collection["cursor"])
+    saved_rows = copy.deepcopy(collection["rows"])
+    fetches = []
+
+    async def rejected(*_args, **_kwargs):
+        fetches.append(True)
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(catalog, "_fetch_source_batch", rejected)
+    first = run_window()
+    second = run_window()
+    assert first == second == {
+        "status": "paused", "partition": "willhaben:category:limousine",
+        "reason": reason, "retry_after": collection["pauses"][scope].retry_after.isoformat(),
+    }
+    assert len(fetches) == 1
+    assert all(getattr(collection["cursor"], column.name) == getattr(saved_cursor, column.name)
+               for column in catalog.CatalogScanCursor.__table__.columns)
+    assert collection["rows"] == saved_rows
+    assert collection["sessions"][-2].rolled_back
+    assert all(session.closed for session in collection["sessions"])
+
+
+def test_identity_rejection_returns_pause_without_accepting_bad_rows(collection, monkeypatch):
+    run_window()
+    async def unknown(*_args, **_kwargs):
+        return [{"external_id": "unknown"}], {"accepted": 47, "unresolved_make": 5}
+    monkeypatch.setattr(catalog, "_fetch_source_batch", unknown)
+    result = run_window()
+    assert result["status"] == "paused" and result["reason"] == "identity_quality"
+    assert collection["cursor"].next_page == 4
+    assert len(collection["rows"]) == 1
+
+
+def test_failed_pause_commit_is_not_reported_as_a_handled_pause(collection, monkeypatch):
+    run_window()
+    collection["commit_fails"] = True
+    async def refused(*_args, **_kwargs):
+        raise RuntimeError("source_http_429")
+    monkeypatch.setattr(catalog, "_fetch_source_batch", refused)
+    with pytest.raises(RuntimeError, match="commit failed"):
+        run_window()
+    assert not collection["pauses"]
+    assert collection["cursor"].next_page == 4
+    assert len(collection["rows"]) == 1
+
+
+@pytest.mark.parametrize("error", [KeyError("broken parser"), RuntimeError("unexpected parser failure")])
+def test_unexpected_parser_error_remains_fatal_without_source_pause(collection, monkeypatch, error):
+    run_window()
+    async def broken(*_args, **_kwargs):
+        raise error
+    monkeypatch.setattr(catalog, "_fetch_source_batch", broken)
+    with pytest.raises(type(error), match="parser"):
+        run_window()
+    assert not collection["pauses"]
+    assert collection["cursor"].next_page == 4
+    assert len(collection["rows"]) == 1
+
+
+@pytest.mark.parametrize("error", [asyncio.TimeoutError(), catalog.aiohttp.ClientConnectionError("offline")])
+def test_transport_failure_returns_durable_backoff_without_cursor_progress(collection, monkeypatch, error):
+    run_window()
+    async def unavailable(*_args, **_kwargs):
+        raise error
+    monkeypatch.setattr(catalog, "_fetch_source_batch", unavailable)
+    result = run_window()
+    assert result["status"] == "paused" and result["reason"] == "source_fetch_failed"
+    assert collection["cursor"].next_page == 4
+    assert len(collection["rows"]) == 1
+
+
+def test_cron_handles_first_autoscout_pause_like_subsequent_saved_pause(collection, monkeypatch, caplog):
+    # Reproduce 27 Nov 15:47 UTC: A/NL/B are newly rejected; all others paused.
+    monkeypatch.setenv("AUTOAI_CATALOG_SCAN_MODE", "growth")
+    retry_after = datetime.now(timezone.utc) + timedelta(days=1)
+    rejected = {"autoscout24:A", "autoscout24:NL", "autoscout24:B"}
+    for part in scraper.collection_windows("growth"):
+        if part.key not in rejected:
+            collection["pauses"][f"partition:growth:{part.key}"] = SimpleNamespace(
+                reason="empty_or_unrecognized_window", retry_after=retry_after)
+    fetched = []
+    async def empty(source, _max_pages, _now, filters):
+        fetched.append(filters["country"])
+        raise RuntimeError("source_empty_or_unrecognized_page")
+    monkeypatch.setattr(catalog, "_fetch_source_batch", empty)
+    app = FastAPI()
+    app.include_router(catalog.router, prefix="/api/v1/internal/m01")
+
+    with TestClient(app) as client:
+        def post(url, **kwargs):
+            reply = client.post(url, params=kwargs["params"], headers=kwargs["headers"])
+            response = requests.Response()
+            response.status_code, response._content = reply.status_code, reply.content
+            return response
+        monkeypatch.setattr(scraper.requests, "post", post)
+        with caplog.at_level("INFO"):
+            assert scraper._collect_windows("http://testserver", "test-secret", 3) == 0
+            assert scraper._collect_windows("http://testserver", "test-secret", 3) == 0
+
+    assert fetched == ["A", "NL", "B"]  # No second fetch or immediate retry.
+    assert collection["cursor"] is None and not collection["rows"]
+    assert "accepted_by_source={} failed_partitions=[]" in caplog.text
+    assert "completed_windows=0" in caplog.text  # A pause is not successful coverage.

@@ -137,7 +137,8 @@ def test_collection_cron_runs_every_bounded_partition_and_continues_after_one_fa
         return Response(next(part for part in scraper.COLLECTION_PLAN if part.key == key))
 
     monkeypatch.setattr(scraper.requests, "post", post)
-    assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
+    with pytest.raises(RuntimeError, match="failed_partitions=willhaben:category:limousine"):
+        scraper._collect_windows("https://backend.example.test", "test-secret", 3)
     assert len(seen) == 23
     assert len(set(seen)) == 23
     assert seen[0].startswith("autoscout24:D:price:")
@@ -164,7 +165,11 @@ def test_german_price_band_is_not_retried_after_pause_or_failure(monkeypatch, ou
                     "by_source": {source: {"accepted": 1}}}
         return SimpleNamespace(raise_for_status=check, json=result)
     monkeypatch.setattr(scraper.requests, "post", post)
-    assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
+    if outcome == "failed":
+        with pytest.raises(RuntimeError, match=f"failed_partitions={first_band}"):
+            scraper._collect_windows("https://backend.example.test", "test-secret", 3)
+    else:
+        assert scraper._collect_windows("https://backend.example.test", "test-secret", 3) == 0
     assert seen.count(first_band) == 1
     assert len(seen) == 23
 
@@ -228,3 +233,48 @@ def test_model_repair_failure_does_not_stop_collection(monkeypatch):
     monkeypatch.setattr(scraper, "_collect_windows", lambda *args: calls.append(args) or 0)
     assert scraper.main() == 0
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("status", [401, 403, 409, 500, 507])
+def test_http_failure_is_visible_even_when_other_partitions_of_same_source_succeed(monkeypatch, caplog, status):
+    monkeypatch.setenv("AUTOAI_CATALOG_SCAN_MODE", "growth")
+    failed_key = "autoscout24:D:price:500-4999"
+    seen = []
+    def post(_url, **kwargs):
+        key = kwargs["params"]["partition_key"]
+        seen.append(key)
+        if key == failed_key:
+            response = scraper.requests.Response()
+            response.status_code = status
+            # URL/body can contain sensitive request context and must not be logged.
+            response.url = "https://backend.example.test/?secret=test-secret"
+            response._content = b"test-secret"
+            return response
+        source = next(part.source for part in scraper.COLLECTION_PLAN if part.key == key)
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {
+            "status": "ok", "start_page": 4, "end_page": 6, "next_page": 7,
+            "by_source": {source: {"accepted": 1}}})
+    monkeypatch.setattr(scraper.requests, "post", post)
+    with pytest.raises(RuntimeError, match=f"failed_partitions={failed_key}"):
+        scraper._collect_windows("https://backend.example.test", "test-secret", 3)
+    assert len(seen) == len(set(seen)) == 23
+    assert f"http_status={status}" in caplog.text
+    assert "test-secret" not in caplog.text
+
+
+def test_ambiguous_timeout_is_not_retried_or_hidden_by_other_successes(monkeypatch):
+    monkeypatch.setenv("AUTOAI_CATALOG_SCAN_MODE", "growth")
+    seen = []
+    def post(_url, **kwargs):
+        key = kwargs["params"]["partition_key"]
+        seen.append(key)
+        if len(seen) == 1:
+            raise scraper.requests.ReadTimeout("unknown commit outcome")
+        source = next(part.source for part in scraper.COLLECTION_PLAN if part.key == key)
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {
+            "status": "ok", "start_page": 4, "end_page": 6, "next_page": 7,
+            "by_source": {source: {"accepted": 1}}})
+    monkeypatch.setattr(scraper.requests, "post", post)
+    with pytest.raises(RuntimeError, match="collection incomplete"):
+        scraper._collect_windows("https://backend.example.test", "test-secret", 3)
+    assert len(seen) == len(set(seen)) == 23

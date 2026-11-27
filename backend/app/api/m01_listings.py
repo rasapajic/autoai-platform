@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
+import aiohttp
 from fastapi import APIRouter, Header, HTTPException, Query
 from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -322,6 +323,19 @@ def _collection_pause_spec(exc, source_key, partition_key, mode, fetch_failed):
     if not fetch_failed:
         return None
     message = str(exc)
+    source_status = message.removeprefix("source_http_")
+    expected_source_error = isinstance(exc, RuntimeError) and (
+        message in {
+            "source_empty_or_unrecognized_page", "source_empty_window",
+            "source_markup_unrecognized", "source_page_has_no_unique_valid_rows",
+            "source_window_incomplete",
+        }
+        or (message.startswith("source_http_") and len(source_status) == 3
+            and source_status.isdigit() and 400 <= int(source_status) <= 599)
+    )
+    if not expected_source_error and not isinstance(exc, (aiohttp.ClientError, asyncio.TimeoutError)):
+        # A parser/programming error is not evidence that the source needs backoff.
+        return None
     if message in {"source_http_401", "source_http_402", "source_http_403", "source_http_429", "source_http_451"}:
         return f"source:{source_key}", message, timedelta(hours=24)
     if message in {"source_http_400", "source_http_404", "source_http_410", "source_http_416"}:
@@ -423,6 +437,11 @@ async def collect_window(
             db.execute(statement)
             db.commit()
             logger.warning("Catalog collection paused: key=%s reason=%s retry_after=%s", pause_key, reason, retry_after.isoformat())
+            # The rejected rows and cursor have rolled back; only backoff committed.
+            # Match the next request's persisted-pause response instead of turning
+            # this already handled source rejection into a cron process failure.
+            return {"status": "paused", "partition": partition_key, "reason": reason,
+                    "retry_after": retry_after.isoformat()}
         raise
     finally:
         db.close()

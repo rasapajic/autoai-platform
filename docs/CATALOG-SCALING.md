@@ -72,7 +72,10 @@ Unknown/empty/blocked pages stop their partition without advancing it. They are
 not claimed as confirmed exhaustion. A short window retries a single page at
 the same checkpoint. Repeated identical batches and more than 10% unresolved
 makes also prevent advancement. Other partitions continue, with partial failures
-listed explicitly; a completely failed source makes the cron fail.
+listed explicitly. A handled source rejection returns `paused` only after its
+backoff transaction commits, including on the first rejection. Pauses do not
+count as accepted observations. Unhandled request, database or program errors
+make the cron fail even if another partition of the same source succeeds.
 
 All collection modes stop above 250 MiB of database size, leaving room on the existing
 500 MB volume. This is a conservative database guard, not a measurement of free
@@ -149,6 +152,15 @@ before the independent pause transaction is committed. Database write failures
 are not classified as source refusals. Expired deadlines allow the saved page to
 resume. Paused responses perform no upstream fetch and are reported explicitly;
 they are not counted as valid observations or successful coverage.
+
+The first rejection uses the same `paused` response as subsequent requests once
+the rejected rows/cursor have rolled back and the independent pause commit has
+succeeded. It must not raise the already handled rejection again. Failed pause
+commits, storage guards, authorization failures and unexpected parser exceptions
+remain errors. Only recognized adapter source failures and transport timeouts
+are eligible for fetch backoff. The cron logs an HTTP status for unhandled
+request failures without dumping request URLs, headers or response bodies, and
+does not immediately retry an ambiguous client timeout.
 
 The database-size guard now applies to head mode too, because head refresh can
 insert new rows. This faster schedule does not establish source coverage or a
